@@ -114,7 +114,7 @@ export function DetailDrawer({
 
             {detail.app.compose.length > 0 ? (
               <div className="text-block">
-                <strong>Compose and image hints</strong>
+                <strong>Runtime and compose hints</strong>
                 <ul className="plain-list">
                   {detail.app.compose.slice(0, 6).map((entry) => (
                     <li key={entry}>{entry}</li>
@@ -122,6 +122,37 @@ export function DetailDrawer({
                 </ul>
               </div>
             ) : null}
+
+            <dl className="definition-grid">
+              <div>
+                <dt>Estimated CPU usage</dt>
+                <dd>
+                  {detail.summary.runtimeUsage.estimatedCpuCores !== null
+                    ? `${detail.summary.runtimeUsage.estimatedCpuCores} cores`
+                    : "Not published"}
+                </dd>
+              </div>
+              <div>
+                <dt>Estimated memory usage</dt>
+                <dd>
+                  {detail.summary.runtimeUsage.estimatedMemoryMb !== null
+                    ? `${detail.summary.runtimeUsage.estimatedMemoryMb} MB`
+                    : "Not published"}
+                </dd>
+              </div>
+              <div>
+                <dt>Estimated storage usage</dt>
+                <dd>
+                  {detail.summary.runtimeUsage.estimatedStorageGb !== null
+                    ? `${detail.summary.runtimeUsage.estimatedStorageGb} GB`
+                    : "Not published"}
+                </dd>
+              </div>
+              <div>
+                <dt>Active nodes</dt>
+                <dd>{detail.summary.runtimeUsage.activeNodes}</dd>
+              </div>
+            </dl>
           </section>
 
           <section className="drawer-section">
@@ -177,6 +208,24 @@ export function DetailDrawer({
               This atlas shows observed deployment context from public Flux surfaces. It is not a
               manual single-node pinning interface.
             </p>
+            <dl className="definition-grid">
+              <div>
+                <dt>Observed regions</dt>
+                <dd>
+                  {detail.summary.regions.length > 0
+                    ? detail.summary.regions.slice(0, 6).join(", ")
+                    : "Unknown"}
+                </dd>
+              </div>
+              <div>
+                <dt>Avg node download</dt>
+                <dd>
+                  {detail.summary.runtimeUsage.avgNodeDownloadMbps !== null
+                    ? `${detail.summary.runtimeUsage.avgNodeDownloadMbps} Mbps`
+                    : "Unknown"}
+                </dd>
+              </div>
+            </dl>
           </section>
 
           <section className="drawer-section">

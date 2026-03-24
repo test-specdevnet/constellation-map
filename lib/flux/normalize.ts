@@ -56,6 +56,89 @@ const toStringArray = (value: unknown): string[] => {
   return [];
 };
 
+const roundTo = (value: number, precision = 2) => {
+  const factor = 10 ** precision;
+  return Math.round(value * factor) / factor;
+};
+
+const parseMemoryToMb = (raw: string): number | null => {
+  const match = raw.match(/([\d.]+)\s*(mb|mib|gb|gib)?/i);
+  if (!match) {
+    return null;
+  }
+
+  const amount = Number(match[1]);
+  if (!Number.isFinite(amount)) {
+    return null;
+  }
+
+  const unit = (match[2] || "mb").toLowerCase();
+  if (unit.startsWith("g")) {
+    return Math.round(amount * 1024);
+  }
+  return Math.round(amount);
+};
+
+const parseStorageToGb = (raw: string): number | null => {
+  const match = raw.match(/([\d.]+)\s*(mb|mib|gb|gib|tb|tib)?/i);
+  if (!match) {
+    return null;
+  }
+
+  const amount = Number(match[1]);
+  if (!Number.isFinite(amount)) {
+    return null;
+  }
+
+  const unit = (match[2] || "gb").toLowerCase();
+  if (unit.startsWith("t")) {
+    return roundTo(amount * 1024, 1);
+  }
+  if (unit.startsWith("m")) {
+    return roundTo(amount / 1024, 2);
+  }
+  return roundTo(amount, 2);
+};
+
+const estimateRuntimeUsage = (app: AppSpec, instanceCount: number) => {
+  let cpuPerInstance: number | null = null;
+  let memoryPerInstanceMb: number | null = null;
+  let storagePerInstanceGb: number | null = null;
+
+  for (const entry of app.compose) {
+    const cpuMatch = entry.match(/cpu[s]?\s*[:=]\s*([\d.]+)/i);
+    if (!cpuPerInstance && cpuMatch) {
+      const parsed = Number(cpuMatch[1]);
+      if (Number.isFinite(parsed)) {
+        cpuPerInstance = parsed;
+      }
+    }
+
+    const memoryMatch = entry.match(/(?:ram|memory|mem)\s*[:=]\s*([\d.]+\s*(?:mb|mib|gb|gib)?)/i);
+    if (!memoryPerInstanceMb && memoryMatch) {
+      memoryPerInstanceMb = parseMemoryToMb(memoryMatch[1]);
+    }
+
+    const storageMatch = entry.match(/(?:storage|disk|ssd|hdd)\s*[:=]\s*([\d.]+\s*(?:mb|mib|gb|gib|tb|tib)?)/i);
+    if (!storagePerInstanceGb && storageMatch) {
+      storagePerInstanceGb = parseStorageToGb(storageMatch[1]);
+    }
+  }
+
+  return {
+    estimatedCpuCores:
+      cpuPerInstance !== null ? roundTo(cpuPerInstance * Math.max(instanceCount, 1), 2) : null,
+    estimatedMemoryMb:
+      memoryPerInstanceMb !== null
+        ? Math.round(memoryPerInstanceMb * Math.max(instanceCount, 1))
+        : null,
+    estimatedStorageGb:
+      storagePerInstanceGb !== null
+        ? roundTo(storagePerInstanceGb * Math.max(instanceCount, 1), 2)
+        : null,
+  };
+};
+
 const normalizeAppSpec = (record: Record<string, unknown>): AppSpec | null => {
   const appName =
     toString(record.appName) ||
@@ -316,6 +399,19 @@ const buildFallbackAppDetail = (
   const nodes = snapshot.nodes.filter((node) =>
     locations.some((location) => location.nodeJoinKey === node.id),
   );
+  const regions = [...new Set(
+    nodes
+      .map((node) => node.geolocation.regionName || node.geolocation.country || node.org || "")
+      .filter(Boolean),
+  )].slice(0, 12);
+  const instanceCount = Math.max(app.instances, locations.length);
+  const runtimeUsage = estimateRuntimeUsage(app, instanceCount);
+  const avgNodeDownloadMbps = nodes.length
+    ? roundTo(
+        nodes.reduce((total, node) => total + (node.downloadSpeed ?? 0), 0) / nodes.length,
+        1,
+      )
+    : null;
 
   return {
     app,
@@ -329,10 +425,16 @@ const buildFallbackAppDetail = (
       neighborhoodReason: `Nearby systems share similar runtime, category, or deployment envelope traits.`,
     },
     summary: {
-      instanceCount: Math.max(app.instances, locations.length),
+      instanceCount,
       liveStatus: locations[0]?.status || "unknown",
       owner: app.owner,
       freshness: locations[0]?.freshness || "unknown",
+      regions,
+      runtimeUsage: {
+        ...runtimeUsage,
+        activeNodes: nodes.length,
+        avgNodeDownloadMbps,
+      },
     },
   };
 };
@@ -370,17 +472,39 @@ export const getAppDetail = async (appName: string, force = false): Promise<AppD
     const nodes = snapshot.nodes.filter((node) =>
       directLocations.some((location) => location.nodeJoinKey === node.id),
     );
+    const detailLocations = directLocations.length > 0 ? directLocations : fallback.locations;
+    const detailNodes = nodes.length > 0 ? nodes : fallback.nodes;
+    const instanceCount = Math.max(directSpec.instances, detailLocations.length);
+    const regions = [...new Set(
+      detailNodes
+        .map((node) => node.geolocation.regionName || node.geolocation.country || node.org || "")
+        .filter(Boolean),
+    )].slice(0, 12);
+    const runtimeUsage = estimateRuntimeUsage(directSpec, instanceCount);
+    const avgNodeDownloadMbps = detailNodes.length
+      ? roundTo(
+          detailNodes.reduce((total, node) => total + (node.downloadSpeed ?? 0), 0) /
+            detailNodes.length,
+          1,
+        )
+      : null;
 
     const detail: AppDetail = {
       ...fallback,
       app: directSpec,
-      locations: directLocations.length > 0 ? directLocations : fallback.locations,
-      nodes,
+      locations: detailLocations,
+      nodes: detailNodes,
       summary: {
-        instanceCount: Math.max(directSpec.instances, directLocations.length || fallback.locations.length),
-        liveStatus: directLocations[0]?.status || fallback.summary.liveStatus,
+        instanceCount,
+        liveStatus: detailLocations[0]?.status || fallback.summary.liveStatus,
         owner: directSpec.owner,
-        freshness: directLocations[0]?.freshness || fallback.summary.freshness,
+        freshness: detailLocations[0]?.freshness || fallback.summary.freshness,
+        regions,
+        runtimeUsage: {
+          ...runtimeUsage,
+          activeNodes: detailNodes.length,
+          avgNodeDownloadMbps,
+        },
       },
     };
 
@@ -438,8 +562,8 @@ export const refreshFluxSnapshot = async () => {
   return buildConstellationSnapshot(true);
 };
 
-export const getSceneSummary = async () => {
-  const snapshot = await buildConstellationSnapshot();
+export const getSceneSummary = async (force = false) => {
+  const snapshot = await buildConstellationSnapshot(force);
   const filters = buildFilterMetadata(snapshot);
 
   return {

@@ -25,6 +25,13 @@ const update =
     });
   };
 
+const formatLabel = (value: string) =>
+  value
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+
 export function FilterBar({ filters, value, onChange }: FilterBarProps) {
   return (
     <div className="filter-bar" aria-label="Constellation filters">
@@ -34,7 +41,7 @@ export function FilterBar({ filters, value, onChange }: FilterBarProps) {
           <option value="all">All runtimes</option>
           {filters.runtimeFamilies.map((item) => (
             <option key={item.value} value={item.value}>
-              {item.value} ({item.count})
+              {formatLabel(item.value)} ({item.count})
             </option>
           ))}
         </select>
@@ -46,7 +53,7 @@ export function FilterBar({ filters, value, onChange }: FilterBarProps) {
           <option value="all">All categories</option>
           {filters.projectCategories.map((item) => (
             <option key={item.value} value={item.value}>
-              {item.value} ({item.count})
+              {formatLabel(item.value)} ({item.count})
             </option>
           ))}
         </select>
@@ -58,7 +65,7 @@ export function FilterBar({ filters, value, onChange }: FilterBarProps) {
           <option value="all">All tiers</option>
           {filters.resourceTiers.map((item) => (
             <option key={item.value} value={item.value}>
-              {item.value} ({item.count})
+              {formatLabel(item.value)} ({item.count})
             </option>
           ))}
         </select>
@@ -70,7 +77,7 @@ export function FilterBar({ filters, value, onChange }: FilterBarProps) {
           <option value="all">All statuses</option>
           {filters.statuses.map((item) => (
             <option key={item.value} value={item.value}>
-              {item.value} ({item.count})
+              {formatLabel(item.value)} ({item.count})
             </option>
           ))}
         </select>

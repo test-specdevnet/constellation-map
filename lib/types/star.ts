@@ -109,5 +109,13 @@ export type AppDetail = {
     liveStatus: string;
     owner: string;
     freshness: string;
+    regions: string[];
+    runtimeUsage: {
+      estimatedCpuCores: number | null;
+      estimatedMemoryMb: number | null;
+      estimatedStorageGb: number | null;
+      activeNodes: number;
+      avgNodeDownloadMbps: number | null;
+    };
   };
 };

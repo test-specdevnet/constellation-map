@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FilterState } from "./FilterBar";
 import { FilterBar } from "./FilterBar";
 import { SearchBox } from "./SearchBox";
@@ -78,6 +78,7 @@ const emptyScene: InitialScene = {
 };
 
 export function ConstellationExperience() {
+  const hasLoadedSceneRef = useRef(false);
   const [scene, setScene] = useState<InitialScene | null>(null);
   const [sceneLoading, setSceneLoading] = useState(true);
   const [sceneError, setSceneError] = useState("");
@@ -100,12 +101,14 @@ export function ConstellationExperience() {
   useEffect(() => {
     let cancelled = false;
 
-    const loadScene = async () => {
-      setSceneLoading(true);
+    const loadScene = async (force = false) => {
+      if (!hasLoadedSceneRef.current) {
+        setSceneLoading(true);
+      }
       setSceneError("");
 
       try {
-        const response = await fetch("/api/stars", { cache: "no-store" });
+        const response = await fetch(`/api/stars${force ? "?force=1" : ""}`, { cache: "no-store" });
         if (!response.ok) {
           throw new Error("Unable to load the public FluxCloud snapshot.");
         }
@@ -116,6 +119,7 @@ export function ConstellationExperience() {
         }
 
         setScene(payload);
+        hasLoadedSceneRef.current = true;
       } catch (error) {
         if (cancelled) {
           return;
@@ -134,9 +138,13 @@ export function ConstellationExperience() {
     };
 
     void loadScene();
+    const refreshInterval = window.setInterval(() => {
+      void loadScene(true);
+    }, 60_000);
 
     return () => {
       cancelled = true;
+      window.clearInterval(refreshInterval);
     };
   }, []);
 
@@ -330,7 +338,7 @@ export function ConstellationExperience() {
                 ? "Loading public FluxCloud snapshot..."
                 : `Snapshot generated ${new Date(activeScene.generatedAt).toLocaleString()}`}
             </span>
-            <span>{visibleStars.length} visible stars after filtering</span>
+            <span>{visibleStars.length} visible stars after filtering - refreshes every 60s</span>
           </div>
 
           <SceneCanvas

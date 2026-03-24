@@ -82,6 +82,7 @@ export function SceneCanvas({
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const pointerRef = useRef<{ x: number; y: number } | null>(null);
   const draggingRef = useRef(false);
+  const didDragRef = useRef(false);
   const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const targetCameraRef = useRef<CameraState>({ ...defaultCamera });
@@ -90,6 +91,16 @@ export function SceneCanvas({
   const [cameraLabel, setCameraLabel] = useState(defaultCamera.zoom.toFixed(2));
   const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 760 });
   const [hoveredStarId, setHoveredStarId] = useState<string | null>(null);
+  const backgroundStars = useMemo(
+    () =>
+      Array.from({ length: 240 }, (_, index) => ({
+        x: ((index * 137) % 1000) / 1000,
+        y: ((index * 211) % 1000) / 1000,
+        size: index % 7 === 0 ? 1.35 : 0.7,
+        alpha: 0.15 + ((index * 17) % 60) / 300,
+      })),
+    [],
+  );
 
   const starsById = useMemo(() => new Map(stars.map((star) => [star.id, star])), [stars]);
   const matchSet = useMemo(() => new Set(searchMatches), [searchMatches]);
@@ -159,11 +170,12 @@ export function SceneCanvas({
         const point = worldToScreen(star.x, star.y, camera);
         const dx = point.x - pointer.x;
         const dy = point.y - pointer.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
         const radius = Math.max(8, star.size * camera.zoom + 5);
+        const distanceSquared = dx * dx + dy * dy;
+        const radiusSquared = radius * radius;
 
-        if (distance <= radius && (!closest || distance < closest.distance)) {
-          closest = { star, distance };
+        if (distanceSquared <= radiusSquared && (!closest || distanceSquared < closest.distance)) {
+          closest = { star, distance: distanceSquared };
         }
       }
 
@@ -186,13 +198,12 @@ export function SceneCanvas({
       context.fillStyle = background;
       context.fillRect(0, 0, canvasSize.width, canvasSize.height);
 
-      for (let index = 0; index < 120; index += 1) {
-        const x = (index * 97) % canvasSize.width;
-        const y = (index * 193) % canvasSize.height;
-        const pulse = 0.3 + ((Math.sin(timestamp / 1400 + index) + 1) / 2) * 0.5;
+      for (const star of backgroundStars) {
+        const x = ((star.x * canvasSize.width - camera.x * 0.012) % canvasSize.width + canvasSize.width) % canvasSize.width;
+        const y = ((star.y * canvasSize.height - camera.y * 0.012) % canvasSize.height + canvasSize.height) % canvasSize.height;
         context.beginPath();
-        context.fillStyle = `rgba(255,255,255,${pulse * 0.25})`;
-        context.arc(x, y, index % 5 === 0 ? 1.6 : 0.8, 0, Math.PI * 2);
+        context.fillStyle = `rgba(255,255,255,${star.alpha})`;
+        context.arc(x, y, star.size, 0, Math.PI * 2);
         context.fill();
       }
 
@@ -252,8 +263,7 @@ export function SceneCanvas({
         const hoveredMatch = hovered?.id === star.id;
         const searchMatch = matchSet.has(star.appName);
         const color = colorMap[star.colorBucket] ?? "#cfe1ff";
-        const pulse = 0.8 + ((Math.sin(timestamp / 500 + star.size) + 1) / 2) * 0.25;
-        const radius = Math.max(1.6, Math.min(16, star.size * camera.zoom * 0.55));
+        const radius = Math.max(1.8, Math.min(17, star.size * camera.zoom * 0.55));
 
         if (selected || hoveredMatch || searchMatch) {
           context.beginPath();
@@ -264,15 +274,48 @@ export function SceneCanvas({
           context.fill();
         }
 
+        const glowRadius = radius + (selected ? 9 : hoveredMatch ? 7 : 5);
+        const glowGradient = context.createRadialGradient(
+          point.x,
+          point.y,
+          Math.max(0.5, radius * 0.2),
+          point.x,
+          point.y,
+          glowRadius,
+        );
+        glowGradient.addColorStop(0, "rgba(255,255,255,0.34)");
+        glowGradient.addColorStop(0.45, `${color}88`);
+        glowGradient.addColorStop(1, "rgba(0,0,0,0)");
+        context.fillStyle = glowGradient;
+        context.beginPath();
+        context.arc(point.x, point.y, glowRadius, 0, Math.PI * 2);
+        context.fill();
+
         context.beginPath();
         context.fillStyle = color;
-        context.shadowBlur = selected || hoveredMatch ? 18 : 8;
+        context.shadowBlur = selected || hoveredMatch ? 22 : 10;
         context.shadowColor = color;
-        context.globalAlpha = clamp(star.brightness * pulse, 0.35, 1);
+        context.globalAlpha = clamp(star.brightness, 0.48, 1);
         context.arc(point.x, point.y, radius, 0, Math.PI * 2);
         context.fill();
         context.globalAlpha = 1;
         context.shadowBlur = 0;
+
+        const coreGradient = context.createRadialGradient(
+          point.x - radius * 0.33,
+          point.y - radius * 0.33,
+          0,
+          point.x,
+          point.y,
+          radius,
+        );
+        coreGradient.addColorStop(0, "rgba(255,255,255,0.98)");
+        coreGradient.addColorStop(0.4, "rgba(240,249,255,0.86)");
+        coreGradient.addColorStop(1, "rgba(255,255,255,0)");
+        context.fillStyle = coreGradient;
+        context.beginPath();
+        context.arc(point.x, point.y, radius, 0, Math.PI * 2);
+        context.fill();
 
         if ((selected || hoveredMatch || searchMatch) && camera.zoom > 0.72) {
           context.fillStyle = "rgba(237, 244, 255, 0.92)";
@@ -302,6 +345,7 @@ export function SceneCanvas({
     stars,
     starsById,
     systems,
+    backgroundStars,
   ]);
 
   const zoomBy = (delta: number) => {
@@ -315,7 +359,9 @@ export function SceneCanvas({
 
   const handlePointerDown = (event: PointerEvent<HTMLCanvasElement>) => {
     draggingRef.current = true;
+    didDragRef.current = false;
     lastPointerRef.current = { x: event.clientX, y: event.clientY };
+    event.currentTarget.setPointerCapture(event.pointerId);
   };
 
   const handlePointerMove = (event: PointerEvent<HTMLCanvasElement>) => {
@@ -333,6 +379,9 @@ export function SceneCanvas({
 
     const movementX = event.clientX - lastPointerRef.current.x;
     const movementY = event.clientY - lastPointerRef.current.y;
+    if (Math.abs(movementX) > 1 || Math.abs(movementY) > 1) {
+      didDragRef.current = true;
+    }
     lastPointerRef.current = { x: event.clientX, y: event.clientY };
 
     targetCameraRef.current = {
@@ -357,6 +406,9 @@ export function SceneCanvas({
   };
 
   const handleClick = () => {
+    if (didDragRef.current) {
+      return;
+    }
     if (hoveredStarId) {
       const star = starsById.get(hoveredStarId);
       if (star) {
@@ -367,7 +419,25 @@ export function SceneCanvas({
 
   const handleWheel = (event: WheelEvent<HTMLCanvasElement>) => {
     event.preventDefault();
-    zoomBy(event.deltaY < 0 ? 0.12 : -0.12);
+    const bounds = canvasRef.current?.getBoundingClientRect();
+    if (!bounds) {
+      return;
+    }
+
+    const pointerX = event.clientX - bounds.left;
+    const pointerY = event.clientY - bounds.top;
+    const target = targetCameraRef.current;
+    const zoomFactor = Math.exp(-Math.max(-180, Math.min(180, event.deltaY)) * 0.0016);
+    const nextZoom = clamp(target.zoom * zoomFactor, 0.12, 2.6);
+    if (Math.abs(nextZoom - target.zoom) < 0.00001) {
+      return;
+    }
+
+    const worldXBefore = (pointerX - canvasSize.width / 2) / target.zoom + target.x;
+    const worldYBefore = (pointerY - canvasSize.height / 2) / target.zoom + target.y;
+    target.zoom = nextZoom;
+    target.x = worldXBefore - (pointerX - canvasSize.width / 2) / nextZoom;
+    target.y = worldYBefore - (pointerY - canvasSize.height / 2) / nextZoom;
   };
 
   return (
