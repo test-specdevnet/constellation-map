@@ -8,7 +8,15 @@ import {
   type PointerEvent,
   type WheelEvent,
 } from "react";
+import {
+  drawCartoonCloudPuffs,
+  drawCartoonMarker,
+  easePop,
+  getCartoonAccent,
+  getMarkerVariant,
+} from "../../lib/canvas/cartoonMarkers";
 import type { AppSystem, Cluster, Star } from "../../lib/types/star";
+import { buildTourWaypoints } from "../../lib/tour/buildTourWaypoints";
 
 type CameraTarget = {
   key: string;
@@ -126,12 +134,14 @@ const findHoveredStarInGrid = ({
   canvasSize,
   camera,
   radiusPadding,
+  hitScale = 1,
 }: {
   grid: SpatialGrid;
   pointer: { x: number; y: number };
   canvasSize: { width: number; height: number };
   camera: CameraState;
   radiusPadding: number;
+  hitScale?: number;
 }) => {
   const pointerWorld = screenToWorld(pointer, canvasSize, camera);
   const inv = 1 / grid.cellSize;
@@ -151,7 +161,8 @@ const findHoveredStarInGrid = ({
         const sx = point.x - pointer.x;
         const sy = point.y - pointer.y;
         const distance = Math.sqrt(sx * sx + sy * sy);
-        const radius = Math.max(8, star.size * camera.zoom + radiusPadding);
+        const radius =
+          Math.max(8, star.size * camera.zoom + radiusPadding) * hitScale;
 
         if (distance <= radius && (!closest || distance < closest.distance)) {
           closest = { star, distance };
@@ -181,6 +192,11 @@ const prefersReducedMotion = () =>
   window.matchMedia &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+const easeInOutCubic = (t: number) =>
+  t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+
+const TOUR_SEGMENT_MS = 5200;
+
 export function SceneCanvas({
   stars,
   clusters,
@@ -208,14 +224,34 @@ export function SceneCanvas({
   const [cameraLabel, setCameraLabel] = useState(defaultCamera.zoom.toFixed(2));
   const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 760 });
   const [hoveredStarId, setHoveredStarId] = useState<string | null>(null);
+  const [tourMode, setTourMode] = useState(false);
   const backgroundCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const backgroundContextRef = useRef<CanvasRenderingContext2D | null>(null);
   const lastHudUpdateRef = useRef(0);
   const lastHoverEvalRef = useRef({ x: 0, y: 0, cameraX: 0, cameraY: 0, cameraZoom: 0 });
+  const tourModeRef = useRef(false);
+  const tourStartMsRef = useRef(0);
 
   const starsById = useMemo(() => new Map(stars.map((star) => [star.id, star])), [stars]);
   const matchSet = useMemo(() => new Set(searchMatches), [searchMatches]);
   const spatialGrid = useMemo(() => buildSpatialGrid(stars, 160), [stars]);
+  const tourWaypoints = useMemo(() => buildTourWaypoints(systems, stars), [systems, stars]);
+
+  const reducedMotion = prefersReducedMotion();
+
+  useEffect(() => {
+    tourModeRef.current = tourMode;
+    if (tourMode) {
+      tourStartMsRef.current = performance.now();
+      motionRef.current = { velocityX: 0, velocityY: 0, velocityZoom: 0 };
+    }
+  }, [tourMode]);
+
+  useEffect(() => {
+    if (focusTarget) {
+      setTourMode(false);
+    }
+  }, [focusTarget]);
 
   useEffect(() => {
     const measure = () => {
@@ -339,6 +375,30 @@ export function SceneCanvas({
 
     const draw = (timestamp: number) => {
       const camera = currentCameraRef.current;
+
+      if (tourModeRef.current && !reducedMotion && tourWaypoints.length >= 2) {
+        const elapsed = timestamp - tourStartMsRef.current;
+        const n = tourWaypoints.length;
+        const cycleLen = n * TOUR_SEGMENT_MS;
+        const e = elapsed % cycleLen;
+        const segIdx = Math.floor(e / TOUR_SEGMENT_MS) % n;
+        const nextIdx = (segIdx + 1) % n;
+        const u = easeInOutCubic((e % TOUR_SEGMENT_MS) / TOUR_SEGMENT_MS);
+        const p0 = tourWaypoints[segIdx];
+        const p1 = tourWaypoints[nextIdx];
+        const swayX = 48 * Math.sin(timestamp / 860 + segIdx * 0.73);
+        const swayY = 40 * Math.cos(timestamp / 980 + segIdx * 0.51);
+        const tx = lerp(p0.x, p1.x, u) + swayX * 0.018;
+        const ty = lerp(p0.y, p1.y, u) + swayY * 0.018;
+        const zoomBreath = Math.sin(Math.PI * u);
+        const tz = clamp(
+          0.2 + zoomBreath * 0.38 + 0.06 * Math.sin(timestamp / 2100),
+          0.16,
+          0.58,
+        );
+        targetCameraRef.current = { x: tx, y: ty, zoom: tz };
+      }
+
       const target = targetCameraRef.current;
 
       const dt = Math.min(40, Math.max(8, timestamp - (lastHudUpdateRef.current || timestamp)));
@@ -365,7 +425,11 @@ export function SceneCanvas({
         context.fillRect(0, 0, canvasSize.width, canvasSize.height);
       }
 
-      if (camera.zoom < 0.75) {
+      if (tourModeRef.current) {
+        drawCartoonCloudPuffs(context, canvasSize.width, canvasSize.height, timestamp);
+      }
+
+      if (camera.zoom < 0.75 && !tourModeRef.current) {
         for (const cluster of clusters) {
           const point = worldToScreen(cluster.centroid, canvasSize, camera);
           context.beginPath();
@@ -387,7 +451,7 @@ export function SceneCanvas({
         }
       }
 
-      if (camera.zoom > 0.95) {
+      if (camera.zoom > 0.95 && !tourModeRef.current) {
         context.strokeStyle = "rgba(79, 122, 212, 0.14)";
         context.lineWidth = 1;
 
@@ -417,6 +481,7 @@ export function SceneCanvas({
               canvasSize,
               camera,
               radiusPadding: 5,
+              hitScale: tourModeRef.current ? 1.85 : 1,
             })
           : hoveredStarIdRef.current
             ? starsById.get(hoveredStarIdRef.current) ?? null
@@ -438,13 +503,15 @@ export function SceneCanvas({
         onHoverStar(hovered ?? null);
       }
 
+      const cartoonScene = tourModeRef.current;
+
       for (const star of stars) {
         const point = worldToScreen({ x: star.x, y: star.y }, canvasSize, camera);
         if (
-          point.x < -40 ||
-          point.y < -40 ||
-          point.x > canvasSize.width + 40 ||
-          point.y > canvasSize.height + 40
+          point.x < -80 ||
+          point.y < -80 ||
+          point.x > canvasSize.width + 80 ||
+          point.y > canvasSize.height + 80
         ) {
           continue;
         }
@@ -452,6 +519,41 @@ export function SceneCanvas({
         const selected = selectedAppName === star.appName;
         const hoveredMatch = hovered?.id === star.id;
         const searchMatch = matchSet.has(star.appName);
+
+        if (cartoonScene) {
+          const popRaw = (Math.sin(timestamp / 340 + star.size * 0.4) + 1) / 2;
+          const pop = easePop(popRaw);
+          const accent = getCartoonAccent(star.appName);
+          const variant = getMarkerVariant(star.appName);
+          const baseScale = Math.max(
+            0.95,
+            Math.min(2.6, star.size * camera.zoom * 0.1),
+          );
+          drawCartoonMarker({
+            ctx: context,
+            x: point.x,
+            y: point.y,
+            accent,
+            variant,
+            baseScale,
+            pop,
+            highlight: selected || hoveredMatch || searchMatch,
+          });
+
+          if (selected || hoveredMatch || searchMatch) {
+            context.font = selected
+              ? "800 13px Segoe UI, system-ui, sans-serif"
+              : "700 12px Segoe UI, system-ui, sans-serif";
+            context.lineJoin = "round";
+            context.strokeStyle = "#1a0a2e";
+            context.lineWidth = 4;
+            context.strokeText(star.appName, point.x + 16, point.y - 14);
+            context.fillStyle = "#ffffff";
+            context.fillText(star.appName, point.x + 16, point.y - 14);
+          }
+          continue;
+        }
+
         const color = colorMap[star.colorBucket] ?? "#cfe1ff";
         const pulse =
           0.78 +
@@ -507,11 +609,13 @@ export function SceneCanvas({
     clusters,
     matchSet,
     onHoverStar,
+    reducedMotion,
     selectedAppName,
     stars,
     starsById,
     spatialGrid,
     systems,
+    tourWaypoints,
   ]);
 
   const zoomAt = (nextZoom: number, anchorScreen?: { x: number; y: number }) => {
@@ -559,6 +663,10 @@ export function SceneCanvas({
     const movementY = event.clientY - lastPointerRef.current.y;
     lastPointerRef.current = { x: event.clientX, y: event.clientY };
 
+    if (tourMode && (Math.abs(movementX) > 4 || Math.abs(movementY) > 4)) {
+      setTourMode(false);
+    }
+
     targetCameraRef.current = {
       ...targetCameraRef.current,
       x: targetCameraRef.current.x - movementX / currentCameraRef.current.zoom,
@@ -590,6 +698,9 @@ export function SceneCanvas({
   };
 
   const handleWheel = (event: WheelEvent<HTMLCanvasElement>) => {
+    if (tourMode) {
+      setTourMode(false);
+    }
     event.preventDefault();
     const bounds = canvasRef.current?.getBoundingClientRect();
     const anchor = bounds
@@ -614,6 +725,23 @@ export function SceneCanvas({
           </button>
           <button type="button" className="secondary-action" onClick={resetView}>
             Reset view
+          </button>
+          <button
+            type="button"
+            className={tourMode ? "primary-action" : "secondary-action"}
+            onClick={() => setTourMode((active) => !active)}
+            disabled={tourWaypoints.length < 2 || reducedMotion}
+            title={
+              reducedMotion
+                ? "Tour mode uses motion; disabled when reduced motion is on."
+                : tourWaypoints.length < 2
+                  ? "Need at least two deployments in view for a tour path."
+                  : tourMode
+                    ? "Stop the guided fly-through."
+                    : "Fly through deployments cartoon style."
+            }
+          >
+            {tourMode ? "Exit tour" : "Tour mode"}
           </button>
         </div>
         <span className="scene-zoom-label">Zoom {cameraLabel}x</span>
