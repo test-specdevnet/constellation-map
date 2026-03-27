@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FilterState } from "./FilterBar";
 import { FilterBar } from "./FilterBar";
 import { SearchBox } from "./SearchBox";
@@ -78,7 +78,6 @@ const emptyScene: InitialScene = {
 };
 
 export function ConstellationExperience() {
-  const hasLoadedSceneRef = useRef(false);
   const [scene, setScene] = useState<InitialScene | null>(null);
   const [sceneLoading, setSceneLoading] = useState(true);
   const [sceneError, setSceneError] = useState("");
@@ -101,14 +100,12 @@ export function ConstellationExperience() {
   useEffect(() => {
     let cancelled = false;
 
-    const loadScene = async (force = false) => {
-      if (!hasLoadedSceneRef.current) {
-        setSceneLoading(true);
-      }
+    const loadScene = async () => {
+      setSceneLoading(true);
       setSceneError("");
 
       try {
-        const response = await fetch(`/api/stars${force ? "?force=1" : ""}`, { cache: "no-store" });
+        const response = await fetch("/api/stars", { cache: "no-store" });
         if (!response.ok) {
           throw new Error("Unable to load the public FluxCloud snapshot.");
         }
@@ -119,7 +116,6 @@ export function ConstellationExperience() {
         }
 
         setScene(payload);
-        hasLoadedSceneRef.current = true;
       } catch (error) {
         if (cancelled) {
           return;
@@ -138,13 +134,9 @@ export function ConstellationExperience() {
     };
 
     void loadScene();
-    const refreshInterval = window.setInterval(() => {
-      void loadScene(true);
-    }, 60_000);
 
     return () => {
       cancelled = true;
-      window.clearInterval(refreshInterval);
     };
   }, []);
 
@@ -179,6 +171,11 @@ export function ConstellationExperience() {
     [activeScene.stars, filters],
   );
 
+  const visibleStarIds = useMemo(
+    () => new Set(visibleStars.map((star) => star.id)),
+    [visibleStars],
+  );
+
   const visibleAppNames = useMemo(
     () => new Set(visibleStars.map((star) => star.appName)),
     [visibleStars],
@@ -192,12 +189,8 @@ export function ConstellationExperience() {
 
   const visibleClusters = useMemo(
     () =>
-      activeScene.clusters.filter((cluster) =>
-        cluster.starIds.some((starId) =>
-          visibleStars.some((star) => star.id === starId),
-        ),
-      ),
-    [activeScene.clusters, visibleStars],
+      activeScene.clusters.filter((cluster) => cluster.starIds.some((starId) => visibleStarIds.has(starId))),
+    [activeScene.clusters, visibleStarIds],
   );
 
   useEffect(() => {
@@ -293,7 +286,17 @@ export function ConstellationExperience() {
     <main className="atlas-page">
       <section className="hero-shell">
         <div className="hero-copy">
-          <p className="eyebrow">FluxCloud public atlas</p>
+          <div className="brand-row">
+            <img
+              className="flux-logo"
+              src="/flux-logo.svg"
+              alt="Flux"
+              width={128}
+              height={40}
+              decoding="async"
+            />
+            <p className="eyebrow">FluxCloud public atlas</p>
+          </div>
           <h1>Explore public FluxCloud deployments as a live constellation map.</h1>
           <p className="hero-text">
             Pan, zoom, search, and filter through a celestial projection of public
@@ -338,7 +341,7 @@ export function ConstellationExperience() {
                 ? "Loading public FluxCloud snapshot..."
                 : `Snapshot generated ${new Date(activeScene.generatedAt).toLocaleString()}`}
             </span>
-            <span>{visibleStars.length} visible stars after filtering - refreshes every 60s</span>
+            <span>{visibleStars.length} visible stars after filtering</span>
           </div>
 
           <SceneCanvas

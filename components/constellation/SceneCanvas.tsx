@@ -34,6 +34,12 @@ type CameraState = {
   zoom: number;
 };
 
+type CameraMotion = {
+  velocityX: number;
+  velocityY: number;
+  velocityZoom: number;
+};
+
 const defaultCamera: CameraState = {
   x: 0,
   y: 0,
@@ -68,6 +74,113 @@ const colorMap: Record<string, string> = {
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
+const lerp = (from: number, to: number, t: number) => from + (to - from) * t;
+
+const screenToWorld = (
+  screen: { x: number; y: number },
+  canvasSize: { width: number; height: number },
+  camera: CameraState,
+) => ({
+  x: (screen.x - canvasSize.width / 2) / camera.zoom + camera.x,
+  y: (screen.y - canvasSize.height / 2) / camera.zoom + camera.y,
+});
+
+const worldToScreen = (
+  world: { x: number; y: number },
+  canvasSize: { width: number; height: number },
+  camera: CameraState,
+) => ({
+  x: (world.x - camera.x) * camera.zoom + canvasSize.width / 2,
+  y: (world.y - camera.y) * camera.zoom + canvasSize.height / 2,
+});
+
+type SpatialGrid = {
+  cellSize: number;
+  cells: Map<string, Star[]>;
+};
+
+const gridKey = (cx: number, cy: number) => `${cx},${cy}`;
+
+const buildSpatialGrid = (stars: Star[], cellSize: number): SpatialGrid => {
+  const cells = new Map<string, Star[]>();
+  const inv = 1 / cellSize;
+
+  for (const star of stars) {
+    const cx = Math.floor(star.x * inv);
+    const cy = Math.floor(star.y * inv);
+    const key = gridKey(cx, cy);
+    const existing = cells.get(key);
+    if (existing) {
+      existing.push(star);
+    } else {
+      cells.set(key, [star]);
+    }
+  }
+
+  return { cellSize, cells };
+};
+
+const findHoveredStarInGrid = ({
+  grid,
+  pointer,
+  canvasSize,
+  camera,
+  radiusPadding,
+}: {
+  grid: SpatialGrid;
+  pointer: { x: number; y: number };
+  canvasSize: { width: number; height: number };
+  camera: CameraState;
+  radiusPadding: number;
+}) => {
+  const pointerWorld = screenToWorld(pointer, canvasSize, camera);
+  const inv = 1 / grid.cellSize;
+  const cx = Math.floor(pointerWorld.x * inv);
+  const cy = Math.floor(pointerWorld.y * inv);
+
+  let closest: { star: Star; distance: number } | null = null;
+
+  for (let dx = -1; dx <= 1; dx += 1) {
+    for (let dy = -1; dy <= 1; dy += 1) {
+      const key = gridKey(cx + dx, cy + dy);
+      const bucket = grid.cells.get(key);
+      if (!bucket) continue;
+
+      for (const star of bucket) {
+        const point = worldToScreen({ x: star.x, y: star.y }, canvasSize, camera);
+        const sx = point.x - pointer.x;
+        const sy = point.y - pointer.y;
+        const distance = Math.sqrt(sx * sx + sy * sy);
+        const radius = Math.max(8, star.size * camera.zoom + radiusPadding);
+
+        if (distance <= radius && (!closest || distance < closest.distance)) {
+          closest = { star, distance };
+        }
+      }
+    }
+  }
+
+  return closest?.star ?? null;
+};
+
+const normalizeWheel = (event: WheelEvent) => {
+  let delta = event.deltaY;
+
+  if (event.deltaMode === 1) {
+    delta *= 16;
+  } else if (event.deltaMode === 2) {
+    delta *= 800;
+  }
+
+  delta = Math.max(-220, Math.min(220, delta));
+  return delta;
+};
+
+const prefersReducedMotion = () =>
+  typeof window !== "undefined" &&
+  window.matchMedia &&
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
 export function SceneCanvas({
   stars,
   clusters,
@@ -82,28 +195,27 @@ export function SceneCanvas({
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const pointerRef = useRef<{ x: number; y: number } | null>(null);
   const draggingRef = useRef(false);
-  const didDragRef = useRef(false);
   const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const targetCameraRef = useRef<CameraState>({ ...defaultCamera });
   const currentCameraRef = useRef<CameraState>({ ...defaultCamera });
+  const motionRef = useRef<CameraMotion>({
+    velocityX: 0,
+    velocityY: 0,
+    velocityZoom: 0,
+  });
   const hoveredStarIdRef = useRef<string | null>(null);
   const [cameraLabel, setCameraLabel] = useState(defaultCamera.zoom.toFixed(2));
   const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 760 });
   const [hoveredStarId, setHoveredStarId] = useState<string | null>(null);
-  const backgroundStars = useMemo(
-    () =>
-      Array.from({ length: 240 }, (_, index) => ({
-        x: ((index * 137) % 1000) / 1000,
-        y: ((index * 211) % 1000) / 1000,
-        size: index % 7 === 0 ? 1.35 : 0.7,
-        alpha: 0.15 + ((index * 17) % 60) / 300,
-      })),
-    [],
-  );
+  const backgroundCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const backgroundContextRef = useRef<CanvasRenderingContext2D | null>(null);
+  const lastHudUpdateRef = useRef(0);
+  const lastHoverEvalRef = useRef({ x: 0, y: 0, cameraX: 0, cameraY: 0, cameraZoom: 0 });
 
   const starsById = useMemo(() => new Map(stars.map((star) => [star.id, star])), [stars]);
   const matchSet = useMemo(() => new Set(searchMatches), [searchMatches]);
+  const spatialGrid = useMemo(() => buildSpatialGrid(stars, 160), [stars]);
 
   useEffect(() => {
     const measure = () => {
@@ -127,11 +239,26 @@ export function SceneCanvas({
       return;
     }
 
-    targetCameraRef.current = {
-      x: focusTarget.x,
-      y: focusTarget.y,
-      zoom: focusTarget.zoom,
-    };
+    const reduceMotion = prefersReducedMotion();
+    if (reduceMotion) {
+      targetCameraRef.current = { x: focusTarget.x, y: focusTarget.y, zoom: focusTarget.zoom };
+      currentCameraRef.current = { x: focusTarget.x, y: focusTarget.y, zoom: focusTarget.zoom };
+      return;
+    }
+
+    const current = currentCameraRef.current;
+    const dx = focusTarget.x - current.x;
+    const dy = focusTarget.y - current.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const zoomDelta = Math.abs(focusTarget.zoom - current.zoom);
+    const snap =
+      distance < 8 &&
+      zoomDelta < 0.03;
+
+    targetCameraRef.current = { x: focusTarget.x, y: focusTarget.y, zoom: focusTarget.zoom };
+    if (snap) {
+      currentCameraRef.current = { x: focusTarget.x, y: focusTarget.y, zoom: focusTarget.zoom };
+    }
   }, [focusTarget]);
 
   useEffect(() => {
@@ -146,74 +273,105 @@ export function SceneCanvas({
     }
 
     const devicePixelRatio = window.devicePixelRatio || 1;
-    canvas.width = canvasSize.width * devicePixelRatio;
-    canvas.height = canvasSize.height * devicePixelRatio;
+    canvas.width = Math.floor(canvasSize.width * devicePixelRatio);
+    canvas.height = Math.floor(canvasSize.height * devicePixelRatio);
     canvas.style.width = `${canvasSize.width}px`;
     canvas.style.height = `${canvasSize.height}px`;
     context.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
 
-    const worldToScreen = (x: number, y: number, camera: CameraState) => ({
-      x: (x - camera.x) * camera.zoom + canvasSize.width / 2,
-      y: (y - camera.y) * camera.zoom + canvasSize.height / 2,
-    });
+    const backgroundCanvas = document.createElement("canvas");
+    const backgroundContext = backgroundCanvas.getContext("2d");
+    backgroundCanvasRef.current = backgroundCanvas;
+    backgroundContextRef.current = backgroundContext;
 
-    const findHoveredStar = () => {
-      const pointer = pointerRef.current;
-      if (!pointer) {
-        return null;
+    if (backgroundContext) {
+      backgroundCanvas.width = canvas.width;
+      backgroundCanvas.height = canvas.height;
+      backgroundContext.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+
+      const nebula = backgroundContext.createLinearGradient(0, 0, canvasSize.width, canvasSize.height);
+      nebula.addColorStop(0, "#020610");
+      nebula.addColorStop(0.42, "#061a35");
+      nebula.addColorStop(1, "#020812");
+      backgroundContext.fillStyle = nebula;
+      backgroundContext.fillRect(0, 0, canvasSize.width, canvasSize.height);
+
+      const bloom = backgroundContext.createRadialGradient(
+        canvasSize.width * 0.35,
+        canvasSize.height * 0.34,
+        10,
+        canvasSize.width * 0.35,
+        canvasSize.height * 0.34,
+        Math.max(canvasSize.width, canvasSize.height) * 0.85,
+      );
+      bloom.addColorStop(0, "rgba(43, 97, 209, 0.35)");
+      bloom.addColorStop(0.32, "rgba(79, 122, 212, 0.18)");
+      bloom.addColorStop(0.7, "rgba(6, 22, 42, 0.02)");
+      bloom.addColorStop(1, "rgba(0, 0, 0, 0)");
+      backgroundContext.fillStyle = bloom;
+      backgroundContext.fillRect(0, 0, canvasSize.width, canvasSize.height);
+
+      const haze = backgroundContext.createRadialGradient(
+        canvasSize.width * 0.72,
+        canvasSize.height * 0.58,
+        10,
+        canvasSize.width * 0.72,
+        canvasSize.height * 0.58,
+        Math.max(canvasSize.width, canvasSize.height) * 0.95,
+      );
+      haze.addColorStop(0, "rgba(134, 161, 218, 0.12)");
+      haze.addColorStop(0.5, "rgba(43, 97, 209, 0.08)");
+      haze.addColorStop(1, "rgba(0, 0, 0, 0)");
+      backgroundContext.fillStyle = haze;
+      backgroundContext.fillRect(0, 0, canvasSize.width, canvasSize.height);
+
+      for (let index = 0; index < 260; index += 1) {
+        const x = (index * 97) % canvasSize.width;
+        const y = (index * 193) % canvasSize.height;
+        const size = index % 9 === 0 ? 1.8 : index % 4 === 0 ? 1.2 : 0.8;
+        const alpha = index % 7 === 0 ? 0.38 : 0.22;
+        backgroundContext.beginPath();
+        backgroundContext.fillStyle = `rgba(255,255,255,${alpha})`;
+        backgroundContext.arc(x, y, size, 0, Math.PI * 2);
+        backgroundContext.fill();
       }
-
-      const camera = currentCameraRef.current;
-      let closest: { star: Star; distance: number } | null = null;
-
-      for (const star of stars) {
-        const point = worldToScreen(star.x, star.y, camera);
-        const dx = point.x - pointer.x;
-        const dy = point.y - pointer.y;
-        const radius = Math.max(8, star.size * camera.zoom + 5);
-        const distanceSquared = dx * dx + dy * dy;
-        const radiusSquared = radius * radius;
-
-        if (distanceSquared <= radiusSquared && (!closest || distanceSquared < closest.distance)) {
-          closest = { star, distance: distanceSquared };
-        }
-      }
-
-      return closest?.star ?? null;
-    };
+    }
 
     const draw = (timestamp: number) => {
       const camera = currentCameraRef.current;
       const target = targetCameraRef.current;
 
-      camera.x += (target.x - camera.x) * 0.12;
-      camera.y += (target.y - camera.y) * 0.12;
-      camera.zoom += (target.zoom - camera.zoom) * 0.12;
+      const dt = Math.min(40, Math.max(8, timestamp - (lastHudUpdateRef.current || timestamp)));
+      const smooth = prefersReducedMotion() ? 1 : 1 - Math.pow(0.001, dt / 16);
+
+      const motion = motionRef.current;
+      const stiffness = 0.32 * smooth;
+      const damping = prefersReducedMotion() ? 0.9 : 0.82;
+
+      motion.velocityX = (motion.velocityX + (target.x - camera.x) * stiffness) * damping;
+      motion.velocityY = (motion.velocityY + (target.y - camera.y) * stiffness) * damping;
+      motion.velocityZoom = (motion.velocityZoom + (target.zoom - camera.zoom) * (stiffness * 0.9)) * damping;
+
+      camera.x += motion.velocityX;
+      camera.y += motion.velocityY;
+      camera.zoom += motion.velocityZoom;
 
       context.clearRect(0, 0, canvasSize.width, canvasSize.height);
 
-      const background = context.createLinearGradient(0, 0, 0, canvasSize.height);
-      background.addColorStop(0, "#040917");
-      background.addColorStop(1, "#071325");
-      context.fillStyle = background;
-      context.fillRect(0, 0, canvasSize.width, canvasSize.height);
-
-      for (const star of backgroundStars) {
-        const x = ((star.x * canvasSize.width - camera.x * 0.012) % canvasSize.width + canvasSize.width) % canvasSize.width;
-        const y = ((star.y * canvasSize.height - camera.y * 0.012) % canvasSize.height + canvasSize.height) % canvasSize.height;
-        context.beginPath();
-        context.fillStyle = `rgba(255,255,255,${star.alpha})`;
-        context.arc(x, y, star.size, 0, Math.PI * 2);
-        context.fill();
+      if (backgroundCanvasRef.current) {
+        context.drawImage(backgroundCanvasRef.current, 0, 0, canvasSize.width, canvasSize.height);
+      } else {
+        context.fillStyle = "#020610";
+        context.fillRect(0, 0, canvasSize.width, canvasSize.height);
       }
 
       if (camera.zoom < 0.75) {
         for (const cluster of clusters) {
-          const point = worldToScreen(cluster.centroid.x, cluster.centroid.y, camera);
+          const point = worldToScreen(cluster.centroid, canvasSize, camera);
           context.beginPath();
-          context.strokeStyle = "rgba(100, 200, 255, 0.12)";
+          context.strokeStyle = "rgba(43, 97, 209, 0.14)";
           context.lineWidth = 1;
-          context.arc(point.x, point.y, 48 + cluster.summaryMetrics.instances * 0.08, 0, Math.PI * 2);
+          context.arc(point.x, point.y, 46 + cluster.summaryMetrics.instances * 0.075, 0, Math.PI * 2);
           context.stroke();
 
           context.fillStyle = "rgba(207, 225, 255, 0.88)";
@@ -230,18 +388,50 @@ export function SceneCanvas({
       }
 
       if (camera.zoom > 0.95) {
-        context.strokeStyle = "rgba(103, 184, 255, 0.12)";
+        context.strokeStyle = "rgba(79, 122, 212, 0.14)";
         context.lineWidth = 1;
 
         for (const system of systems) {
-          const point = worldToScreen(system.x, system.y, camera);
+          const point = worldToScreen({ x: system.x, y: system.y }, canvasSize, camera);
           context.beginPath();
           context.arc(point.x, point.y, 8, 0, Math.PI * 2);
           context.stroke();
         }
       }
 
-      const hovered = findHoveredStar();
+      const pointer = pointerRef.current;
+      const lastHoverEval = lastHoverEvalRef.current;
+      const hoverNeedsEval =
+        !!pointer &&
+        (Math.abs(pointer.x - lastHoverEval.x) > 1.2 ||
+          Math.abs(pointer.y - lastHoverEval.y) > 1.2 ||
+          Math.abs(camera.x - lastHoverEval.cameraX) > 2.2 ||
+          Math.abs(camera.y - lastHoverEval.cameraY) > 2.2 ||
+          Math.abs(camera.zoom - lastHoverEval.cameraZoom) > 0.01);
+
+      const hovered =
+        pointer && hoverNeedsEval
+          ? findHoveredStarInGrid({
+              grid: spatialGrid,
+              pointer,
+              canvasSize,
+              camera,
+              radiusPadding: 5,
+            })
+          : hoveredStarIdRef.current
+            ? starsById.get(hoveredStarIdRef.current) ?? null
+            : null;
+
+      if (pointer && hoverNeedsEval) {
+        lastHoverEvalRef.current = {
+          x: pointer.x,
+          y: pointer.y,
+          cameraX: camera.x,
+          cameraY: camera.y,
+          cameraZoom: camera.zoom,
+        };
+      }
+
       if (hovered?.id !== hoveredStarIdRef.current) {
         hoveredStarIdRef.current = hovered?.id ?? null;
         setHoveredStarId(hovered?.id ?? null);
@@ -249,7 +439,7 @@ export function SceneCanvas({
       }
 
       for (const star of stars) {
-        const point = worldToScreen(star.x, star.y, camera);
+        const point = worldToScreen({ x: star.x, y: star.y }, canvasSize, camera);
         if (
           point.x < -40 ||
           point.y < -40 ||
@@ -263,59 +453,29 @@ export function SceneCanvas({
         const hoveredMatch = hovered?.id === star.id;
         const searchMatch = matchSet.has(star.appName);
         const color = colorMap[star.colorBucket] ?? "#cfe1ff";
-        const radius = Math.max(1.8, Math.min(17, star.size * camera.zoom * 0.55));
+        const pulse =
+          0.78 +
+          ((Math.sin(timestamp / 520 + star.size) + 1) / 2) * 0.25;
+        const radius = Math.max(1.6, Math.min(16, star.size * camera.zoom * 0.55));
 
         if (selected || hoveredMatch || searchMatch) {
           context.beginPath();
           context.fillStyle = selected
-            ? "rgba(100, 200, 255, 0.18)"
+            ? "rgba(43, 97, 209, 0.22)"
             : "rgba(255,255,255,0.12)";
           context.arc(point.x, point.y, radius + 9, 0, Math.PI * 2);
           context.fill();
         }
 
-        const glowRadius = radius + (selected ? 9 : hoveredMatch ? 7 : 5);
-        const glowGradient = context.createRadialGradient(
-          point.x,
-          point.y,
-          Math.max(0.5, radius * 0.2),
-          point.x,
-          point.y,
-          glowRadius,
-        );
-        glowGradient.addColorStop(0, "rgba(255,255,255,0.34)");
-        glowGradient.addColorStop(0.45, `${color}88`);
-        glowGradient.addColorStop(1, "rgba(0,0,0,0)");
-        context.fillStyle = glowGradient;
-        context.beginPath();
-        context.arc(point.x, point.y, glowRadius, 0, Math.PI * 2);
-        context.fill();
-
         context.beginPath();
         context.fillStyle = color;
-        context.shadowBlur = selected || hoveredMatch ? 22 : 10;
+        context.shadowBlur = selected || hoveredMatch ? 20 : 10;
         context.shadowColor = color;
-        context.globalAlpha = clamp(star.brightness, 0.48, 1);
+        context.globalAlpha = clamp(star.brightness * pulse, 0.35, 1);
         context.arc(point.x, point.y, radius, 0, Math.PI * 2);
         context.fill();
         context.globalAlpha = 1;
         context.shadowBlur = 0;
-
-        const coreGradient = context.createRadialGradient(
-          point.x - radius * 0.33,
-          point.y - radius * 0.33,
-          0,
-          point.x,
-          point.y,
-          radius,
-        );
-        coreGradient.addColorStop(0, "rgba(255,255,255,0.98)");
-        coreGradient.addColorStop(0.4, "rgba(240,249,255,0.86)");
-        coreGradient.addColorStop(1, "rgba(255,255,255,0)");
-        context.fillStyle = coreGradient;
-        context.beginPath();
-        context.arc(point.x, point.y, radius, 0, Math.PI * 2);
-        context.fill();
 
         if ((selected || hoveredMatch || searchMatch) && camera.zoom > 0.72) {
           context.fillStyle = "rgba(237, 244, 255, 0.92)";
@@ -324,8 +484,14 @@ export function SceneCanvas({
         }
       }
 
-      const nextLabel = camera.zoom.toFixed(2);
-      setCameraLabel((currentLabel) => (currentLabel === nextLabel ? currentLabel : nextLabel));
+      if (timestamp - lastHudUpdateRef.current > 90) {
+        lastHudUpdateRef.current = timestamp;
+        const nextLabel = camera.zoom.toFixed(2);
+        setCameraLabel((currentLabel) =>
+          currentLabel === nextLabel ? currentLabel : nextLabel,
+        );
+      }
+
       animationFrameRef.current = window.requestAnimationFrame(draw);
     };
 
@@ -344,13 +510,27 @@ export function SceneCanvas({
     selectedAppName,
     stars,
     starsById,
+    spatialGrid,
     systems,
-    backgroundStars,
   ]);
 
-  const zoomBy = (delta: number) => {
+  const zoomAt = (nextZoom: number, anchorScreen?: { x: number; y: number }) => {
+    const next = clamp(nextZoom, 0.12, 2.6);
     const target = targetCameraRef.current;
-    target.zoom = clamp(target.zoom + delta, 0.12, 2.6);
+    const current = currentCameraRef.current;
+    const anchor = anchorScreen ?? { x: canvasSize.width / 2, y: canvasSize.height / 2 };
+
+    const anchorWorld = screenToWorld(anchor, canvasSize, current);
+    const before = worldToScreen(anchorWorld, canvasSize, current);
+
+    target.zoom = next;
+    const afterCamera: CameraState = { x: target.x, y: target.y, zoom: next };
+    const after = worldToScreen(anchorWorld, canvasSize, afterCamera);
+
+    const dx = (after.x - before.x) / next;
+    const dy = (after.y - before.y) / next;
+    target.x += dx;
+    target.y += dy;
   };
 
   const resetView = () => {
@@ -359,9 +539,7 @@ export function SceneCanvas({
 
   const handlePointerDown = (event: PointerEvent<HTMLCanvasElement>) => {
     draggingRef.current = true;
-    didDragRef.current = false;
     lastPointerRef.current = { x: event.clientX, y: event.clientY };
-    event.currentTarget.setPointerCapture(event.pointerId);
   };
 
   const handlePointerMove = (event: PointerEvent<HTMLCanvasElement>) => {
@@ -379,9 +557,6 @@ export function SceneCanvas({
 
     const movementX = event.clientX - lastPointerRef.current.x;
     const movementY = event.clientY - lastPointerRef.current.y;
-    if (Math.abs(movementX) > 1 || Math.abs(movementY) > 1) {
-      didDragRef.current = true;
-    }
     lastPointerRef.current = { x: event.clientX, y: event.clientY };
 
     targetCameraRef.current = {
@@ -406,9 +581,6 @@ export function SceneCanvas({
   };
 
   const handleClick = () => {
-    if (didDragRef.current) {
-      return;
-    }
     if (hoveredStarId) {
       const star = starsById.get(hoveredStarId);
       if (star) {
@@ -420,34 +592,24 @@ export function SceneCanvas({
   const handleWheel = (event: WheelEvent<HTMLCanvasElement>) => {
     event.preventDefault();
     const bounds = canvasRef.current?.getBoundingClientRect();
-    if (!bounds) {
-      return;
-    }
+    const anchor = bounds
+      ? { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
+      : { x: canvasSize.width / 2, y: canvasSize.height / 2 };
 
-    const pointerX = event.clientX - bounds.left;
-    const pointerY = event.clientY - bounds.top;
-    const target = targetCameraRef.current;
-    const zoomFactor = Math.exp(-Math.max(-180, Math.min(180, event.deltaY)) * 0.0016);
-    const nextZoom = clamp(target.zoom * zoomFactor, 0.12, 2.6);
-    if (Math.abs(nextZoom - target.zoom) < 0.00001) {
-      return;
-    }
-
-    const worldXBefore = (pointerX - canvasSize.width / 2) / target.zoom + target.x;
-    const worldYBefore = (pointerY - canvasSize.height / 2) / target.zoom + target.y;
-    target.zoom = nextZoom;
-    target.x = worldXBefore - (pointerX - canvasSize.width / 2) / nextZoom;
-    target.y = worldYBefore - (pointerY - canvasSize.height / 2) / nextZoom;
+    const delta = normalizeWheel(event);
+    const intensity = event.ctrlKey ? 0.0019 : 0.00135;
+    const scale = Math.exp(-delta * intensity);
+    zoomAt(targetCameraRef.current.zoom * scale, anchor);
   };
 
   return (
     <div className="scene-shell">
       <div className="scene-toolbar">
         <div className="scene-toolbar-group">
-          <button type="button" className="secondary-action" onClick={() => zoomBy(0.16)}>
+          <button type="button" className="secondary-action" onClick={() => zoomAt(targetCameraRef.current.zoom * 1.14)}>
             Zoom in
           </button>
-          <button type="button" className="secondary-action" onClick={() => zoomBy(-0.16)}>
+          <button type="button" className="secondary-action" onClick={() => zoomAt(targetCameraRef.current.zoom / 1.14)}>
             Zoom out
           </button>
           <button type="button" className="secondary-action" onClick={resetView}>

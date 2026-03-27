@@ -3,9 +3,9 @@ import type { AppLocation, AppSpec } from "../types/app";
 import type { NodeProfile } from "../types/node";
 import type { AppSystem, Cluster, ClusterKind, Star } from "../types/star";
 
-const clusterRadius = 2200;
-const systemOrbitBase = 320;
-const starOrbitBase = 26;
+const clusterRadius = 2600;
+const systemOrbitBase = 260;
+const starOrbitBase = 18;
 
 const hashString = (value: string) => {
   let hash = 2166136261;
@@ -20,9 +20,21 @@ const hashString = (value: string) => {
 
 const seeded = (value: string, mod = 1000) => hashString(value) % mod;
 
+const rand01 = (seed: string) => seeded(seed, 1_000_000) / 1_000_000;
+
+const randSigned = (seed: string) => rand01(seed) * 2 - 1;
+
+const gaussianLike = (seedA: string, seedB: string) =>
+  (randSigned(seedA) + randSigned(seedB)) * 0.55;
+
 const polar = (angle: number, radius: number) => ({
   x: Math.cos(angle) * radius,
   y: Math.sin(angle) * radius,
+});
+
+const rotate = (point: { x: number; y: number }, angle: number) => ({
+  x: point.x * Math.cos(angle) - point.y * Math.sin(angle),
+  y: point.x * Math.sin(angle) + point.y * Math.cos(angle),
 });
 
 const titleCase = (value: string) =>
@@ -100,11 +112,61 @@ export const buildSeededSceneLayout = ({
     .sort((left, right) => left.label.localeCompare(right.label));
 
   const clusterCenters = new Map<string, { x: number; y: number }>();
+  const armCount = Math.max(3, Math.min(5, Math.round(Math.sqrt(uniqueClusters.length))));
+  const globalRotation = randSigned("flux:galaxy:rotation") * 0.8;
+  const tilt = randSigned("flux:galaxy:tilt") * 0.22;
+  const coreBias = 0.55 + rand01("flux:galaxy:coreBias") * 0.15;
+
   uniqueClusters.forEach((cluster, index) => {
-    const angle = (Math.PI * 2 * index) / Math.max(uniqueClusters.length, 1) - Math.PI / 2;
-    const jitter = seeded(cluster.clusterId, 120) - 60;
-    const point = polar(angle, clusterRadius + jitter);
-    clusterCenters.set(cluster.clusterId, point);
+    const arm = seeded(`${cluster.clusterId}:arm`, armCount);
+    const armPhase = (arm / Math.max(armCount, 1)) * Math.PI * 2;
+    const t =
+      0.6 +
+      (index / Math.max(uniqueClusters.length - 1, 1)) * (3.8 + rand01(`${cluster.clusterId}:tSpan`) * 1.6) +
+      randSigned(`${cluster.clusterId}:tJitter`) * 0.35;
+
+    const armTightness = 0.36 + rand01(`${cluster.clusterId}:tight`) * 0.22;
+    const baseRadius =
+      clusterRadius *
+      Math.pow(rand01(`${cluster.clusterId}:rad`) * 0.95 + 0.05, coreBias) *
+      (0.78 + rand01(`${cluster.clusterId}:radGain`) * 0.58);
+
+    const angle =
+      armPhase +
+      t * (1.1 + armTightness) +
+      randSigned(`${cluster.clusterId}:angNoise`) * 0.38;
+
+    const spiral = polar(angle, baseRadius + t * 240);
+    const lobe =
+      (arm % 2 === 0 ? 1 : -1) *
+      gaussianLike(`${cluster.clusterId}:lobeA`, `${cluster.clusterId}:lobeB`) *
+      420;
+    const drift = {
+      x:
+        gaussianLike(`${cluster.clusterId}:dxA`, `${cluster.clusterId}:dxB`) *
+          360 +
+        lobe,
+      y:
+        gaussianLike(`${cluster.clusterId}:dyA`, `${cluster.clusterId}:dyB`) *
+          360 +
+        gaussianLike(`${cluster.clusterId}:dyC`, `${cluster.clusterId}:dyD`) *
+          180,
+    };
+
+    const rotated = rotate(
+      {
+        x: spiral.x + drift.x,
+        y: spiral.y + drift.y,
+      },
+      globalRotation,
+    );
+
+    const projected = {
+      x: rotated.x,
+      y: rotated.y * (1 + tilt),
+    };
+
+    clusterCenters.set(cluster.clusterId, projected);
   });
 
   const clusters: Cluster[] = [];
@@ -121,15 +183,21 @@ export const buildSeededSceneLayout = ({
     const clusterResource = new Set(clusterApps.map((app) => app.resourceTier));
     const clusterRuntime = new Set(clusterApps.map((app) => app.runtimeFamily));
 
+    const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+    const ellipseAngle = randSigned(`${cluster.clusterId}:ellipse`) * 0.7;
+    const ellipseScale = 0.75 + rand01(`${cluster.clusterId}:ellipseScale`) * 0.35;
+
     clusterApps.forEach((app, systemIndex) => {
       const systemId = `system:${app.appName}`;
-      const systemAngle =
-        (Math.PI * 2 * systemIndex) / Math.max(clusterApps.length, 1) +
-        seeded(app.appName, 100) / 100;
-      const systemRadius = systemOrbitBase + seeded(`${app.appName}:orbit`, 260);
-      const systemOffset = polar(systemAngle, systemRadius);
-      const systemX = centroid.x + systemOffset.x;
-      const systemY = centroid.y + systemOffset.y;
+      const jitter = randSigned(`${app.appName}:sysJitter`);
+      const systemAngle = systemIndex * goldenAngle + jitter * 0.55;
+      const spread =
+        systemOrbitBase +
+        Math.pow(rand01(`${app.appName}:sysRad`) * 0.98 + 0.02, 0.62) * 880;
+      const base = polar(systemAngle, spread);
+      const warped = rotate({ x: base.x * (1.08 + ellipseScale), y: base.y * ellipseScale }, ellipseAngle);
+      const systemX = centroid.x + warped.x;
+      const systemY = centroid.y + warped.y;
       const appLocations = locationsByApp.get(app.appName) ?? [];
       const primaryLocation = appLocations[0];
       const primaryNode = primaryLocation ? nodesById[primaryLocation.nodeJoinKey] : undefined;
@@ -170,11 +238,17 @@ export const buildSeededSceneLayout = ({
             ];
 
       renderLocations.forEach((location, locationIndex) => {
-        const angle =
-          (Math.PI * 2 * locationIndex) / Math.max(renderLocations.length, 1) +
-          seeded(location.id, 100) / 100;
-        const radius = starOrbitBase + seeded(`${location.id}:orbit`, 80);
-        const offset = polar(angle, radius);
+        const angle = rand01(`${location.id}:theta`) * Math.PI * 2;
+        const radius =
+          starOrbitBase +
+          Math.pow(rand01(`${location.id}:rad`) * 0.98 + 0.02, 0.6) * (42 + rand01(`${location.id}:radGain`) * 34);
+        const offset = rotate(
+          {
+            x: Math.cos(angle) * radius,
+            y: Math.sin(angle) * radius * (0.72 + rand01(`${location.id}:ecc`) * 0.55),
+          },
+          randSigned(`${location.id}:rot`) * 0.8,
+        );
         const node = location.nodeJoinKey ? nodesById[location.nodeJoinKey] : primaryNode;
         const visualMass = getVisualMass(app, renderLocations.length, node);
         const starId = `star:${location.id}`;
