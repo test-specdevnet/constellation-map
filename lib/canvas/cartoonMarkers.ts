@@ -195,28 +195,43 @@ export function drawCartoonCloudPuffs(
     { x: 0.78, y: 0.74, r: 0.16, layer: 0 },
     { x: 0.22, y: 0.18, r: 0.09, layer: 2 },
     { x: 0.88, y: 0.22, r: 0.1, layer: 1 },
+    { x: 0.58, y: 0.16, r: 0.085, layer: 2 },
+    { x: 0.32, y: 0.49, r: 0.095, layer: 1 },
+    { x: 0.67, y: 0.47, r: 0.082, layer: 2 },
+    { x: 0.08, y: 0.38, r: 0.078, layer: 2 },
+    { x: 0.94, y: 0.52, r: 0.088, layer: 1 },
   ];
 
   for (const s of seeds) {
-    const drift = Math.sin(timestamp / 2400 + s.layer * 1.7) * 12;
-    const bob = Math.cos(timestamp / 1900 + s.x * 10) * 6;
+    const drift = Math.sin(timestamp / 2400 + s.layer * 1.7) * (10 + s.layer * 1.8);
+    const bob = Math.cos(timestamp / 1900 + s.x * 10) * (5 + s.layer * 1.2);
     const cx = s.x * width + drift;
     const cy = s.y * height + bob;
     const baseR = s.r * Math.min(width, height);
 
     ctx.save();
-    for (let i = 0; i < 4; i += 1) {
+    for (let i = 0; i < 5; i += 1) {
       const ox = (i - 1.5) * baseR * 0.35;
       const oy = Math.sin(i + timestamp / 4000) * baseR * 0.08;
       ctx.beginPath();
       ctx.arc(cx + ox, cy + oy, baseR * (0.45 + i * 0.06), 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255,255,255,${0.38 - i * 0.05})`;
+      ctx.fillStyle = `rgba(255,255,255,${0.4 - i * 0.045})`;
       ctx.fill();
       ctx.lineWidth = 3;
       ctx.strokeStyle = outline;
-      ctx.globalAlpha = 0.7;
+      ctx.globalAlpha = 0.66;
       ctx.stroke();
       ctx.globalAlpha = 1;
+    }
+
+    // Secondary wisps add density without heavy geometry.
+    for (let wisp = 0; wisp < 2; wisp += 1) {
+      const wx = cx + (wisp === 0 ? -1 : 1) * baseR * 0.9;
+      const wy = cy + (wisp === 0 ? 1 : -1) * baseR * 0.34;
+      ctx.beginPath();
+      ctx.arc(wx, wy, baseR * 0.36, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255,255,255,0.14)";
+      ctx.fill();
     }
     ctx.restore();
   }
