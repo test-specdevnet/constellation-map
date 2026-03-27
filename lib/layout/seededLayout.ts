@@ -3,9 +3,10 @@ import type { AppLocation, AppSpec } from "../types/app";
 import type { NodeProfile } from "../types/node";
 import type { AppSystem, Cluster, ClusterKind, Star } from "../types/star";
 
-const clusterRadius = 2600;
-const systemOrbitBase = 260;
-const starOrbitBase = 18;
+/** Wider field so points read as “across the sky” at default zoom. */
+const clusterRadius = 4700;
+const systemOrbitBase = 340;
+const starOrbitBase = 24;
 
 const hashString = (value: string) => {
   let hash = 2166136261;
@@ -136,21 +137,21 @@ export const buildSeededSceneLayout = ({
       t * (1.1 + armTightness) +
       randSigned(`${cluster.clusterId}:angNoise`) * 0.38;
 
-    const spiral = polar(angle, baseRadius + t * 240);
+    const spiral = polar(angle, baseRadius + t * 420);
     const lobe =
       (arm % 2 === 0 ? 1 : -1) *
       gaussianLike(`${cluster.clusterId}:lobeA`, `${cluster.clusterId}:lobeB`) *
-      420;
+      680;
     const drift = {
       x:
         gaussianLike(`${cluster.clusterId}:dxA`, `${cluster.clusterId}:dxB`) *
-          360 +
+          560 +
         lobe,
       y:
         gaussianLike(`${cluster.clusterId}:dyA`, `${cluster.clusterId}:dyB`) *
-          360 +
+          560 +
         gaussianLike(`${cluster.clusterId}:dyC`, `${cluster.clusterId}:dyD`) *
-          180,
+          300,
     };
 
     const rotated = rotate(
@@ -193,7 +194,7 @@ export const buildSeededSceneLayout = ({
       const systemAngle = systemIndex * goldenAngle + jitter * 0.55;
       const spread =
         systemOrbitBase +
-        Math.pow(rand01(`${app.appName}:sysRad`) * 0.98 + 0.02, 0.62) * 880;
+        Math.pow(rand01(`${app.appName}:sysRad`) * 0.98 + 0.02, 0.62) * 1280;
       const base = polar(systemAngle, spread);
       const warped = rotate({ x: base.x * (1.08 + ellipseScale), y: base.y * ellipseScale }, ellipseAngle);
       const systemX = centroid.x + warped.x;
@@ -241,7 +242,7 @@ export const buildSeededSceneLayout = ({
         const angle = rand01(`${location.id}:theta`) * Math.PI * 2;
         const radius =
           starOrbitBase +
-          Math.pow(rand01(`${location.id}:rad`) * 0.98 + 0.02, 0.6) * (42 + rand01(`${location.id}:radGain`) * 34);
+          Math.pow(rand01(`${location.id}:rad`) * 0.98 + 0.02, 0.6) * (58 + rand01(`${location.id}:radGain`) * 52);
         const offset = rotate(
           {
             x: Math.cos(angle) * radius,

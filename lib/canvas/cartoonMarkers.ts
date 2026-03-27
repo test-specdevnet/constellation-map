@@ -1,19 +1,23 @@
 /**
- * Cartoon aviation-style markers for tour / playful map mode.
- * Deployments stay fixed; camera motion sells the "flight" feel.
+ * Cartoon aviation-style markers + dense pixel-snapped clouds
+ * (Club Penguin–inspired: chunky outlines, snapped coordinates).
  */
 
 export type MarkerVariant = "pad" | "tower" | "beacon";
 
+const PIX = 3;
+
 const POP_PALETTE = [
   "#FF3366",
-  "#00D4AA",
-  "#FFAA00",
-  "#6C5CE7",
-  "#00B4FF",
-  "#FF6B9D",
+  "#00E5A5",
+  "#FFCC00",
+  "#7C6BFF",
+  "#00C8FF",
+  "#FF70B8",
   "#2B61D1",
-  "#FDE74C",
+  "#FFF15C",
+  "#FF6B35",
+  "#9D4EDD",
 ] as const;
 
 const hashString = (value: string) => {
@@ -24,6 +28,9 @@ const hashString = (value: string) => {
   }
   return Math.abs(hash >>> 0);
 };
+
+/** Snap to a coarse pixel grid so shapes read chunky / flash-game adjacent. */
+export const snapPixel = (value: number) => Math.round(value / PIX) * PIX;
 
 export const getCartoonAccent = (key: string): string =>
   POP_PALETTE[hashString(key) % POP_PALETTE.length];
@@ -41,8 +48,7 @@ const easeOutBackInternal = (t: number): number => {
   return 1 + c3 * (t - 1) ** 3 + c1 * (t - 1) ** 2;
 };
 
-/** Subtle "pop" overshoot for cartoon motion (0..1). */
-export const easePop = (t: number): number => {
+export const easePop = (t: number) => {
   const clamped = Math.max(0, Math.min(1, t));
   return easeOutBackInternal(clamped);
 };
@@ -53,14 +59,12 @@ export type DrawCartoonMarkerOptions = {
   y: number;
   accent: string;
   variant: MarkerVariant;
-  /** ~0..1 scale factor from camera/resolution */
   baseScale: number;
-  /** Bouncy pop 0..1 */
   pop: number;
   highlight: boolean;
 };
 
-/** Thick-outline cel-shaded marker. */
+/** Thick black-outline “sprite” markers. */
 export function drawCartoonMarker({
   ctx,
   x,
@@ -71,87 +75,90 @@ export function drawCartoonMarker({
   pop,
   highlight,
 }: DrawCartoonMarkerOptions) {
-  const s = baseScale * (1 + 0.12 * pop);
-  const outline = "#1a0a2e";
-  const lineW = Math.max(2.5, 3 * Math.sqrt(baseScale));
+  const sx = snapPixel(x);
+  const sy = snapPixel(y);
+  const s = baseScale * (1 + 0.1 * pop);
+  const outline = "#0a0a12";
+  const lineW = Math.max(3, 3.4 * Math.sqrt(baseScale));
 
   ctx.save();
-  ctx.translate(x, y);
+  ctx.translate(sx, sy);
   ctx.scale(s, s);
 
-  const light = highlight ? 1.15 : 1;
-  ctx.strokeStyle = outline;
+  const light = highlight ? 1.12 : 1;
+  ctx.lineJoin = "miter";
+  ctx.lineCap = "butt";
+  ctx.miterLimit = 2;
   ctx.lineWidth = lineW / s;
-  ctx.lineJoin = "round";
-  ctx.lineCap = "round";
+  ctx.strokeStyle = outline;
 
   if (variant === "pad") {
-    // Hex landing pad
     ctx.beginPath();
     for (let i = 0; i < 6; i += 1) {
       const a = (i / 6) * Math.PI * 2 - Math.PI / 2;
-      const px = Math.cos(a) * 14;
-      const py = Math.sin(a) * 14;
+      const px = Math.cos(a) * 15;
+      const py = Math.sin(a) * 15;
       if (i === 0) ctx.moveTo(px, py);
       else ctx.lineTo(px, py);
     }
     ctx.closePath();
-    ctx.fillStyle = shade(accent, 0.85 * light);
+    ctx.fillStyle = shade(accent, 0.92 * light);
     ctx.fill();
     ctx.stroke();
     ctx.beginPath();
     ctx.arc(0, 0, 5, 0, Math.PI * 2);
-    ctx.fillStyle = "#fff5";
+    ctx.fillStyle = highlight ? "#fff" : "#f8f8ff";
     ctx.fill();
     ctx.stroke();
   } else if (variant === "tower") {
-    // Stacked blocks (mooring mast vibe)
-    ctx.fillStyle = shade(accent, 0.9 * light);
-    ctx.strokeStyle = outline;
-    drawRoundRect(ctx, -6, -18, 12, 10, 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = shade(accent, 1 * light);
-    drawRoundRect(ctx, -8, -8, 16, 12, 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = shade(accent, 0.75 * light);
-    drawRoundRect(ctx, -10, 6, 20, 8, 2);
-    ctx.fill();
-    ctx.stroke();
+    // Pixel blocks (no rounded corners)
+    strokeFillRect(ctx, -7, 8, 20, 9, outline, shade(accent, 0.78 * light), lineW / s);
+    strokeFillRect(ctx, -8, -2, 18, 12, outline, shade(accent, 0.95 * light), lineW / s);
+    strokeFillRect(ctx, -6, -18, 14, 18, outline, shade(accent, 0.88 * light), lineW / s);
     ctx.beginPath();
     ctx.moveTo(0, -18);
-    ctx.lineTo(0, -24);
+    ctx.lineTo(0, -26);
     ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(0, -26, 3, 0, Math.PI * 2);
     ctx.fillStyle = "#fff";
-    ctx.fill();
-    ctx.stroke();
+    ctx.fillRect(-3, -30, 6, 6);
+    ctx.strokeRect(-3, -30, 6, 6);
   } else {
-    // Beacon rings
-    for (let r = 3; r <= 9; r += 3) {
+    for (const r of [10, 7, 4]) {
       ctx.beginPath();
-      ctx.arc(0, 0, r + pop * 2, 0, Math.PI * 2);
-      ctx.strokeStyle =
-        r === 9 ? outline : accent;
-      ctx.globalAlpha = r === 3 ? 1 : 0.55;
-      ctx.lineWidth = (lineW / s) * (r === 3 ? 1.2 : 0.85);
+      ctx.arc(0, 0, r + Math.round(pop * 2), 0, Math.PI * 2);
+      ctx.strokeStyle = r === 4 ? outline : accent;
+      ctx.lineWidth = r === 4 ? (lineW / s) * 1.1 : (lineW / s) * 0.85;
+      ctx.globalAlpha = r === 4 ? 1 : 0.65;
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
     ctx.beginPath();
     ctx.moveTo(0, 4);
-    ctx.lineTo(0, 14);
+    ctx.lineTo(0, 16);
     ctx.stroke();
     ctx.fillStyle = shade(accent, light);
-    ctx.beginPath();
-    ctx.arc(0, 0, 4, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
+    ctx.fillRect(-4, -4, 8, 8);
+    ctx.strokeRect(-4, -4, 8, 8);
   }
 
   ctx.restore();
+}
+
+function strokeFillRect(
+  ctx: CanvasRenderingContext2D,
+  rx: number,
+  ry: number,
+  w: number,
+  h: number,
+  stroke: string,
+  fill: string,
+  lw: number,
+) {
+  ctx.fillStyle = fill;
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = lw;
+  ctx.fillRect(rx, ry, w, h);
+  ctx.strokeRect(rx, ry, w, h);
 }
 
 function shade(hex: string, mult: number): string {
@@ -163,76 +170,85 @@ function shade(hex: string, mult: number): string {
   return `rgb(${clamp(r * mult)},${clamp(g * mult)},${clamp(b * mult)})`;
 }
 
-function drawRoundRect(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number,
-) {
-  const rr = Math.min(r, w / 2, h / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + rr, y);
-  ctx.arcTo(x + w, y, x + w, y + h, rr);
-  ctx.arcTo(x + w, y + h, x, y + h, rr);
-  ctx.arcTo(x, y + h, x, y, rr);
-  ctx.arcTo(x, y, x + w, y, rr);
-  ctx.closePath();
-}
+type CloudSeed = { x: number; y: number; r: number; layer: number };
 
-/** Fluffy cel-shaded cloud blobs (screen space, parallax). */
+const CLOUD_SEEDS: CloudSeed[] = [
+  { x: 0.12, y: 0.72, r: 0.14, layer: 0 },
+  { x: 0.42, y: 0.68, r: 0.11, layer: 1 },
+  { x: 0.78, y: 0.74, r: 0.16, layer: 0 },
+  { x: 0.22, y: 0.18, r: 0.09, layer: 2 },
+  { x: 0.88, y: 0.22, r: 0.1, layer: 1 },
+  { x: 0.58, y: 0.16, r: 0.085, layer: 2 },
+  { x: 0.32, y: 0.49, r: 0.095, layer: 1 },
+  { x: 0.67, y: 0.47, r: 0.082, layer: 2 },
+  { x: 0.08, y: 0.38, r: 0.078, layer: 2 },
+  { x: 0.94, y: 0.52, r: 0.088, layer: 1 },
+  { x: 0.5, y: 0.82, r: 0.072, layer: 2 },
+  { x: 0.72, y: 0.28, r: 0.068, layer: 1 },
+  { x: 0.15, y: 0.58, r: 0.064, layer: 2 },
+  { x: 0.38, y: 0.28, r: 0.056, layer: 2 },
+  { x: 0.62, y: 0.62, r: 0.07, layer: 1 },
+  { x: 0.05, y: 0.12, r: 0.05, layer: 2 },
+  { x: 0.48, y: 0.38, r: 0.06, layer: 1 },
+  { x: 0.85, y: 0.68, r: 0.074, layer: 0 },
+  { x: 0.28, y: 0.86, r: 0.058, layer: 2 },
+  { x: 0.55, y: 0.08, r: 0.052, layer: 1 },
+];
+
+/** Dense fluffy clouds; coordinates snapped for chunky / pixel-adjacent look. */
 export function drawCartoonCloudPuffs(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
   timestamp: number,
 ) {
-  const outline = "rgba(12, 34, 72, 0.85)";
-  const seeds = [
-    { x: 0.12, y: 0.72, r: 0.14, layer: 0 },
-    { x: 0.42, y: 0.68, r: 0.11, layer: 1 },
-    { x: 0.78, y: 0.74, r: 0.16, layer: 0 },
-    { x: 0.22, y: 0.18, r: 0.09, layer: 2 },
-    { x: 0.88, y: 0.22, r: 0.1, layer: 1 },
-    { x: 0.58, y: 0.16, r: 0.085, layer: 2 },
-    { x: 0.32, y: 0.49, r: 0.095, layer: 1 },
-    { x: 0.67, y: 0.47, r: 0.082, layer: 2 },
-    { x: 0.08, y: 0.38, r: 0.078, layer: 2 },
-    { x: 0.94, y: 0.52, r: 0.088, layer: 1 },
-  ];
-
-  for (const s of seeds) {
-    const drift = Math.sin(timestamp / 2400 + s.layer * 1.7) * (10 + s.layer * 1.8);
-    const bob = Math.cos(timestamp / 1900 + s.x * 10) * (5 + s.layer * 1.2);
-    const cx = s.x * width + drift;
-    const cy = s.y * height + bob;
-    const baseR = s.r * Math.min(width, height);
-
-    ctx.save();
-    for (let i = 0; i < 5; i += 1) {
-      const ox = (i - 1.5) * baseR * 0.35;
-      const oy = Math.sin(i + timestamp / 4000) * baseR * 0.08;
+  const outline = "#061428";
+  const drawCluster = (cx: number, cy: number, baseR: number, layer: number) => {
+    for (let i = 0; i < 6; i += 1) {
+      const ox = (i - 2.5) * baseR * 0.32;
+      const oy = Math.sin(i * 1.1 + timestamp / 4000) * baseR * 0.07;
+      const px = snapPixel(cx + ox);
+      const py = snapPixel(cy + oy);
+      const pr = Math.max(PIX * 2, snapPixel(baseR * (0.42 + i * 0.055)));
       ctx.beginPath();
-      ctx.arc(cx + ox, cy + oy, baseR * (0.45 + i * 0.06), 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255,255,255,${0.4 - i * 0.045})`;
+      ctx.arc(px, py, pr, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,255,255,${0.44 - i * 0.055})`;
       ctx.fill();
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 4;
       ctx.strokeStyle = outline;
-      ctx.globalAlpha = 0.66;
+      ctx.globalAlpha = 0.78;
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
-
-    // Secondary wisps add density without heavy geometry.
-    for (let wisp = 0; wisp < 2; wisp += 1) {
-      const wx = cx + (wisp === 0 ? -1 : 1) * baseR * 0.9;
-      const wy = cy + (wisp === 0 ? 1 : -1) * baseR * 0.34;
+    for (let wisp = 0; wisp < 3; wisp += 1) {
+      const wx = snapPixel(cx + (wisp - 1) * baseR * 0.55);
+      const wy = snapPixel(cy + (wisp % 2 === 0 ? 1 : -1) * baseR * 0.28);
       ctx.beginPath();
-      ctx.arc(wx, wy, baseR * 0.36, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(255,255,255,0.14)";
+      ctx.arc(wx, wy, snapPixel(baseR * 0.34), 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255,255,255,0.2)";
       ctx.fill();
     }
-    ctx.restore();
+  };
+
+  for (const s of CLOUD_SEEDS) {
+    const drift = Math.sin(timestamp / 2400 + s.layer * 1.7) * (11 + s.layer * 2);
+    const bob = Math.cos(timestamp / 1900 + s.x * 10) * (6 + s.layer);
+    const cx = snapPixel(s.x * width + drift);
+    const cy = snapPixel(s.y * height + bob);
+    const baseR = s.r * Math.min(width, height);
+    drawCluster(cx, cy, baseR, s.layer);
+  }
+
+  // Extra scattered mini-clusters across the sky
+  for (let i = 0; i < 44; i += 1) {
+    const h = hashString(`cloudmini:${i}`);
+    const gx = ((h % 920) / 1000) * 0.92 + 0.04;
+    const gy = (((h >>> 8) % 880) / 1000) * 0.88 + 0.06;
+    const layer = h % 3;
+    const bob = Math.sin(timestamp / 2100 + i * 0.4) * 4;
+    const cx = snapPixel(gx * width + bob);
+    const cy = snapPixel(gy * height + Math.cos(timestamp / 1700 + i) * 3);
+    const baseR = (0.034 + (h % 200) / 5000) * Math.min(width, height);
+    drawCluster(cx, cy, baseR * (0.75 + (layer * 0.12)), layer);
   }
 }

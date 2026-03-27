@@ -14,6 +14,7 @@ import {
   easePop,
   getCartoonAccent,
   getMarkerVariant,
+  snapPixel,
 } from "../../lib/canvas/cartoonMarkers";
 import type { AppSystem, Cluster, Star } from "../../lib/types/star";
 import { buildTourWaypoints } from "../../lib/tour/buildTourWaypoints";
@@ -51,7 +52,7 @@ type CameraMotion = {
 const defaultCamera: CameraState = {
   x: 0,
   y: 0,
-  zoom: 0.24,
+  zoom: 0.18,
 };
 
 const colorMap: Record<string, string> = {
@@ -234,7 +235,7 @@ export function SceneCanvas({
 
   const starsById = useMemo(() => new Map(stars.map((star) => [star.id, star])), [stars]);
   const matchSet = useMemo(() => new Set(searchMatches), [searchMatches]);
-  const spatialGrid = useMemo(() => buildSpatialGrid(stars, 160), [stars]);
+  const spatialGrid = useMemo(() => buildSpatialGrid(stars, 220), [stars]);
   const tourWaypoints = useMemo(() => buildTourWaypoints(systems, stars), [systems, stars]);
 
   const reducedMotion = prefersReducedMotion();
@@ -427,7 +428,9 @@ export function SceneCanvas({
         context.fillRect(0, 0, canvasSize.width, canvasSize.height);
       }
 
+      const prevImageSmoothing = context.imageSmoothingEnabled;
       if (tourModeRef.current) {
+        context.imageSmoothingEnabled = false;
         drawCartoonCloudPuffs(context, canvasSize.width, canvasSize.height, timestamp);
       }
 
@@ -533,8 +536,8 @@ export function SceneCanvas({
           );
           drawCartoonMarker({
             ctx: context,
-            x: point.x,
-            y: point.y,
+            x: snapPixel(point.x),
+            y: snapPixel(point.y),
             accent,
             variant,
             baseScale,
@@ -543,15 +546,17 @@ export function SceneCanvas({
           });
 
           if (selected || hoveredMatch || searchMatch) {
+            const tx = snapPixel(point.x + 16);
+            const ty = snapPixel(point.y - 14);
             context.font = selected
-              ? "800 13px Segoe UI, system-ui, sans-serif"
-              : "700 12px Segoe UI, system-ui, sans-serif";
-            context.lineJoin = "round";
-            context.strokeStyle = "#1a0a2e";
+              ? "800 13px \"Consolas\", \"Lucida Console\", monospace"
+              : "700 12px \"Consolas\", \"Lucida Console\", monospace";
+            context.lineJoin = "miter";
+            context.strokeStyle = "#0a0a12";
             context.lineWidth = 4;
-            context.strokeText(star.appName, point.x + 16, point.y - 14);
+            context.strokeText(star.appName, tx, ty);
             context.fillStyle = "#ffffff";
-            context.fillText(star.appName, point.x + 16, point.y - 14);
+            context.fillText(star.appName, tx, ty);
           }
           continue;
         }
@@ -586,6 +591,10 @@ export function SceneCanvas({
           context.font = selected ? "600 13px Segoe UI" : "12px Segoe UI";
           context.fillText(star.appName, point.x + 10, point.y - 10);
         }
+      }
+
+      if (tourModeRef.current) {
+        context.imageSmoothingEnabled = prevImageSmoothing;
       }
 
       if (timestamp - lastHudUpdateRef.current > 90) {
