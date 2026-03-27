@@ -325,39 +325,41 @@ export function SceneCanvas({
       backgroundCanvas.height = canvas.height;
       backgroundContext.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
 
-      const nebula = backgroundContext.createLinearGradient(0, 0, canvasSize.width, canvasSize.height);
-      nebula.addColorStop(0, "#020610");
-      nebula.addColorStop(0.42, "#061a35");
-      nebula.addColorStop(1, "#020812");
-      backgroundContext.fillStyle = nebula;
+      // Flux blue sky: primary #2B61D1, supporting #4F7AD4 / #86A1DA, deep corners for depth
+      const sky = backgroundContext.createLinearGradient(0, 0, canvasSize.width, canvasSize.height);
+      sky.addColorStop(0, "#4F7AD4");
+      sky.addColorStop(0.35, "#2B61D1");
+      sky.addColorStop(0.65, "#2554b8");
+      sky.addColorStop(1, "#153d72");
+      backgroundContext.fillStyle = sky;
       backgroundContext.fillRect(0, 0, canvasSize.width, canvasSize.height);
 
       const bloom = backgroundContext.createRadialGradient(
-        canvasSize.width * 0.35,
-        canvasSize.height * 0.34,
-        10,
-        canvasSize.width * 0.35,
-        canvasSize.height * 0.34,
-        Math.max(canvasSize.width, canvasSize.height) * 0.85,
+        canvasSize.width * 0.28,
+        canvasSize.height * 0.28,
+        8,
+        canvasSize.width * 0.4,
+        canvasSize.height * 0.38,
+        Math.max(canvasSize.width, canvasSize.height) * 0.72,
       );
-      bloom.addColorStop(0, "rgba(43, 97, 209, 0.35)");
-      bloom.addColorStop(0.32, "rgba(79, 122, 212, 0.18)");
-      bloom.addColorStop(0.7, "rgba(6, 22, 42, 0.02)");
-      bloom.addColorStop(1, "rgba(0, 0, 0, 0)");
+      bloom.addColorStop(0, "rgba(134, 161, 218, 0.45)");
+      bloom.addColorStop(0.35, "rgba(79, 122, 212, 0.22)");
+      bloom.addColorStop(0.65, "rgba(43, 97, 209, 0.08)");
+      bloom.addColorStop(1, "rgba(21, 61, 114, 0)");
       backgroundContext.fillStyle = bloom;
       backgroundContext.fillRect(0, 0, canvasSize.width, canvasSize.height);
 
       const haze = backgroundContext.createRadialGradient(
+        canvasSize.width * 0.78,
+        canvasSize.height * 0.62,
+        6,
         canvasSize.width * 0.72,
-        canvasSize.height * 0.58,
-        10,
-        canvasSize.width * 0.72,
-        canvasSize.height * 0.58,
-        Math.max(canvasSize.width, canvasSize.height) * 0.95,
+        canvasSize.height * 0.55,
+        Math.max(canvasSize.width, canvasSize.height) * 0.9,
       );
-      haze.addColorStop(0, "rgba(134, 161, 218, 0.12)");
-      haze.addColorStop(0.5, "rgba(43, 97, 209, 0.08)");
-      haze.addColorStop(1, "rgba(0, 0, 0, 0)");
+      haze.addColorStop(0, "rgba(255, 255, 255, 0.08)");
+      haze.addColorStop(0.45, "rgba(43, 97, 209, 0.06)");
+      haze.addColorStop(1, "rgba(15, 47, 92, 0)");
       backgroundContext.fillStyle = haze;
       backgroundContext.fillRect(0, 0, canvasSize.width, canvasSize.height);
 
@@ -365,7 +367,7 @@ export function SceneCanvas({
         const x = (index * 97) % canvasSize.width;
         const y = (index * 193) % canvasSize.height;
         const size = index % 9 === 0 ? 1.8 : index % 4 === 0 ? 1.2 : 0.8;
-        const alpha = index % 7 === 0 ? 0.38 : 0.22;
+        const alpha = index % 7 === 0 ? 0.42 : 0.26;
         backgroundContext.beginPath();
         backgroundContext.fillStyle = `rgba(255,255,255,${alpha})`;
         backgroundContext.arc(x, y, size, 0, Math.PI * 2);
@@ -421,7 +423,7 @@ export function SceneCanvas({
       if (backgroundCanvasRef.current) {
         context.drawImage(backgroundCanvasRef.current, 0, 0, canvasSize.width, canvasSize.height);
       } else {
-        context.fillStyle = "#020610";
+        context.fillStyle = "#2B61D1";
         context.fillRect(0, 0, canvasSize.width, canvasSize.height);
       }
 

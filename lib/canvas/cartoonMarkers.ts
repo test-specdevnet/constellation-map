@@ -188,7 +188,7 @@ export function drawCartoonCloudPuffs(
   height: number,
   timestamp: number,
 ) {
-  const outline = "#2d1b4e";
+  const outline = "rgba(12, 34, 72, 0.85)";
   const seeds = [
     { x: 0.12, y: 0.72, r: 0.14, layer: 0 },
     { x: 0.42, y: 0.68, r: 0.11, layer: 1 },
@@ -210,11 +210,11 @@ export function drawCartoonCloudPuffs(
       const oy = Math.sin(i + timestamp / 4000) * baseR * 0.08;
       ctx.beginPath();
       ctx.arc(cx + ox, cy + oy, baseR * (0.45 + i * 0.06), 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255,255,255,${0.22 - i * 0.03})`;
+      ctx.fillStyle = `rgba(255,255,255,${0.38 - i * 0.05})`;
       ctx.fill();
       ctx.lineWidth = 3;
       ctx.strokeStyle = outline;
-      ctx.globalAlpha = 0.55;
+      ctx.globalAlpha = 0.7;
       ctx.stroke();
       ctx.globalAlpha = 1;
     }

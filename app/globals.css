@@ -1,7 +1,7 @@
 :root {
   color-scheme: dark;
-  --bg: #040917;
-  --bg-deep: #020610;
+  --bg: #1a4a9e;
+  --bg-deep: #153d72;
   --panel: rgba(9, 16, 31, 0.86);
   --panel-strong: rgba(12, 20, 37, 0.95);
   --panel-border: rgba(109, 167, 255, 0.16);
@@ -15,10 +15,11 @@
   --shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
   font-family: "Segoe UI Variable", "Segoe UI", Aptos, sans-serif;
   background:
-    radial-gradient(circle at 12% 8%, rgba(43, 97, 209, 0.34), transparent 42%),
-    radial-gradient(circle at 88% 12%, rgba(79, 122, 212, 0.22), transparent 44%),
-    radial-gradient(circle at 60% 70%, rgba(134, 161, 218, 0.10), transparent 52%),
-    linear-gradient(180deg, #061a35 0%, var(--bg) 42%, var(--bg-deep) 100%);
+    radial-gradient(ellipse 120% 80% at 50% -20%, rgba(134, 161, 218, 0.35), transparent 55%),
+    radial-gradient(circle at 12% 8%, rgba(79, 122, 212, 0.4), transparent 45%),
+    radial-gradient(circle at 88% 18%, rgba(43, 97, 209, 0.35), transparent 48%),
+    radial-gradient(circle at 50% 100%, rgba(15, 47, 92, 0.65), transparent 52%),
+    linear-gradient(180deg, #4f7ad4 0%, #2b61d1 38%, var(--bg) 72%, var(--bg-deep) 100%);
   color: var(--text);
 }
 
@@ -319,11 +320,11 @@ h3 {
   position: relative;
   min-height: 760px;
   border-radius: 24px;
-  border: 1px solid rgba(109, 167, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   overflow: hidden;
   background:
-    radial-gradient(circle at top center, rgba(106, 208, 255, 0.08), transparent 25%),
-    linear-gradient(180deg, rgba(4, 11, 21, 0.95), rgba(2, 7, 15, 0.99));
+    radial-gradient(ellipse 100% 70% at 50% 0%, rgba(134, 161, 218, 0.25), transparent 50%),
+    linear-gradient(180deg, rgba(43, 97, 209, 0.35), rgba(15, 47, 92, 0.92));
 }
 
 .scene-canvas {
