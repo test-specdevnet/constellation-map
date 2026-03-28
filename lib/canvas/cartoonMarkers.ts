@@ -206,15 +206,15 @@ function drawOutlinedCloud(
 }
 
 const LAYER_SEEDS = [
-  { x: 0.12, y: 0.78, s: 0.42, speed: 0.018, layer: 0 },
-  { x: 0.55, y: 0.82, s: 0.5, speed: 0.012, layer: 0 },
-  { x: 0.88, y: 0.74, s: 0.38, speed: 0.022, layer: 0 },
-  { x: 0.22, y: 0.48, s: 0.36, speed: 0.028, layer: 1 },
-  { x: 0.72, y: 0.52, s: 0.4, speed: 0.02, layer: 1 },
-  { x: 0.48, y: 0.62, s: 0.32, speed: 0.015, layer: 1 },
-  { x: 0.08, y: 0.28, s: 0.28, speed: 0.035, layer: 2 },
-  { x: 0.62, y: 0.22, s: 0.3, speed: 0.03, layer: 2 },
-  { x: 0.92, y: 0.18, s: 0.26, speed: 0.04, layer: 2 },
+  { x: 0.12, y: 0.78, s: 0.42, layer: 0 },
+  { x: 0.55, y: 0.82, s: 0.5, layer: 0 },
+  { x: 0.88, y: 0.74, s: 0.38, layer: 0 },
+  { x: 0.22, y: 0.48, s: 0.36, layer: 1 },
+  { x: 0.72, y: 0.52, s: 0.4, layer: 1 },
+  { x: 0.48, y: 0.62, s: 0.32, layer: 1 },
+  { x: 0.08, y: 0.28, s: 0.28, layer: 2 },
+  { x: 0.62, y: 0.22, s: 0.3, layer: 2 },
+  { x: 0.92, y: 0.18, s: 0.26, layer: 2 },
 ];
 
 /**
