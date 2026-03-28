@@ -41,7 +41,7 @@ type CameraState = {
 };
 
 /** Default “camera height”; wheel adjusts between min/max. */
-const ZOOM_DEFAULT = 0.152;
+const ZOOM_DEFAULT = 0.178;
 const ZOOM_MIN = 0.07;
 const ZOOM_MAX = 0.42;
 
@@ -78,9 +78,9 @@ const normalizeWheel = (event: WheelEvent) => {
 const FLIGHT_TIP_KEY = "flux-flight-tip-dismissed";
 
 /** World units: show hover card when plane enters this radius */
-const PROX_CARD_IN = 340;
-const PROX_CARD_OUT = 460;
-const PROX_NEAR = 560;
+const PROX_CARD_IN = 420;
+const PROX_CARD_OUT = 520;
+const PROX_NEAR = 640;
 const PROX_SWITCH_HYST = 90;
 
 const mapToArrowKey = (raw: string): string | null => {
@@ -414,10 +414,10 @@ export function SceneCanvas({
       lastAnimTsRef.current = timestamp;
 
       const turnAccel = reducedMotion ? 4.2 : 9.5;
-      const turnDamp = Math.exp(-6.2 * dt);
-      const accel = reducedMotion ? 260 : 520;
-      const brake = reducedMotion ? 380 : 720;
-      const maxSpeed = reducedMotion ? 150 : 340;
+      const turnDamp = Math.exp(-7.5 * dt);
+      const accel = reducedMotion ? 240 : 460;
+      const brake = reducedMotion ? 400 : 760;
+      const maxSpeed = reducedMotion ? 130 : 300;
       const coast = reducedMotion ? 0.992 : 0.996;
 
       let turnInput = 0;
@@ -440,11 +440,11 @@ export function SceneCanvas({
       flight.x += Math.cos(flight.heading) * flight.speed * dt;
       flight.y += Math.sin(flight.heading) * flight.speed * dt;
 
-      const look = Math.min(280, flight.speed * 0.72);
-      const desiredCamX = flight.x + Math.cos(flight.heading) * look * 0.24;
-      const desiredCamY = flight.y + Math.sin(flight.heading) * look * 0.24;
+      const look = Math.min(220, flight.speed * 0.55);
+      const desiredCamX = flight.x + Math.cos(flight.heading) * look * 0.11;
+      const desiredCamY = flight.y + Math.sin(flight.heading) * look * 0.11;
       const camFollow = camFollowRef.current;
-      const followK = Math.min(1, (reducedMotion ? 10 : 6.2) * dt);
+      const followK = Math.min(1, (reducedMotion ? 11 : 7.8) * dt);
       camFollow.x += (desiredCamX - camFollow.x) * followK;
       camFollow.y += (desiredCamY - camFollow.y) * followK;
 
@@ -510,21 +510,12 @@ export function SceneCanvas({
         ) {
           continue;
         }
-        context.beginPath();
-        context.strokeStyle = "rgba(255, 255, 255, 0.08)";
-        context.lineWidth = 1;
-        context.arc(point.x, point.y, 36 + cluster.summaryMetrics.instances * 0.05, 0, Math.PI * 2);
-        context.stroke();
-
-        context.fillStyle = "rgba(255, 255, 255, 0.78)";
-        context.font = "600 12px Segoe UI, system-ui, sans-serif";
-        context.fillText(cluster.label, point.x + 10, point.y - 10);
-        context.fillStyle = "rgba(255, 255, 255, 0.55)";
-        context.font = "11px Segoe UI, system-ui, sans-serif";
+        context.fillStyle = "rgba(255, 255, 255, 0.62)";
+        context.font = "600 11px Segoe UI, system-ui, sans-serif";
         context.fillText(
-          `${cluster.summaryMetrics.apps} apps`,
-          point.x + 10,
-          point.y + 6,
+          `${cluster.label} · ${cluster.summaryMetrics.apps} apps`,
+          point.x + 6,
+          point.y - 8,
         );
       }
 
@@ -635,8 +626,8 @@ export function SceneCanvas({
 
         const colors = getBuoyColorway(star);
         const baseScale = Math.max(
-          1.02,
-          Math.min(2.85, star.size * camera.zoom * 0.1 + 0.18),
+          1.08,
+          Math.min(2.95, star.size * camera.zoom * 0.108 + 0.2),
         );
         drawDeploymentBuoy({
           ctx: context,
@@ -651,16 +642,6 @@ export function SceneCanvas({
           timestamp,
         });
       }
-
-      drawParallaxCloudLayers(
-        context,
-        canvasSize.width,
-        canvasSize.height,
-        timestamp,
-        camFollow.x,
-        camFollow.y,
-        { layerMin: 2, layerMax: 2 },
-      );
 
       if (cardStar && cardAlphaRef.current > 0.04) {
         const p = worldToScreen({ x: cardStar.x, y: cardStar.y }, canvasSize, camera);

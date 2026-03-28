@@ -76,10 +76,10 @@ export function drawDeploymentBuoy({
   const h = hashString(seed);
   const phase = h * 0.001;
   const outline = "#0E1628";
-  const lineW = Math.max(2.4, 2.85 * Math.sqrt(baseScale)) / s;
+  const lineW = Math.max(2, 2.35 * Math.sqrt(baseScale)) / s;
 
-  const idleBob = Math.sin(timestamp / 4200 + phase) * 1.1;
-  const beaconPulse = 0.55 + 0.45 * Math.sin(timestamp / 900 + phase * 2);
+  const idleBob = Math.sin(timestamp / 5200 + phase) * 0.35;
+  const beaconPulse = 0.55 + 0.45 * Math.sin(timestamp / 1400 + phase * 2);
   const nearBoost = proximity >= 1 ? 1.06 : 1;
   const focusBoost = proximity >= 2 ? 1.08 : 1;
   const highlightBoost = selected || searchOrPointer ? 1.1 : 1;
@@ -190,7 +190,7 @@ function drawOutlinedCloud(
     ctx.moveTo(p.br + p.bx, p.by);
     ctx.arc(p.bx, p.by, p.br, 0, Math.PI * 2);
   }
-  ctx.fillStyle = "rgba(65, 110, 180, 0.22)";
+  ctx.fillStyle = "rgba(65, 110, 180, 0.12)";
   ctx.fill();
   ctx.beginPath();
   for (const p of puffs) {
@@ -205,16 +205,13 @@ function drawOutlinedCloud(
   ctx.restore();
 }
 
+/** Fewer, softer clouds — keeps the playfield readable. */
 const LAYER_SEEDS = [
-  { x: 0.12, y: 0.78, s: 0.42, layer: 0 },
-  { x: 0.55, y: 0.82, s: 0.5, layer: 0 },
-  { x: 0.88, y: 0.74, s: 0.38, layer: 0 },
-  { x: 0.22, y: 0.48, s: 0.36, layer: 1 },
-  { x: 0.72, y: 0.52, s: 0.4, layer: 1 },
-  { x: 0.48, y: 0.62, s: 0.32, layer: 1 },
-  { x: 0.08, y: 0.28, s: 0.28, layer: 2 },
-  { x: 0.62, y: 0.22, s: 0.3, layer: 2 },
-  { x: 0.92, y: 0.18, s: 0.26, layer: 2 },
+  { x: 0.18, y: 0.8, s: 0.38, layer: 0 },
+  { x: 0.62, y: 0.76, s: 0.42, layer: 0 },
+  { x: 0.88, y: 0.84, s: 0.32, layer: 0 },
+  { x: 0.35, y: 0.52, s: 0.34, layer: 1 },
+  { x: 0.78, y: 0.48, s: 0.36, layer: 1 },
 ];
 
 /**
@@ -234,40 +231,37 @@ export function drawParallaxCloudLayers(
   const short = Math.min(width, height);
   for (const L of LAYER_SEEDS) {
     if (L.layer < lo || L.layer > hi) continue;
-    const parallax = (L.layer + 1) * 0.022;
-    const drift = timestamp / (4500 + L.layer * 800) + L.x * 6;
-    const ox = Math.sin(drift) * 14 + camX * parallax * 0.08;
-    const oy = Math.cos(drift * 0.7) * 6 + camY * parallax * 0.05;
+    const parallax = (L.layer + 1) * 0.016;
+    const drift = timestamp / (5200 + L.layer * 900) + L.x * 6;
+    const ox = Math.sin(drift) * 10 + camX * parallax * 0.06;
+    const oy = Math.cos(drift * 0.7) * 4 + camY * parallax * 0.04;
     const cx = (L.x * width + ox) % (width + 200);
     const cy = L.y * height + oy;
     const wrapX = cx < -100 ? cx + width + 200 : cx;
-    const alpha = L.layer === 0 ? 0.55 : L.layer === 1 ? 0.72 : 0.88;
+    const alpha = L.layer === 0 ? 0.38 : 0.52;
     const fill = `rgba(255,255,255,${alpha})`;
-    const lw = L.layer === 2 ? 2.4 : L.layer === 1 ? 2.1 : 1.85;
+    const lw = L.layer === 0 ? 1.55 : 1.75;
     drawOutlinedCloud(ctx, wrapX, cy, short * L.s, "#0E1A30", fill, lw);
   }
 }
 
-/** Tiny stars in upper sky only */
+/** Sparse static sparkles — no spin (less visual noise). */
 export function drawUpperSparkles(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
-  timestamp: number,
+  _timestamp: number,
 ) {
   ctx.save();
-  for (let i = 0; i < 48; i += 1) {
-    const sx = ((i * 97) % width) + Math.sin(timestamp / 9000 + i) * 3;
-    const sy = ((i * 53) % (height * 0.42)) + 8;
-    const tw = 0.35 + (i % 5) * 0.08;
-    const a = 0.2 + (i % 4) * 0.12 + Math.sin(timestamp / 2000 + i) * 0.06;
+  const topH = height * 0.32;
+  for (let i = 0; i < 18; i += 1) {
+    const sx = (i * 137 + i * i * 3) % (width - 8) + 4;
+    const sy = (i * 79) % topH + 6;
+    const tw = 0.28 + (i % 3) * 0.06;
+    const a = 0.1 + (i % 5) * 0.028;
     ctx.fillStyle = `rgba(255,255,255,${a})`;
-    ctx.save();
-    ctx.translate(sx, sy);
-    ctx.rotate((i * Math.PI) / 7 + timestamp / 12000);
-    ctx.fillRect(-tw, -4, tw * 2, 8);
-    ctx.fillRect(-4, -tw, 8, tw * 2);
-    ctx.restore();
+    ctx.fillRect(sx - tw, sy - 1, tw * 2, 2);
+    ctx.fillRect(sx - 1, sy - tw, 2, tw * 2);
   }
   ctx.restore();
 }
@@ -284,7 +278,7 @@ export function drawTopDownBiplane(
   timestamp: number,
 ) {
   const prop = (timestamp / 32) % (Math.PI * 2);
-  const bob = Math.sin(timestamp / 380) * 1.2;
+  const bob = Math.sin(timestamp / 520) * 0.45;
 
   ctx.save();
   ctx.translate(snapPixel(cx), snapPixel(cy + bob));
