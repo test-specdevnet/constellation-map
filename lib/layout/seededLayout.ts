@@ -3,10 +3,10 @@ import type { AppLocation, AppSpec } from "../types/app";
 import type { NodeProfile } from "../types/node";
 import type { AppSystem, Cluster, ClusterKind, Star } from "../types/star";
 
-/** Wider field so points read as “across the sky” at default zoom. */
-const clusterRadius = 4700;
-const systemOrbitBase = 340;
-const starOrbitBase = 24;
+/** Wide spacing so landing pads rarely stack (flight game readability). */
+const clusterRadius = 8200;
+const systemOrbitBase = 420;
+const starOrbitBase = 32;
 
 const hashString = (value: string) => {
   let hash = 2166136261;
@@ -137,21 +137,21 @@ export const buildSeededSceneLayout = ({
       t * (1.1 + armTightness) +
       randSigned(`${cluster.clusterId}:angNoise`) * 0.38;
 
-    const spiral = polar(angle, baseRadius + t * 420);
+    const spiral = polar(angle, baseRadius + t * 520);
     const lobe =
       (arm % 2 === 0 ? 1 : -1) *
       gaussianLike(`${cluster.clusterId}:lobeA`, `${cluster.clusterId}:lobeB`) *
-      680;
+      920;
     const drift = {
       x:
         gaussianLike(`${cluster.clusterId}:dxA`, `${cluster.clusterId}:dxB`) *
-          560 +
+          720 +
         lobe,
       y:
         gaussianLike(`${cluster.clusterId}:dyA`, `${cluster.clusterId}:dyB`) *
-          560 +
+          720 +
         gaussianLike(`${cluster.clusterId}:dyC`, `${cluster.clusterId}:dyD`) *
-          300,
+          380,
     };
 
     const rotated = rotate(
@@ -194,7 +194,7 @@ export const buildSeededSceneLayout = ({
       const systemAngle = systemIndex * goldenAngle + jitter * 0.55;
       const spread =
         systemOrbitBase +
-        Math.pow(rand01(`${app.appName}:sysRad`) * 0.98 + 0.02, 0.62) * 1280;
+        Math.pow(rand01(`${app.appName}:sysRad`) * 0.98 + 0.02, 0.62) * 1950;
       const base = polar(systemAngle, spread);
       const warped = rotate({ x: base.x * (1.08 + ellipseScale), y: base.y * ellipseScale }, ellipseAngle);
       const systemX = centroid.x + warped.x;
@@ -242,7 +242,7 @@ export const buildSeededSceneLayout = ({
         const angle = rand01(`${location.id}:theta`) * Math.PI * 2;
         const radius =
           starOrbitBase +
-          Math.pow(rand01(`${location.id}:rad`) * 0.98 + 0.02, 0.6) * (58 + rand01(`${location.id}:radGain`) * 52);
+          Math.pow(rand01(`${location.id}:rad`) * 0.98 + 0.02, 0.6) * (72 + rand01(`${location.id}:radGain`) * 68);
         const offset = rotate(
           {
             x: Math.cos(angle) * radius,

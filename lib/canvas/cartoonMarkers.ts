@@ -230,98 +230,104 @@ export function drawSkyCloudLayer(
 }
 
 /**
- * Club Penguin–adjacent red biplane (screen-space, bottom center).
- * `headingRad` should follow tour flight direction for a subtle bank.
+ * Top-down Club Penguin–style biplane at screen center.
+ * Local +x is the nose; `headingRad` is world heading (velocity = cos/sin).
  */
-export function drawTourBiplane(
+export function drawTopDownBiplane(
   ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  timestamp: number,
+  cx: number,
+  cy: number,
   headingRad: number,
+  timestamp: number,
 ) {
-  const bx = width * 0.5;
-  const by = height - 56;
-  const bob = Math.sin(timestamp / 260) * 3;
-  const prop = (timestamp / 40) % (Math.PI * 2);
+  const prop = (timestamp / 38) % (Math.PI * 2);
+  const bob = Math.sin(timestamp / 320) * 2;
 
   ctx.save();
-  ctx.translate(bx, by + bob);
-  ctx.rotate(clampHeading(headingRad) * 0.12 + Math.sin(timestamp / 800) * 0.04);
+  ctx.translate(snapPixel(cx), snapPixel(cy + bob));
+  ctx.rotate(headingRad);
 
   const body = "#E62822";
-  const wing = "#C41E1A";
+  const wingTop = "#FF5A52";
+  const wingBot = "#C41E1A";
   const outline = "#1a0505";
+
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = outline;
+
+  // Lower wing (slightly shorter — reads as stacked in top-down)
+  ctx.fillStyle = wingBot;
+  ctx.beginPath();
+  ctx.moveTo(-4, 30);
+  ctx.lineTo(6, 30);
+  ctx.lineTo(10, 34);
+  ctx.lineTo(-8, 34);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-4, -30);
+  ctx.lineTo(6, -30);
+  ctx.lineTo(10, -34);
+  ctx.lineTo(-8, -34);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Main wing span (perpendicular to fuselage)
+  ctx.fillStyle = wingTop;
+  ctx.beginPath();
+  ctx.roundRect(-10, -40, 20, 80, 5);
+  ctx.fill();
+  ctx.stroke();
+
+  // Fuselage + nose (along +x)
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.moveTo(34, 0);
+  ctx.lineTo(12, 9);
+  ctx.lineTo(-10, 8);
+  ctx.lineTo(-28, 5);
+  ctx.lineTo(-32, 0);
+  ctx.lineTo(-28, -5);
+  ctx.lineTo(-10, -8);
+  ctx.lineTo(12, -9);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Tail boom + vertical stabilizer hint
+  ctx.fillStyle = wingBot;
+  ctx.beginPath();
+  ctx.moveTo(-30, 0);
+  ctx.lineTo(-44, 0);
+  ctx.lineTo(-48, 10);
+  ctx.lineTo(-52, 0);
+  ctx.lineTo(-48, -10);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Cockpit bubble
+  ctx.fillStyle = "rgba(255,255,255,0.88)";
+  ctx.beginPath();
+  ctx.arc(4, 0, 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = outline;
   ctx.lineWidth = 2.5;
-  ctx.strokeStyle = outline;
-
-  // Lower wing
-  ctx.fillStyle = wing;
-  ctx.beginPath();
-  ctx.moveTo(-42, 4);
-  ctx.lineTo(28, 4);
-  ctx.lineTo(24, 14);
-  ctx.lineTo(-38, 14);
-  ctx.closePath();
-  ctx.fill();
   ctx.stroke();
 
-  // Fuselage
-  ctx.fillStyle = body;
+  // Prop disk at nose
+  ctx.strokeStyle = "rgba(30,30,40,0.45)";
+  ctx.lineWidth = 2.5;
   ctx.beginPath();
-  ctx.ellipse(0, 0, 38, 11, 0, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.arc(36, 0, 11, prop, prop + Math.PI * 1.35);
   ctx.stroke();
-
-  // Upper wing
-  ctx.fillStyle = wing;
+  ctx.strokeStyle = "rgba(255,255,255,0.35)";
   ctx.beginPath();
-  ctx.moveTo(-32, -18);
-  ctx.lineTo(22, -18);
-  ctx.lineTo(18, -8);
-  ctx.lineTo(-28, -8);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-
-  // Struts
-  ctx.beginPath();
-  ctx.moveTo(-12, -8);
-  ctx.lineTo(-12, 4);
-  ctx.moveTo(12, -8);
-  ctx.lineTo(12, 4);
-  ctx.strokeStyle = outline;
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  // Tail
-  ctx.fillStyle = body;
-  ctx.beginPath();
-  ctx.moveTo(-36, -2);
-  ctx.lineTo(-52, -14);
-  ctx.lineTo(-48, 6);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-
-  // Prop blur (simple arc)
-  ctx.strokeStyle = "rgba(40,40,40,0.35)";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(34, 0, 10, prop, prop + Math.PI * 1.2);
-  ctx.stroke();
-
-  // Cockpit
-  ctx.fillStyle = "rgba(255,255,255,0.85)";
-  ctx.beginPath();
-  ctx.ellipse(8, -3, 7, 5, 0, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.arc(36, 0, 6, -prop * 1.2, -prop * 1.2 + Math.PI * 1.1);
   ctx.stroke();
 
   ctx.restore();
-}
-
-function clampHeading(r: number) {
-  if (!Number.isFinite(r)) return 0;
-  return Math.max(-0.9, Math.min(0.9, r));
 }

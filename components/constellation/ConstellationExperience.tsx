@@ -82,6 +82,7 @@ export function ConstellationExperience() {
   const [scene, setScene] = useState<InitialScene | null>(null);
   const [sceneLoading, setSceneLoading] = useState(true);
   const [sceneError, setSceneError] = useState("");
+  const [sceneReloadNonce, setSceneReloadNonce] = useState(0);
   const [filters, setFilters] = useState<FilterState>(initialFilters);
   const [selectedAppName, setSelectedAppName] = useState<string | null>(null);
   const [hoveredStar, setHoveredStar] = useState<Star | null>(null);
@@ -139,7 +140,7 @@ export function ConstellationExperience() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [sceneReloadNonce]);
 
   const activeScene = scene ?? emptyScene;
 
@@ -298,11 +299,11 @@ export function ConstellationExperience() {
             />
             <p className="eyebrow">FluxCloud public atlas</p>
           </div>
-          <h1>Explore public FluxCloud deployments as a live constellation map.</h1>
+          <h1>Explore public FluxCloud deployments in a flyable sky map.</h1>
           <p className="hero-text">
-            Pan, zoom, search, and filter through a celestial projection of public
-            FluxCloud app and deployment data. The scene is designed for discovery
-            and comparison, not single-node pinning.
+            Click the map, then use arrow keys or <strong>WASD</strong> to fly; scroll
+            or pinch to zoom. Search and filters jump your plane near matches; hover
+            pads and click for details. On phones, use the on-screen direction pad.
           </p>
         </div>
 
@@ -358,6 +359,8 @@ export function ConstellationExperience() {
             selectedAppName={selectedAppName}
             searchMatches={searchResults.map((item) => item.appName)}
             focusTarget={focusTarget}
+            mapDataLoading={sceneLoading}
+            snapshotError={!!sceneError}
             onSelectApp={handleSelectApp}
             onHoverStar={setHoveredStar}
           />
@@ -387,8 +390,8 @@ export function ConstellationExperience() {
                 </ul>
               ) : (
                 <p className="panel-copy">
-                  Use the search box or filters to focus the camera on specific
-                  apps, owners, or runtime cohorts.
+                  Use search or filters to jump your plane near apps, owners, or
+                  runtime cohorts, then fly to explore nearby deployments.
                 </p>
               )}
             </section>
@@ -435,7 +438,21 @@ export function ConstellationExperience() {
             </section>
           </div>
 
-          {sceneError ? <p className="status-banner">{sceneError}</p> : null}
+          {sceneError ? (
+            <div className="status-banner status-banner--error">
+              <p>{sceneError}</p>
+              <button
+                type="button"
+                className="primary-action"
+                onClick={() => {
+                  setSceneError("");
+                  setSceneReloadNonce((n) => n + 1);
+                }}
+              >
+                Retry loading snapshot
+              </button>
+            </div>
+          ) : null}
           {statusMessage ? <p className="status-banner">{statusMessage}</p> : null}
         </div>
 
