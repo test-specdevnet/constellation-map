@@ -302,8 +302,9 @@ export function ConstellationExperience() {
           <h1>Explore public FluxCloud deployments in a flyable sky map.</h1>
           <p className="hero-text">
             Click the map, then use arrow keys or <strong>WASD</strong> to fly; scroll
-            or pinch to zoom. Search and filters jump your plane near matches; hover
-            pads and click for details. On phones, use the on-screen direction pad.
+            to zoom. Color-coded <strong>buoys</strong> mark deployments—fly near one to
+            see its name, then click for details. Search and filters jump your plane to
+            matches. Phones: use the on-screen direction pad.
           </p>
         </div>
 

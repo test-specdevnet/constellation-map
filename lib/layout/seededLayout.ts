@@ -3,10 +3,10 @@ import type { AppLocation, AppSpec } from "../types/app";
 import type { NodeProfile } from "../types/node";
 import type { AppSystem, Cluster, ClusterKind, Star } from "../types/star";
 
-/** Wide spacing so landing pads rarely stack (flight game readability). */
-const clusterRadius = 8200;
-const systemOrbitBase = 420;
-const starOrbitBase = 32;
+/** Wide spacing + later relax pass so buoys stay readable. */
+const clusterRadius = 9200;
+const systemOrbitBase = 460;
+const starOrbitBase = 36;
 
 const hashString = (value: string) => {
   let hash = 2166136261;
@@ -90,6 +90,41 @@ const getClusterAssignment = (app: AppSpec): ClusterAssignment => {
 
 const getNodeById = (nodes: NodeProfile[]) =>
   Object.fromEntries(nodes.map((node) => [node.id, node]));
+
+const MIN_STAR_SEP = 96;
+
+/** Push instance stars apart within each system (deterministic passes). */
+const relaxStarSeparation = (stars: Star[], passes = 3) => {
+  const bySystem = new Map<string, Star[]>();
+  for (const star of stars) {
+    const list = bySystem.get(star.systemId) ?? [];
+    list.push(star);
+    bySystem.set(star.systemId, list);
+  }
+
+  for (let pass = 0; pass < passes; pass += 1) {
+    for (const group of bySystem.values()) {
+      if (group.length < 2) continue;
+      for (let i = 0; i < group.length; i += 1) {
+        for (let j = i + 1; j < group.length; j += 1) {
+          const a = group[i];
+          const b = group[j];
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const d = Math.hypot(dx, dy);
+          if (d >= MIN_STAR_SEP || d < 1e-6) continue;
+          const push = (MIN_STAR_SEP - d) * 0.52;
+          const nx = dx / d;
+          const ny = dy / d;
+          a.x -= nx * push;
+          a.y -= ny * push;
+          b.x += nx * push;
+          b.y += ny * push;
+        }
+      }
+    }
+  }
+};
 
 export const buildSeededSceneLayout = ({
   apps,
@@ -194,7 +229,7 @@ export const buildSeededSceneLayout = ({
       const systemAngle = systemIndex * goldenAngle + jitter * 0.55;
       const spread =
         systemOrbitBase +
-        Math.pow(rand01(`${app.appName}:sysRad`) * 0.98 + 0.02, 0.62) * 1950;
+        Math.pow(rand01(`${app.appName}:sysRad`) * 0.98 + 0.02, 0.62) * 2180;
       const base = polar(systemAngle, spread);
       const warped = rotate({ x: base.x * (1.08 + ellipseScale), y: base.y * ellipseScale }, ellipseAngle);
       const systemX = centroid.x + warped.x;
@@ -242,7 +277,7 @@ export const buildSeededSceneLayout = ({
         const angle = rand01(`${location.id}:theta`) * Math.PI * 2;
         const radius =
           starOrbitBase +
-          Math.pow(rand01(`${location.id}:rad`) * 0.98 + 0.02, 0.6) * (72 + rand01(`${location.id}:radGain`) * 68);
+          Math.pow(rand01(`${location.id}:rad`) * 0.98 + 0.02, 0.6) * (88 + rand01(`${location.id}:radGain`) * 86);
         const offset = rotate(
           {
             x: Math.cos(angle) * radius,
@@ -307,6 +342,8 @@ export const buildSeededSceneLayout = ({
   const featureSystems = [...systems]
     .sort((left, right) => right.instanceCount - left.instanceCount || left.appName.localeCompare(right.appName))
     .slice(0, 12);
+
+  relaxStarSeparation(stars);
 
   return { clusters, systems, stars, featureSystems };
 };

@@ -2,13 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState, type PointerEvent, type WheelEvent } from "react";
 import {
-  drawCartoonMarker,
-  drawSkyCloudLayer,
+  drawDeploymentBuoy,
+  drawParallaxCloudLayers,
+  drawProximityHoverCard,
   drawTopDownBiplane,
-  getCartoonAccent,
-  getMarkerVariant,
+  drawUpperSparkles,
   snapPixel,
 } from "../../lib/canvas/cartoonMarkers";
+import { categoryLabel, getBuoyColorway } from "../../lib/canvas/buoyCategory";
 import type { AppSystem, Cluster, Star } from "../../lib/types/star";
 
 type CameraTarget = {
@@ -75,6 +76,12 @@ const normalizeWheel = (event: WheelEvent) => {
 };
 
 const FLIGHT_TIP_KEY = "flux-flight-tip-dismissed";
+
+/** World units: show hover card when plane enters this radius */
+const PROX_CARD_IN = 340;
+const PROX_CARD_OUT = 460;
+const PROX_NEAR = 560;
+const PROX_SWITCH_HYST = 90;
 
 const mapToArrowKey = (raw: string): string | null => {
   if (raw === "ArrowUp" || raw === "ArrowDown" || raw === "ArrowLeft" || raw === "ArrowRight") {
@@ -169,6 +176,7 @@ type FlightState = {
   y: number;
   heading: number;
   speed: number;
+  angVel: number;
 };
 
 const centroidOfStars = (list: Star[]) => {
@@ -218,6 +226,12 @@ export function SceneCanvas({
     y: 0,
     zoom: ZOOM_DEFAULT,
   });
+  /** Smoothed camera position (lags slightly behind plane + look-ahead). */
+  const camFollowRef = useRef({ x: 0, y: 0 });
+  const proximityStickyIdRef = useRef<string | null>(null);
+  const cardAlphaRef = useRef(0);
+  /** Nearest buoy for tap-to-select when not using pointer hit. */
+  const proximitySelectRef = useRef<Star | null>(null);
   const hoveredStarIdRef = useRef<string | null>(null);
   const [hudLine, setHudLine] = useState("WASD / arrows · wheel zoom · click map to focus");
   const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 760 });
@@ -230,6 +244,7 @@ export function SceneCanvas({
     y: 0,
     heading: -Math.PI / 2,
     speed: 0,
+    angVel: 0,
   });
   const keysRef = useRef<Set<string>>(new Set());
   const pointerInSceneRef = useRef(false);
@@ -263,6 +278,9 @@ export function SceneCanvas({
     flightRef.current.y = c.y;
     flightRef.current.heading = -Math.PI / 2;
     flightRef.current.speed = 0;
+    flightRef.current.angVel = 0;
+    camFollowRef.current.x = c.x;
+    camFollowRef.current.y = c.y;
     currentCameraRef.current.x = c.x;
     currentCameraRef.current.y = c.y;
     currentCameraRef.current.zoom = ZOOM_DEFAULT;
@@ -294,6 +312,9 @@ export function SceneCanvas({
     flightRef.current.x = focusTarget.x;
     flightRef.current.y = focusTarget.y;
     flightRef.current.speed *= 0.2;
+    flightRef.current.angVel *= 0.3;
+    camFollowRef.current.x = focusTarget.x;
+    camFollowRef.current.y = focusTarget.y;
     currentCameraRef.current.x = focusTarget.x;
     currentCameraRef.current.y = focusTarget.y;
   }, [focusTarget]);
@@ -357,53 +378,32 @@ export function SceneCanvas({
       backgroundCanvas.height = canvas.height;
       backgroundContext.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
 
-      const sky = backgroundContext.createLinearGradient(0, 0, canvasSize.width, canvasSize.height);
-      sky.addColorStop(0, "#4F7AD4");
-      sky.addColorStop(0.35, "#2B61D1");
-      sky.addColorStop(0.65, "#2554b8");
-      sky.addColorStop(1, "#153d72");
+      const sky = backgroundContext.createLinearGradient(
+        0,
+        canvasSize.height,
+        0,
+        0,
+      );
+      sky.addColorStop(0, "#8EC8F5");
+      sky.addColorStop(0.35, "#5B9AE8");
+      sky.addColorStop(0.62, "#2B61D1");
+      sky.addColorStop(1, "#0C2248");
       backgroundContext.fillStyle = sky;
       backgroundContext.fillRect(0, 0, canvasSize.width, canvasSize.height);
 
       const bloom = backgroundContext.createRadialGradient(
-        canvasSize.width * 0.28,
-        canvasSize.height * 0.28,
-        8,
-        canvasSize.width * 0.4,
-        canvasSize.height * 0.38,
-        Math.max(canvasSize.width, canvasSize.height) * 0.72,
+        canvasSize.width * 0.5,
+        canvasSize.height * 0.92,
+        20,
+        canvasSize.width * 0.5,
+        canvasSize.height * 1.05,
+        Math.max(canvasSize.width, canvasSize.height) * 0.85,
       );
-      bloom.addColorStop(0, "rgba(134, 161, 218, 0.45)");
-      bloom.addColorStop(0.35, "rgba(79, 122, 212, 0.22)");
-      bloom.addColorStop(0.65, "rgba(43, 97, 209, 0.08)");
-      bloom.addColorStop(1, "rgba(21, 61, 114, 0)");
+      bloom.addColorStop(0, "rgba(255, 255, 255, 0.35)");
+      bloom.addColorStop(0.4, "rgba(120, 170, 235, 0.12)");
+      bloom.addColorStop(1, "rgba(12, 34, 72, 0)");
       backgroundContext.fillStyle = bloom;
       backgroundContext.fillRect(0, 0, canvasSize.width, canvasSize.height);
-
-      const haze = backgroundContext.createRadialGradient(
-        canvasSize.width * 0.78,
-        canvasSize.height * 0.62,
-        6,
-        canvasSize.width * 0.72,
-        canvasSize.height * 0.55,
-        Math.max(canvasSize.width, canvasSize.height) * 0.9,
-      );
-      haze.addColorStop(0, "rgba(255, 255, 255, 0.08)");
-      haze.addColorStop(0.45, "rgba(43, 97, 209, 0.06)");
-      haze.addColorStop(1, "rgba(15, 47, 92, 0)");
-      backgroundContext.fillStyle = haze;
-      backgroundContext.fillRect(0, 0, canvasSize.width, canvasSize.height);
-
-      for (let index = 0; index < 260; index += 1) {
-        const x = (index * 97) % canvasSize.width;
-        const y = (index * 193) % canvasSize.height;
-        const size = index % 9 === 0 ? 1.8 : index % 4 === 0 ? 1.2 : 0.8;
-        const alpha = index % 7 === 0 ? 0.42 : 0.26;
-        backgroundContext.beginPath();
-        backgroundContext.fillStyle = `rgba(255,255,255,${alpha})`;
-        backgroundContext.arc(x, y, size, 0, Math.PI * 2);
-        backgroundContext.fill();
-      }
     }
 
     const draw = (timestamp: number) => {
@@ -413,32 +413,46 @@ export function SceneCanvas({
       const dt = clamp((timestamp - lastTs) / 1000, 0, 0.05);
       lastAnimTsRef.current = timestamp;
 
-      const turnRate = reducedMotion ? 1.15 : 2.65;
-      const accel = reducedMotion ? 220 : 480;
-      const brake = reducedMotion ? 320 : 620;
-      const maxSpeed = reducedMotion ? 160 : 380;
-      const friction = reducedMotion ? 0.988 : 0.993;
+      const turnAccel = reducedMotion ? 4.2 : 9.5;
+      const turnDamp = Math.exp(-6.2 * dt);
+      const accel = reducedMotion ? 260 : 520;
+      const brake = reducedMotion ? 380 : 720;
+      const maxSpeed = reducedMotion ? 150 : 340;
+      const coast = reducedMotion ? 0.992 : 0.996;
 
-      let turn = 0;
-      if (keys.has("ArrowLeft")) turn -= 1;
-      if (keys.has("ArrowRight")) turn += 1;
-      flight.heading += turn * turnRate * dt;
+      let turnInput = 0;
+      if (keys.has("ArrowLeft")) turnInput -= 1;
+      if (keys.has("ArrowRight")) turnInput += 1;
+      flight.angVel += turnInput * turnAccel * dt;
+      flight.angVel *= turnDamp;
+      flight.angVel = clamp(flight.angVel, -2.4, 2.4);
+      flight.heading += flight.angVel * dt;
 
       if (keys.has("ArrowUp")) {
         flight.speed += accel * dt;
-      }
-      if (keys.has("ArrowDown")) {
+      } else if (keys.has("ArrowDown")) {
         flight.speed -= brake * dt;
+      } else {
+        flight.speed *= coast;
       }
-      flight.speed *= friction;
       flight.speed = clamp(flight.speed, 0, maxSpeed);
 
       flight.x += Math.cos(flight.heading) * flight.speed * dt;
       flight.y += Math.sin(flight.heading) * flight.speed * dt;
 
+      const look = Math.min(280, flight.speed * 0.72);
+      const desiredCamX = flight.x + Math.cos(flight.heading) * look * 0.24;
+      const desiredCamY = flight.y + Math.sin(flight.heading) * look * 0.24;
+      const camFollow = camFollowRef.current;
+      const followK = Math.min(1, (reducedMotion ? 10 : 6.2) * dt);
+      camFollow.x += (desiredCamX - camFollow.x) * followK;
+      camFollow.y += (desiredCamY - camFollow.y) * followK;
+
       const camera = currentCameraRef.current;
-      camera.x = flight.x;
-      camera.y = flight.y;
+      camera.x = camFollow.x;
+      camera.y = camFollow.y;
+
+      const bankRad = clamp(flight.angVel * 0.38, -0.42, 0.42);
 
       context.clearRect(0, 0, canvasSize.width, canvasSize.height);
 
@@ -449,12 +463,15 @@ export function SceneCanvas({
         context.fillRect(0, 0, canvasSize.width, canvasSize.height);
       }
 
-      drawSkyCloudLayer(
+      drawUpperSparkles(context, canvasSize.width, canvasSize.height, timestamp);
+      drawParallaxCloudLayers(
         context,
         canvasSize.width,
         canvasSize.height,
         timestamp,
-        "tour",
+        camFollow.x,
+        camFollow.y,
+        { layerMin: 0, layerMax: 1 },
       );
 
       if (!stars.length) {
@@ -485,21 +502,29 @@ export function SceneCanvas({
 
       for (const cluster of clusters) {
         const point = worldToScreen(cluster.centroid, canvasSize, camera);
+        if (
+          point.x < -120 ||
+          point.y < -120 ||
+          point.x > canvasSize.width + 120 ||
+          point.y > canvasSize.height + 120
+        ) {
+          continue;
+        }
         context.beginPath();
-        context.strokeStyle = "rgba(255, 255, 255, 0.1)";
+        context.strokeStyle = "rgba(255, 255, 255, 0.08)";
         context.lineWidth = 1;
-        context.arc(point.x, point.y, 40 + cluster.summaryMetrics.instances * 0.06, 0, Math.PI * 2);
+        context.arc(point.x, point.y, 36 + cluster.summaryMetrics.instances * 0.05, 0, Math.PI * 2);
         context.stroke();
 
-        context.fillStyle = "rgba(255, 255, 255, 0.92)";
-        context.font = "600 14px Segoe UI";
-        context.fillText(cluster.label, point.x + 12, point.y - 12);
-        context.fillStyle = "rgba(255, 255, 255, 0.72)";
-        context.font = "12px Segoe UI";
+        context.fillStyle = "rgba(255, 255, 255, 0.78)";
+        context.font = "600 12px Segoe UI, system-ui, sans-serif";
+        context.fillText(cluster.label, point.x + 10, point.y - 10);
+        context.fillStyle = "rgba(255, 255, 255, 0.55)";
+        context.font = "11px Segoe UI, system-ui, sans-serif";
         context.fillText(
           `${cluster.summaryMetrics.apps} apps`,
-          point.x + 12,
-          point.y + 8,
+          point.x + 10,
+          point.y + 6,
         );
       }
 
@@ -542,6 +567,47 @@ export function SceneCanvas({
         onHoverStar(hovered ?? null);
       }
 
+      let nearestIn: { star: Star; d: number } | null = null;
+      for (const star of stars) {
+        const dx = star.x - flight.x;
+        const dy = star.y - flight.y;
+        const d = Math.hypot(dx, dy);
+        if (d < PROX_CARD_IN && (!nearestIn || d < nearestIn.d)) {
+          nearestIn = { star, d };
+        }
+      }
+
+      const stickyId = proximityStickyIdRef.current;
+      let cardStar: Star | null = null;
+      if (nearestIn) {
+        if (!stickyId || stickyId === nearestIn.star.id) {
+          proximityStickyIdRef.current = nearestIn.star.id;
+          cardStar = nearestIn.star;
+        } else {
+          const old = starsById.get(stickyId);
+          const dOld = old ? Math.hypot(old.x - flight.x, old.y - flight.y) : 1e9;
+          if (old && dOld < PROX_CARD_OUT && dOld < nearestIn.d + PROX_SWITCH_HYST) {
+            cardStar = old;
+          } else {
+            proximityStickyIdRef.current = nearestIn.star.id;
+            cardStar = nearestIn.star;
+          }
+        }
+      } else if (stickyId) {
+        const old = starsById.get(stickyId);
+        const dOld = old ? Math.hypot(old.x - flight.x, old.y - flight.y) : 1e9;
+        if (old && dOld < PROX_CARD_OUT) {
+          cardStar = old;
+        } else {
+          proximityStickyIdRef.current = null;
+        }
+      }
+
+      const cardTarget = cardStar ? 1 : 0;
+      cardAlphaRef.current += (cardTarget - cardAlphaRef.current) * Math.min(1, 5 * dt);
+      proximitySelectRef.current =
+        cardStar && cardAlphaRef.current > 0.35 ? cardStar : null;
+
       for (const star of stars) {
         const point = worldToScreen({ x: star.x, y: star.y }, canvasSize, camera);
         if (
@@ -556,35 +622,56 @@ export function SceneCanvas({
         const selected = selectedAppName === star.appName;
         const hoveredMatch = hovered?.id === star.id;
         const searchMatch = matchSet.has(star.appName);
+        const dx = star.x - flight.x;
+        const dy = star.y - flight.y;
+        const distW = Math.hypot(dx, dy);
 
-        const accent = getCartoonAccent(star.appName);
-        const variant = getMarkerVariant(star.appName);
-        const baseScale = Math.max(
-          0.98,
-          Math.min(2.95, star.size * camera.zoom * 0.105 + 0.16),
-        );
-        drawCartoonMarker({
-          ctx: context,
-          x: snapPixel(point.x),
-          y: snapPixel(point.y),
-          accent,
-          variant,
-          baseScale,
-          highlight: selected || hoveredMatch || searchMatch,
-          chunkyOutline: true,
-        });
-
-        if (selected || hoveredMatch || searchMatch) {
-          const tx = point.x + 14;
-          const ty = point.y - 12;
-          context.font = selected ? "600 13px Segoe UI, system-ui, sans-serif" : "12px Segoe UI, system-ui, sans-serif";
-          context.lineJoin = "round";
-          context.strokeStyle = "rgba(10, 10, 18, 0.92)";
-          context.lineWidth = 3;
-          context.strokeText(star.appName, tx, ty);
-          context.fillStyle = "#ffffff";
-          context.fillText(star.appName, tx, ty);
+        let proximity: 0 | 1 | 2 = 0;
+        if (cardStar?.id === star.id && cardAlphaRef.current > 0.2) {
+          proximity = 2;
+        } else if (distW < PROX_NEAR) {
+          proximity = 1;
         }
+
+        const colors = getBuoyColorway(star);
+        const baseScale = Math.max(
+          1.02,
+          Math.min(2.85, star.size * camera.zoom * 0.1 + 0.18),
+        );
+        drawDeploymentBuoy({
+          ctx: context,
+          x: point.x,
+          y: point.y,
+          colors,
+          baseScale,
+          seed: star.id,
+          proximity,
+          selected,
+          searchOrPointer: hoveredMatch || searchMatch,
+          timestamp,
+        });
+      }
+
+      drawParallaxCloudLayers(
+        context,
+        canvasSize.width,
+        canvasSize.height,
+        timestamp,
+        camFollow.x,
+        camFollow.y,
+        { layerMin: 2, layerMax: 2 },
+      );
+
+      if (cardStar && cardAlphaRef.current > 0.04) {
+        const p = worldToScreen({ x: cardStar.x, y: cardStar.y }, canvasSize, camera);
+        drawProximityHoverCard(
+          context,
+          p.x,
+          p.y,
+          cardStar.appName,
+          categoryLabel(cardStar),
+          cardAlphaRef.current,
+        );
       }
 
       if (stars.length) {
@@ -593,6 +680,7 @@ export function SceneCanvas({
           canvasSize.width / 2,
           canvasSize.height / 2,
           flight.heading,
+          bankRad,
           timestamp,
         );
       }
@@ -636,10 +724,15 @@ export function SceneCanvas({
       y: c.y,
       heading: -Math.PI / 2,
       speed: 0,
+      angVel: 0,
     };
+    camFollowRef.current.x = c.x;
+    camFollowRef.current.y = c.y;
     currentCameraRef.current.x = c.x;
     currentCameraRef.current.y = c.y;
     currentCameraRef.current.zoom = ZOOM_DEFAULT;
+    proximityStickyIdRef.current = null;
+    cardAlphaRef.current = 0;
   };
 
   const bumpZoom = (factor: number) => {
@@ -685,7 +778,12 @@ export function SceneCanvas({
       const star = starsById.get(id);
       if (star) {
         onSelectApp(star.appName);
+        return;
       }
+    }
+    const near = proximitySelectRef.current;
+    if (near) {
+      onSelectApp(near.appName);
     }
   };
 
@@ -759,7 +857,7 @@ export function SceneCanvas({
                 <strong>Scroll</strong> (or pinch on a trackpad) to zoom; centers stay under your cursor.
               </li>
               <li>
-                <strong>Hover</strong> a pad and <strong>click</strong> to open details.
+                <strong>Fly close</strong> to a buoy for its name; <strong>click</strong> or tap to open details.
               </li>
             </ul>
             <button type="button" className="primary-action scene-flight-tip-dismiss" onClick={dismissTip}>
