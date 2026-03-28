@@ -9,9 +9,9 @@ import {
   type WheelEvent,
 } from "react";
 import {
-  drawCartoonCloudPuffs,
   drawCartoonMarker,
-  easePop,
+  drawSkyCloudLayer,
+  drawTourBiplane,
   getCartoonAccent,
   getMarkerVariant,
   snapPixel,
@@ -53,32 +53,6 @@ const defaultCamera: CameraState = {
   x: 0,
   y: 0,
   zoom: 0.18,
-};
-
-const colorMap: Record<string, string> = {
-  api: "#64c8ff",
-  website: "#f5f0ff",
-  database: "#ffc777",
-  infra: "#7bd8a6",
-  tool: "#b0c7ff",
-  media: "#f39fd1",
-  ai: "#76f0ff",
-  misc: "#94a8c6",
-  node: "#8db4ff",
-  python: "#a4d8ff",
-  java: "#ffcc8d",
-  dotnet: "#9fa5ff",
-  php: "#dbb0ff",
-  go: "#80f0cc",
-  rust: "#f8b97c",
-  bun: "#d7ffc2",
-  unknown: "#8fa1bd",
-  nano: "#7b90aa",
-  small: "#90a8d0",
-  medium: "#64c8ff",
-  large: "#80f0cc",
-  xlarge: "#ffc777",
-  featured: "#ffffff",
 };
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
@@ -232,6 +206,8 @@ export function SceneCanvas({
   const lastHoverEvalRef = useRef({ x: 0, y: 0, cameraX: 0, cameraY: 0, cameraZoom: 0 });
   const tourModeRef = useRef(false);
   const tourStartMsRef = useRef(0);
+  const tourHeadingRef = useRef(0);
+  const lastWheelAtRef = useRef(0);
 
   const starsById = useMemo(() => new Map(stars.map((star) => [star.id, star])), [stars]);
   const matchSet = useMemo(() => new Set(searchMatches), [searchMatches]);
@@ -389,15 +365,18 @@ export function SceneCanvas({
         const u = easeInOutCubic((e % TOUR_SEGMENT_MS) / TOUR_SEGMENT_MS);
         const p0 = tourWaypoints[segIdx];
         const p1 = tourWaypoints[nextIdx];
-        const swayX = 48 * Math.sin(timestamp / 860 + segIdx * 0.73);
-        const swayY = 40 * Math.cos(timestamp / 980 + segIdx * 0.51);
-        const tx = lerp(p0.x, p1.x, u) + swayX * 0.018;
-        const ty = lerp(p0.y, p1.y, u) + swayY * 0.018;
+        const dx = p1.x - p0.x;
+        const dy = p1.y - p0.y;
+        tourHeadingRef.current = Math.atan2(dy, dx);
+        const swayX = 22 * Math.sin(timestamp / 1100 + segIdx * 0.5);
+        const swayY = 18 * Math.cos(timestamp / 1250 + segIdx * 0.4);
+        const tx = lerp(p0.x, p1.x, u) + swayX * 0.004;
+        const ty = lerp(p0.y, p1.y, u) + swayY * 0.004;
         const zoomBreath = Math.sin(Math.PI * u);
         const tz = clamp(
-          0.2 + zoomBreath * 0.38 + 0.06 * Math.sin(timestamp / 2100),
-          0.16,
-          0.58,
+          0.22 + zoomBreath * 0.22 + 0.03 * Math.sin(timestamp / 2400),
+          0.18,
+          0.52,
         );
         targetCameraRef.current = { x: tx, y: ty, zoom: tz };
       }
@@ -408,12 +387,14 @@ export function SceneCanvas({
       const smooth = prefersReducedMotion() ? 1 : 1 - Math.pow(0.001, dt / 16);
 
       const motion = motionRef.current;
-      const stiffness = 0.32 * smooth;
-      const damping = prefersReducedMotion() ? 0.9 : 0.82;
+      const wheelRecent = performance.now() - lastWheelAtRef.current < 140;
+      const tightFollow = wheelRecent || draggingRef.current;
+      const stiffness = (tightFollow ? 0.52 : 0.28) * smooth;
+      const damping = prefersReducedMotion() ? 0.9 : tightFollow ? 0.91 : 0.88;
 
       motion.velocityX = (motion.velocityX + (target.x - camera.x) * stiffness) * damping;
       motion.velocityY = (motion.velocityY + (target.y - camera.y) * stiffness) * damping;
-      motion.velocityZoom = (motion.velocityZoom + (target.zoom - camera.zoom) * (stiffness * 0.9)) * damping;
+      motion.velocityZoom = (motion.velocityZoom + (target.zoom - camera.zoom) * (stiffness * 0.95)) * damping;
 
       camera.x += motion.velocityX;
       camera.y += motion.velocityY;
@@ -428,43 +409,33 @@ export function SceneCanvas({
         context.fillRect(0, 0, canvasSize.width, canvasSize.height);
       }
 
-      const prevImageSmoothing = context.imageSmoothingEnabled;
-      if (tourModeRef.current) {
-        context.imageSmoothingEnabled = false;
-        drawCartoonCloudPuffs(context, canvasSize.width, canvasSize.height, timestamp);
-      }
+      drawSkyCloudLayer(
+        context,
+        canvasSize.width,
+        canvasSize.height,
+        timestamp,
+        tourModeRef.current ? "tour" : "explore",
+      );
 
-      if (camera.zoom < 0.75 && !tourModeRef.current) {
+      if (camera.zoom < 0.72 && !tourModeRef.current) {
         for (const cluster of clusters) {
           const point = worldToScreen(cluster.centroid, canvasSize, camera);
           context.beginPath();
-          context.strokeStyle = "rgba(43, 97, 209, 0.14)";
+          context.strokeStyle = "rgba(255, 255, 255, 0.1)";
           context.lineWidth = 1;
-          context.arc(point.x, point.y, 46 + cluster.summaryMetrics.instances * 0.075, 0, Math.PI * 2);
+          context.arc(point.x, point.y, 40 + cluster.summaryMetrics.instances * 0.06, 0, Math.PI * 2);
           context.stroke();
 
-          context.fillStyle = "rgba(207, 225, 255, 0.88)";
+          context.fillStyle = "rgba(255, 255, 255, 0.92)";
           context.font = "600 14px Segoe UI";
           context.fillText(cluster.label, point.x + 12, point.y - 12);
-          context.fillStyle = "rgba(149, 171, 200, 0.92)";
+          context.fillStyle = "rgba(255, 255, 255, 0.72)";
           context.font = "12px Segoe UI";
           context.fillText(
             `${cluster.summaryMetrics.apps} apps`,
             point.x + 12,
             point.y + 8,
           );
-        }
-      }
-
-      if (camera.zoom > 0.95 && !tourModeRef.current) {
-        context.strokeStyle = "rgba(79, 122, 212, 0.14)";
-        context.lineWidth = 1;
-
-        for (const system of systems) {
-          const point = worldToScreen({ x: system.x, y: system.y }, canvasSize, camera);
-          context.beginPath();
-          context.arc(point.x, point.y, 8, 0, Math.PI * 2);
-          context.stroke();
         }
       }
 
@@ -486,7 +457,7 @@ export function SceneCanvas({
               canvasSize,
               camera,
               radiusPadding: 5,
-              hitScale: tourModeRef.current ? 1.85 : 1,
+              hitScale: tourModeRef.current ? 1.55 : 1.15,
             })
           : hoveredStarIdRef.current
             ? starsById.get(hoveredStarIdRef.current) ?? null
@@ -508,7 +479,7 @@ export function SceneCanvas({
         onHoverStar(hovered ?? null);
       }
 
-      const cartoonScene = tourModeRef.current;
+      const inTour = tourModeRef.current;
 
       for (const star of stars) {
         const point = worldToScreen({ x: star.x, y: star.y }, canvasSize, camera);
@@ -525,76 +496,44 @@ export function SceneCanvas({
         const hoveredMatch = hovered?.id === star.id;
         const searchMatch = matchSet.has(star.appName);
 
-        if (cartoonScene) {
-          const popRaw = (Math.sin(timestamp / 340 + star.size * 0.4) + 1) / 2;
-          const pop = easePop(popRaw);
-          const accent = getCartoonAccent(star.appName);
-          const variant = getMarkerVariant(star.appName);
-          const baseScale = Math.max(
-            0.95,
-            Math.min(2.6, star.size * camera.zoom * 0.1),
-          );
-          drawCartoonMarker({
-            ctx: context,
-            x: snapPixel(point.x),
-            y: snapPixel(point.y),
-            accent,
-            variant,
-            baseScale,
-            pop,
-            highlight: selected || hoveredMatch || searchMatch,
-          });
+        const accent = getCartoonAccent(star.appName);
+        const variant = getMarkerVariant(star.appName);
+        const baseScale = Math.max(
+          0.82,
+          Math.min(2.4, star.size * camera.zoom * 0.095),
+        );
+        drawCartoonMarker({
+          ctx: context,
+          x: inTour ? snapPixel(point.x) : point.x,
+          y: inTour ? snapPixel(point.y) : point.y,
+          accent,
+          variant,
+          baseScale,
+          highlight: selected || hoveredMatch || searchMatch,
+          chunkyOutline: inTour,
+        });
 
-          if (selected || hoveredMatch || searchMatch) {
-            const tx = snapPixel(point.x + 16);
-            const ty = snapPixel(point.y - 14);
-            context.font = selected
-              ? "800 13px \"Consolas\", \"Lucida Console\", monospace"
-              : "700 12px \"Consolas\", \"Lucida Console\", monospace";
-            context.lineJoin = "miter";
-            context.strokeStyle = "#0a0a12";
-            context.lineWidth = 4;
-            context.strokeText(star.appName, tx, ty);
-            context.fillStyle = "#ffffff";
-            context.fillText(star.appName, tx, ty);
-          }
-          continue;
-        }
-
-        const color = colorMap[star.colorBucket] ?? "#cfe1ff";
-        const pulse =
-          0.78 +
-          ((Math.sin(timestamp / 520 + star.size) + 1) / 2) * 0.25;
-        const radius = Math.max(1.6, Math.min(16, star.size * camera.zoom * 0.55));
-
-        if (selected || hoveredMatch || searchMatch) {
-          context.beginPath();
-          context.fillStyle = selected
-            ? "rgba(43, 97, 209, 0.22)"
-            : "rgba(255,255,255,0.12)";
-          context.arc(point.x, point.y, radius + 9, 0, Math.PI * 2);
-          context.fill();
-        }
-
-        context.beginPath();
-        context.fillStyle = color;
-        context.shadowBlur = selected || hoveredMatch ? 20 : 10;
-        context.shadowColor = color;
-        context.globalAlpha = clamp(star.brightness * pulse, 0.35, 1);
-        context.arc(point.x, point.y, radius, 0, Math.PI * 2);
-        context.fill();
-        context.globalAlpha = 1;
-        context.shadowBlur = 0;
-
-        if ((selected || hoveredMatch || searchMatch) && camera.zoom > 0.72) {
-          context.fillStyle = "rgba(237, 244, 255, 0.92)";
-          context.font = selected ? "600 13px Segoe UI" : "12px Segoe UI";
-          context.fillText(star.appName, point.x + 10, point.y - 10);
+        if ((selected || hoveredMatch || searchMatch) && camera.zoom > 0.58) {
+          const tx = point.x + 14;
+          const ty = point.y - 12;
+          context.font = selected ? "600 13px Segoe UI, system-ui, sans-serif" : "12px Segoe UI, system-ui, sans-serif";
+          context.lineJoin = "round";
+          context.strokeStyle = "rgba(10, 10, 18, 0.92)";
+          context.lineWidth = 3;
+          context.strokeText(star.appName, tx, ty);
+          context.fillStyle = "#ffffff";
+          context.fillText(star.appName, tx, ty);
         }
       }
 
-      if (tourModeRef.current) {
-        context.imageSmoothingEnabled = prevImageSmoothing;
+      if (inTour) {
+        drawTourBiplane(
+          context,
+          canvasSize.width,
+          canvasSize.height,
+          timestamp,
+          tourHeadingRef.current,
+        );
       }
 
       if (timestamp - lastHudUpdateRef.current > 90) {
@@ -712,6 +651,7 @@ export function SceneCanvas({
     if (tourMode) {
       setTourMode(false);
     }
+    lastWheelAtRef.current = performance.now();
     event.preventDefault();
     const bounds = canvasRef.current?.getBoundingClientRect();
     const anchor = bounds
