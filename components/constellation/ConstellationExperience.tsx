@@ -6,6 +6,7 @@ import { FilterBar } from "./FilterBar";
 import { SearchBox } from "./SearchBox";
 import { SceneCanvas } from "./SceneCanvas";
 import { DetailDrawer } from "./DetailDrawer";
+import { BUILD_STAMP } from "../../lib/buildStamp";
 import type {
   AppDetail,
   AppSystem,
@@ -341,7 +342,13 @@ export function ConstellationExperience() {
                 ? "Loading public FluxCloud snapshot..."
                 : `Snapshot generated ${new Date(activeScene.generatedAt).toLocaleString()}`}
             </span>
-            <span>{visibleStars.length} visible stars after filtering</span>
+            <span>
+              {visibleStars.length} visible stars after filtering
+              <span className="build-stamp" title="If this does not match Git, Flux has not deployed the latest build.">
+                {" "}
+                · Build {BUILD_STAMP}
+              </span>
+            </span>
           </div>
 
           <SceneCanvas

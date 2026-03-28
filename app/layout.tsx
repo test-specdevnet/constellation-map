@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { BUILD_STAMP } from "../lib/buildStamp";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -14,8 +15,8 @@ export default function RootLayout({
   children: ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="en" data-build={BUILD_STAMP}>
+      <body data-build={BUILD_STAMP}>{children}</body>
     </html>
   );
 }

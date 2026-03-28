@@ -297,6 +297,12 @@ h3 {
   font-size: 0.9rem;
 }
 
+.build-stamp {
+  font-family: Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.82em;
+  color: rgba(255, 255, 255, 0.55);
+}
+
 .scene-shell {
   padding: 14px;
   border-radius: 28px;
