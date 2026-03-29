@@ -627,11 +627,26 @@ export function SceneCanvas({
       backgroundContext.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
 
       const sky = backgroundContext.createLinearGradient(0, canvasSize.height, 0, 0);
-      sky.addColorStop(0, "#8EC8F5");
-      sky.addColorStop(0.35, "#5B9AE8");
-      sky.addColorStop(0.62, "#2B61D1");
-      sky.addColorStop(1, "#0C2248");
+      sky.addColorStop(0, "#F3FAFF");
+      sky.addColorStop(0.24, "#B8E3FF");
+      sky.addColorStop(0.54, "#6CB8FF");
+      sky.addColorStop(0.78, "#2B7DE0");
+      sky.addColorStop(1, "#14427D");
       backgroundContext.fillStyle = sky;
+      backgroundContext.fillRect(0, 0, canvasSize.width, canvasSize.height);
+
+      const sunwash = backgroundContext.createRadialGradient(
+        canvasSize.width * 0.16,
+        canvasSize.height * 0.18,
+        12,
+        canvasSize.width * 0.16,
+        canvasSize.height * 0.18,
+        Math.max(canvasSize.width, canvasSize.height) * 0.44,
+      );
+      sunwash.addColorStop(0, "rgba(255, 255, 255, 0.56)");
+      sunwash.addColorStop(0.28, "rgba(255, 233, 174, 0.22)");
+      sunwash.addColorStop(1, "rgba(255, 255, 255, 0)");
+      backgroundContext.fillStyle = sunwash;
       backgroundContext.fillRect(0, 0, canvasSize.width, canvasSize.height);
 
       const bloom = backgroundContext.createRadialGradient(
@@ -751,7 +766,7 @@ export function SceneCanvas({
         timestamp,
         camFollow.x,
         camFollow.y,
-        { layerMin: 0, layerMax: 1 },
+        { layerMin: 0, layerMax: 2 },
       );
 
       if (!clusters.length && !systems.length && !stars.length) {
@@ -935,8 +950,9 @@ export function SceneCanvas({
             x,
             y,
             colors: getBuoyColorway(system),
-            baseScale: Math.max(0.7, radius / 11),
+            baseScale: Math.max(0.6, radius / 12.6),
             seed: system.systemId,
+            variant: system.projectCategory,
             proximity: isSelected ? 2 : 0,
             selected: isSelected,
             searchOrPointer: isSearchMatch,
@@ -1000,8 +1016,9 @@ export function SceneCanvas({
               x,
               y,
               colors: getBuoyColorway(star),
-              baseScale: baseScale * projected.radialScale,
+              baseScale: baseScale * projected.radialScale * 0.92,
               seed: star.id,
+              variant: star.projectCategory,
               proximity: isSelected ? 2 : 1,
               selected: isSelected,
               searchOrPointer: isSearchMatch,
