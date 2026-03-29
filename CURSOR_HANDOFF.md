@@ -7,7 +7,13 @@
 
 ## What Changed
 
-The constellation map was refactored around a focus+context exploration model with progressive disclosure and local game-like progression.
+The constellation map was refactored around a focus+context exploration model with progressive disclosure, local game-like progression, and a brighter cartoon-sky art pass.
+
+Integrated local branches on `main`:
+
+- `focus-context-branch` at `c34581e` (`feat: polish focus context navigation`)
+- `gamification-branch` at `738c6f8` (`feat: deepen constellation progression`)
+- `visual-layer-branch` at `38ec248` (`feat: brighten constellation art direction`)
 
 Implemented areas:
 
@@ -35,6 +41,12 @@ Implemented areas:
   - quest log
   - hangar / plane skins
   - achievement toast
+- Visual layer polish:
+  - brighter gradient sky treatment
+  - deeper drifting cloud layers
+  - slimmer buoy sizing
+  - slight category-driven buoy silhouette variation
+  - softer glassy panel styling and animated sky accents
 - Local persistence for:
   - visited regions
   - discovered runtimes
@@ -83,25 +95,17 @@ Region label derivation uses node `regionName`, then country/org fallbacks, then
 Passing:
 
 - `npm.cmd run typecheck`
-- `npm.cmd run build -- --experimental-build-mode generate-env`
-
-Blocked in this sandbox by process spawning restrictions (`spawn EPERM`):
-
 - `npm.cmd run build`
-- `npm.cmd run build -- --experimental-build-mode compile`
+
+Partially checked:
+
 - `npm.cmd run dev`
-
-Observed behavior:
-
-- Next compiles successfully
-- type validation completes
-- then the environment fails during a later spawn step
-
-This looks environment-specific, not like a TypeScript or bundling error in the app code.
+  - command was started as a short boot check
+  - it timed out because the dev server is long-running, so browser-based smoke coverage was not completed in this environment
 
 ## Manual Smoke Coverage Still Needed In Cursor
 
-Run outside this sandbox:
+Run from the merged `main` worktree in Cursor or a native shell:
 
 ```powershell
 npm run typecheck
@@ -112,6 +116,8 @@ npm run dev
 Then verify:
 
 - first load shows region clouds only
+- mini-map stays compact, highlights the current region, and allows jump-to-sector navigation
+- fisheye lens feels narrower and less crowding-heavy around the plane
 - zooming or flying into a region reveals runtime clouds and app anchors
 - deep zoom / close approach reveals individual stars
 - cluster click focuses without opening the drawer
@@ -119,6 +125,9 @@ Then verify:
 - mini-map tracks plane position and active region
 - quests progress and skins unlock only once
 - selected skin persists across reload
+- hangar modal opens, equips skins, and reset progress clears local storage state
+- quest badges, progress meters, and HUD quest readouts stay in sync
+- brighter sky, drifting clouds, and slimmer buoy markers still read well on mobile
 - mobile flight pad still works with overlays present
 
 ## Implementation Notes
@@ -128,10 +137,12 @@ Then verify:
 - Plane skins affect only visuals; no data semantics changed
 - Search remains app-focused and still jumps to app systems
 - Detail API remains app-focused; no cluster detail endpoint was added
+- The merged `main` branch is ahead of `origin/main` locally and has not been pushed yet
 
 ## Suggested Next Steps
 
-1. Run the app in Cursor or a native shell where Next can spawn child processes.
-2. Do a manual UX pass on overlay sizing and canvas readability with real data volume.
-3. If needed, tune disclosure thresholds in `lib/layout/focusContext.ts`.
-4. If needed, tune cluster positioning and rarity thresholds in `lib/layout/seededLayout.ts`.
+1. Push the merged `main` branch after Cursor does its final cleanup and documentation pass.
+2. Do a manual UX pass on overlay sizing, mini-map click feel, and canvas readability with real data volume.
+3. Verify the hangar reset flow and persistent unlock logic in a real browser session.
+4. If needed, tune disclosure thresholds in `lib/layout/focusContext.ts`.
+5. If needed, tune cluster positioning, buoy scale, and rarity thresholds in `lib/layout/seededLayout.ts` and `lib/canvas/cartoonMarkers.ts`.
