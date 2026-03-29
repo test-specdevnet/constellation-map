@@ -14,7 +14,6 @@ import {
   drawParallaxCloudLayers,
   drawProximityHoverCard,
   drawTopDownBiplane,
-  drawUpperSparkles,
   planeSkinPalettes,
   type PlaneSkinId,
 } from "../../lib/canvas/cartoonMarkers";
@@ -85,24 +84,6 @@ type FlightState = {
   angVel: number;
 };
 
-type FocusAnimation = {
-  key: string;
-  startTs: number | null;
-  duration: number;
-  start: {
-    x: number;
-    y: number;
-    heading: number;
-    zoom: number;
-  };
-  end: {
-    x: number;
-    y: number;
-    heading: number;
-    zoom: number;
-  };
-};
-
 type Renderable = {
   entity: HoveredEntity;
   x: number;
@@ -118,14 +99,6 @@ const FLIGHT_TIP_KEY = "flux-flight-tip-dismissed";
 
 const clamp = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value));
-
-const easeInOutCubic = (value: number) =>
-  value < 0.5 ? 4 * value * value * value : 1 - Math.pow(-2 * value + 2, 3) / 2;
-
-const interpolateAngle = (from: number, to: number, progress: number) => {
-  const delta = Math.atan2(Math.sin(to - from), Math.cos(to - from));
-  return from + delta * progress;
-};
 
 const worldToScreen = (
   world: { x: number; y: number },
@@ -255,7 +228,7 @@ const drawClusterCloud = ({
   radius,
   alpha,
   label,
-  meta,
+  meta: _meta,
   active,
   rare,
   level,
@@ -267,7 +240,7 @@ const drawClusterCloud = ({
   radius: number;
   alpha: number;
   label: string;
-  meta: string;
+  meta?: string;
   active: boolean;
   rare: boolean;
   level: Cluster["level"];
@@ -277,12 +250,12 @@ const drawClusterCloud = ({
   const puffColor =
     level === "region"
       ? active
-        ? "rgba(110, 201, 255, 0.98)"
-        : "rgba(155, 204, 255, 0.92)"
+        ? "rgba(255, 255, 255, 0.98)"
+        : "rgba(235, 245, 255, 0.92)"
       : active
-        ? "rgba(255, 195, 109, 0.98)"
-        : "rgba(255, 170, 120, 0.9)";
-  const outline = rare ? "rgba(255, 236, 173, 0.95)" : "rgba(10, 16, 32, 0.88)";
+        ? "rgba(255, 232, 189, 0.98)"
+        : "rgba(255, 216, 181, 0.9)";
+  const outline = rare ? "rgba(255, 246, 196, 0.86)" : "rgba(10, 28, 60, 0.6)";
 
   ctx.save();
   ctx.globalAlpha = alpha;
@@ -313,7 +286,7 @@ const drawClusterCloud = ({
     ctx.fill();
   }
 
-  ctx.lineWidth = active ? 3.2 : 2.1;
+  ctx.lineWidth = active ? 2.8 : 1.8;
   ctx.strokeStyle = outline;
   ctx.beginPath();
   ctx.arc(x, y, radius * 0.88, 0, Math.PI * 2);
@@ -333,10 +306,7 @@ const drawClusterCloud = ({
     ? "700 13px Segoe UI, system-ui, sans-serif"
     : "600 12px Segoe UI, system-ui, sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText(label, x, y - 4);
-  ctx.fillStyle = "rgba(230, 241, 255, 0.78)";
-  ctx.font = "11px Segoe UI, system-ui, sans-serif";
-  ctx.fillText(meta, x, y + 14);
+  ctx.fillText(label, x, y + 4);
   ctx.restore();
 };
 
@@ -402,7 +372,6 @@ export function SceneCanvas({
   const backgroundCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastAnimTsRef = useRef<number | null>(null);
   const focusKeyAppliedRef = useRef<string | null>(null);
-  const focusAnimationRef = useRef<FocusAnimation | null>(null);
   const telemetryEmitTsRef = useRef(0);
   const flightSeededRef = useRef(false);
   const pointerInSceneRef = useRef(false);
@@ -522,48 +491,16 @@ export function SceneCanvas({
     }
 
     focusKeyAppliedRef.current = focusTarget.key;
-    const flight = flightRef.current;
-    const camera = currentCameraRef.current;
-    const targetZoom = clamp(focusTarget.zoom, ZOOM_MIN, ZOOM_MAX);
-    const distance = Math.hypot(focusTarget.x - flight.x, focusTarget.y - flight.y);
-    const targetHeading =
-      distance > 20
-        ? Math.atan2(focusTarget.y - flight.y, focusTarget.x - flight.x)
-        : flight.heading;
-
-    if (reducedMotion) {
-      focusAnimationRef.current = null;
-      flight.x = focusTarget.x;
-      flight.y = focusTarget.y;
-      flight.heading = targetHeading;
-      flight.speed = 0;
-      flight.angVel = 0;
-      camFollowRef.current.x = focusTarget.x;
-      camFollowRef.current.y = focusTarget.y;
-      camera.x = focusTarget.x;
-      camera.y = focusTarget.y;
-      camera.zoom = targetZoom;
-      return;
-    }
-
-    focusAnimationRef.current = {
-      key: focusTarget.key,
-      startTs: null,
-      duration: clamp(700 + distance * 0.04, 720, 1_450),
-      start: {
-        x: flight.x,
-        y: flight.y,
-        heading: flight.heading,
-        zoom: camera.zoom,
-      },
-      end: {
-        x: focusTarget.x,
-        y: focusTarget.y,
-        heading: targetHeading,
-        zoom: targetZoom,
-      },
-    };
-  }, [focusTarget, reducedMotion]);
+    flightRef.current.x = focusTarget.x;
+    flightRef.current.y = focusTarget.y;
+    flightRef.current.speed *= 0.15;
+    flightRef.current.angVel *= 0.25;
+    camFollowRef.current.x = focusTarget.x;
+    camFollowRef.current.y = focusTarget.y;
+    currentCameraRef.current.x = focusTarget.x;
+    currentCameraRef.current.y = focusTarget.y;
+    currentCameraRef.current.zoom = clamp(focusTarget.zoom, ZOOM_MIN, ZOOM_MAX);
+  }, [focusTarget]);
 
   useEffect(() => {
     const flightKeysActive = () => {
@@ -627,26 +564,23 @@ export function SceneCanvas({
       backgroundContext.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
 
       const sky = backgroundContext.createLinearGradient(0, canvasSize.height, 0, 0);
-      sky.addColorStop(0, "#F3FAFF");
-      sky.addColorStop(0.24, "#B8E3FF");
-      sky.addColorStop(0.54, "#6CB8FF");
-      sky.addColorStop(0.78, "#2B7DE0");
-      sky.addColorStop(1, "#14427D");
+      sky.addColorStop(0, "#CBEFFF");
+      sky.addColorStop(0.3, "#90D1FF");
+      sky.addColorStop(0.62, "#4C9BE9");
+      sky.addColorStop(1, "#2470D4");
       backgroundContext.fillStyle = sky;
       backgroundContext.fillRect(0, 0, canvasSize.width, canvasSize.height);
 
-      const sunwash = backgroundContext.createRadialGradient(
-        canvasSize.width * 0.16,
-        canvasSize.height * 0.18,
-        12,
-        canvasSize.width * 0.16,
-        canvasSize.height * 0.18,
-        Math.max(canvasSize.width, canvasSize.height) * 0.44,
+      const horizonGlow = backgroundContext.createLinearGradient(
+        0,
+        canvasSize.height * 0.46,
+        0,
+        canvasSize.height,
       );
-      sunwash.addColorStop(0, "rgba(255, 255, 255, 0.56)");
-      sunwash.addColorStop(0.28, "rgba(255, 233, 174, 0.22)");
-      sunwash.addColorStop(1, "rgba(255, 255, 255, 0)");
-      backgroundContext.fillStyle = sunwash;
+      horizonGlow.addColorStop(0, "rgba(255, 255, 255, 0)");
+      horizonGlow.addColorStop(0.55, "rgba(255, 244, 224, 0.12)");
+      horizonGlow.addColorStop(1, "rgba(255, 240, 214, 0.26)");
+      backgroundContext.fillStyle = horizonGlow;
       backgroundContext.fillRect(0, 0, canvasSize.width, canvasSize.height);
 
       const bloom = backgroundContext.createRadialGradient(
@@ -657,9 +591,9 @@ export function SceneCanvas({
         canvasSize.height * 1.05,
         Math.max(canvasSize.width, canvasSize.height) * 0.85,
       );
-      bloom.addColorStop(0, "rgba(255, 255, 255, 0.35)");
-      bloom.addColorStop(0.4, "rgba(120, 170, 235, 0.12)");
-      bloom.addColorStop(1, "rgba(12, 34, 72, 0)");
+      bloom.addColorStop(0, "rgba(255, 255, 255, 0.4)");
+      bloom.addColorStop(0.4, "rgba(186, 226, 255, 0.14)");
+      bloom.addColorStop(1, "rgba(36, 112, 212, 0)");
       backgroundContext.fillStyle = bloom;
       backgroundContext.fillRect(0, 0, canvasSize.width, canvasSize.height);
     }
@@ -677,71 +611,40 @@ export function SceneCanvas({
       const brake = reducedMotion ? 400 : 760;
       const maxSpeed = reducedMotion ? 130 : 300;
       const coast = reducedMotion ? 0.992 : 0.996;
-      const camFollow = camFollowRef.current;
-      const camera = currentCameraRef.current;
-      const hasManualFlightInput = keys.size > 0;
 
-      if (focusAnimationRef.current && hasManualFlightInput) {
-        focusAnimationRef.current = null;
-      }
+      let turnInput = 0;
+      if (keys.has("ArrowLeft")) turnInput -= 1;
+      if (keys.has("ArrowRight")) turnInput += 1;
+      flight.angVel += turnInput * turnAccel * dt;
+      flight.angVel *= turnDamp;
+      flight.angVel = clamp(flight.angVel, -2.4, 2.4);
+      flight.heading += flight.angVel * dt;
 
-      if (focusAnimationRef.current) {
-        const animation = focusAnimationRef.current;
-        animation.startTs ??= timestamp;
-        const t = clamp((timestamp - animation.startTs) / animation.duration, 0, 1);
-        const eased = easeInOutCubic(t);
-
-        flight.x = animation.start.x + (animation.end.x - animation.start.x) * eased;
-        flight.y = animation.start.y + (animation.end.y - animation.start.y) * eased;
-        flight.heading = interpolateAngle(
-          animation.start.heading,
-          animation.end.heading,
-          eased,
-        );
-        flight.speed = 0;
-        flight.angVel = 0;
-        camFollow.x = flight.x;
-        camFollow.y = flight.y;
-        camera.x = flight.x;
-        camera.y = flight.y;
-        camera.zoom =
-          animation.start.zoom + (animation.end.zoom - animation.start.zoom) * eased;
-
-        if (t >= 1) {
-          focusAnimationRef.current = null;
-        }
+      if (keys.has("ArrowUp")) {
+        flight.speed += accel * dt;
+      } else if (keys.has("ArrowDown")) {
+        flight.speed -= brake * dt;
       } else {
-        let turnInput = 0;
-        if (keys.has("ArrowLeft")) turnInput -= 1;
-        if (keys.has("ArrowRight")) turnInput += 1;
-        flight.angVel += turnInput * turnAccel * dt;
-        flight.angVel *= turnDamp;
-        flight.angVel = clamp(flight.angVel, -2.4, 2.4);
-        flight.heading += flight.angVel * dt;
-
-        if (keys.has("ArrowUp")) {
-          flight.speed += accel * dt;
-        } else if (keys.has("ArrowDown")) {
-          flight.speed -= brake * dt;
-        } else {
-          flight.speed *= coast;
-        }
-        flight.speed = clamp(flight.speed, 0, maxSpeed);
-
-        flight.x += Math.cos(flight.heading) * flight.speed * dt;
-        flight.y += Math.sin(flight.heading) * flight.speed * dt;
-        flight.x = clamp(flight.x, bounds.minX, bounds.maxX);
-        flight.y = clamp(flight.y, bounds.minY, bounds.maxY);
-
-        const look = Math.min(220, flight.speed * 0.55);
-        const desiredCamX = flight.x + Math.cos(flight.heading) * look * 0.11;
-        const desiredCamY = flight.y + Math.sin(flight.heading) * look * 0.11;
-        const followK = Math.min(1, (reducedMotion ? 11 : 7.8) * dt);
-        camFollow.x += (desiredCamX - camFollow.x) * followK;
-        camFollow.y += (desiredCamY - camFollow.y) * followK;
-        camera.x = camFollow.x;
-        camera.y = camFollow.y;
+        flight.speed *= coast;
       }
+      flight.speed = clamp(flight.speed, 0, maxSpeed);
+
+      flight.x += Math.cos(flight.heading) * flight.speed * dt;
+      flight.y += Math.sin(flight.heading) * flight.speed * dt;
+      flight.x = clamp(flight.x, bounds.minX, bounds.maxX);
+      flight.y = clamp(flight.y, bounds.minY, bounds.maxY);
+
+      const look = Math.min(220, flight.speed * 0.55);
+      const desiredCamX = flight.x + Math.cos(flight.heading) * look * 0.11;
+      const desiredCamY = flight.y + Math.sin(flight.heading) * look * 0.11;
+      const camFollow = camFollowRef.current;
+      const followK = Math.min(1, (reducedMotion ? 11 : 7.8) * dt);
+      camFollow.x += (desiredCamX - camFollow.x) * followK;
+      camFollow.y += (desiredCamY - camFollow.y) * followK;
+
+      const camera = currentCameraRef.current;
+      camera.x = camFollow.x;
+      camera.y = camFollow.y;
 
       context.clearRect(0, 0, canvasSize.width, canvasSize.height);
 
@@ -754,11 +657,10 @@ export function SceneCanvas({
           canvasSize.height,
         );
       } else {
-        context.fillStyle = "#2B61D1";
+        context.fillStyle = "#4C9BE9";
         context.fillRect(0, 0, canvasSize.width, canvasSize.height);
       }
 
-      drawUpperSparkles(context, canvasSize.width, canvasSize.height, timestamp);
       drawParallaxCloudLayers(
         context,
         canvasSize.width,
@@ -766,7 +668,7 @@ export function SceneCanvas({
         timestamp,
         camFollow.x,
         camFollow.y,
-        { layerMin: 0, layerMax: 2 },
+        { layerMin: 0, layerMax: 1 },
       );
 
       if (!clusters.length && !systems.length && !stars.length) {
@@ -846,7 +748,7 @@ export function SceneCanvas({
           radius,
           alpha,
           label: cluster.label,
-          meta: `${cluster.counts.systems} apps | ${cluster.counts.runtimes} runtimes`,
+          meta: `${cluster.counts.systems} apps · ${cluster.counts.runtimes} runtimes`,
           active,
           rare: cluster.rarityFlags.hasRareArchetype,
           level: cluster.level,
@@ -858,7 +760,7 @@ export function SceneCanvas({
             kind: "cluster",
             id: cluster.clusterId,
             label: cluster.label,
-            subtitle: `${cluster.counts.systems} apps | ${cluster.counts.instances} instances`,
+            subtitle: `${cluster.counts.systems} apps · ${cluster.counts.instances} instances`,
           },
           x: projected.x,
           y: projected.y,
@@ -894,7 +796,7 @@ export function SceneCanvas({
             radius,
             alpha,
             label: cluster.label,
-            meta: `${cluster.counts.systems} apps | ${cluster.counts.instances} traces`,
+            meta: `${cluster.counts.systems} apps · ${cluster.counts.instances} traces`,
             active,
             rare: cluster.rarityFlags.hasRareArchetype,
             level: cluster.level,
@@ -950,9 +852,8 @@ export function SceneCanvas({
             x,
             y,
             colors: getBuoyColorway(system),
-            baseScale: Math.max(0.6, radius / 12.6),
+            baseScale: Math.max(0.64, radius / 12.2),
             seed: system.systemId,
-            variant: system.projectCategory,
             proximity: isSelected ? 2 : 0,
             selected: isSelected,
             searchOrPointer: isSearchMatch,
@@ -965,7 +866,7 @@ export function SceneCanvas({
               kind: "system",
               id: system.systemId,
               label: system.appName,
-              subtitle: `${categoryLabel(system)} | ${titleCase(system.runtimeFamily)}`,
+              subtitle: `${categoryLabel(system)} · ${titleCase(system.runtimeFamily)}`,
               appName: system.appName,
             },
             x,
@@ -992,8 +893,8 @@ export function SceneCanvas({
             const isSelected = selectedAppName === star.appName;
             const isSearchMatch = matchSet.has(star.appName);
             const baseScale = Math.max(
-              0.62,
-              Math.min(2.8, star.size * camera.zoom * 0.14 + 0.32),
+              0.56,
+              Math.min(2.55, star.size * camera.zoom * 0.12 + 0.26),
             );
 
             if (offscreen({ x, y }, 52, canvasSize)) {
@@ -1016,9 +917,8 @@ export function SceneCanvas({
               x,
               y,
               colors: getBuoyColorway(star),
-              baseScale: baseScale * projected.radialScale * 0.92,
+              baseScale: baseScale * projected.radialScale,
               seed: star.id,
-              variant: star.projectCategory,
               proximity: isSelected ? 2 : 1,
               selected: isSelected,
               searchOrPointer: isSearchMatch,
@@ -1031,7 +931,7 @@ export function SceneCanvas({
                 kind: "star",
                 id: star.id,
                 label: star.appName,
-                subtitle: `${categoryLabel(star)} | ${star.region || "Unknown sector"}`,
+                subtitle: `${categoryLabel(star)} · ${star.region || "Unknown sector"}`,
                 appName: star.appName,
               },
               x,
@@ -1126,7 +1026,6 @@ export function SceneCanvas({
   ]);
 
   const resetFlight = () => {
-    focusAnimationRef.current = null;
     const center = centroidOfWorld(stars, systems, bounds);
     flightRef.current = {
       x: center.x,
@@ -1182,7 +1081,6 @@ export function SceneCanvas({
   };
 
   const handleCanvasPointerDown = () => {
-    focusAnimationRef.current = null;
     wrapRef.current?.focus({ preventScroll: true });
   };
 
@@ -1213,12 +1111,10 @@ export function SceneCanvas({
     const delta = normalizeWheel(event);
     const intensity = event.ctrlKey ? 0.00135 : 0.001;
     const scale = Math.exp(-delta * intensity);
-    focusAnimationRef.current = null;
     zoomAtPoint(camera, flight, canvasSize, { x: sx, y: sy }, camera.zoom * scale);
   };
 
   const pressPad = (key: string) => {
-    focusAnimationRef.current = null;
     keysRef.current.add(key);
   };
 
@@ -1252,8 +1148,7 @@ export function SceneCanvas({
           </button>
         </div>
         <span className="scene-zoom-label scene-zoom-label--wrap">
-          WASD / arrows to fly | scroll zoom | click clouds to focus | click buoys
-          for details
+          Fly with WASD or arrows. Scroll to zoom.
         </span>
       </div>
 
@@ -1273,28 +1168,17 @@ export function SceneCanvas({
         {showFlightTip ? (
           <div className="scene-flight-tip" role="dialog" aria-labelledby="flight-tip-title">
             <h2 id="flight-tip-title" className="scene-flight-tip-title">
-              How to fly
+              Flight controls
             </h2>
-            <ul className="scene-flight-tip-list">
-              <li>
-                <strong>Click the blue map</strong> so keys steer the plane.
-              </li>
-              <li>
-                <strong>Arrow keys</strong> or <strong>W A S D</strong>: turn and thrust.
-              </li>
-              <li>
-                <strong>Scroll</strong> to zoom and split clouds into smaller discoveries.
-              </li>
-              <li>
-                <strong>Hover</strong> for a tooltip, then <strong>click</strong> to focus or inspect.
-              </li>
-            </ul>
+            <p className="scene-flight-tip-copy">
+              Click the sky, steer with WASD or arrows, and scroll to zoom in on a cluster.
+            </p>
             <button
               type="button"
               className="primary-action scene-flight-tip-dismiss"
               onClick={dismissTip}
             >
-              Got it
+              Start flying
             </button>
           </div>
         ) : null}
@@ -1332,7 +1216,7 @@ export function SceneCanvas({
               }}
               onPointerCancel={() => releasePad("ArrowUp")}
             >
-              ^
+              ↑
             </button>
           </div>
           <div className="scene-flight-pad-row">
@@ -1355,7 +1239,7 @@ export function SceneCanvas({
               }}
               onPointerCancel={() => releasePad("ArrowLeft")}
             >
-              &lt;
+              ←
             </button>
             <button
               type="button"
@@ -1376,7 +1260,7 @@ export function SceneCanvas({
               }}
               onPointerCancel={() => releasePad("ArrowDown")}
             >
-              v
+              ↓
             </button>
             <button
               type="button"
@@ -1397,7 +1281,7 @@ export function SceneCanvas({
               }}
               onPointerCancel={() => releasePad("ArrowRight")}
             >
-              &gt;
+              →
             </button>
           </div>
         </div>

@@ -27,7 +27,6 @@ export type DrawDeploymentBuoyOptions = {
   baseScale: number;
   /** Deterministic animation phase */
   seed: string;
-  variant?: string;
   proximity: BuoyProximityTier;
   selected: boolean;
   searchOrPointer: boolean;
@@ -115,39 +114,9 @@ function mixHex(hex: string, t: number): string {
   return `rgb(${c(r)},${c(g)},${c(b)})`;
 }
 
-function drawBuoyHull(
-  ctx: CanvasRenderingContext2D,
-  radius: number,
-  profile: number,
-) {
-  if (profile === 0) {
-    hexPath(ctx, radius);
-    return;
-  }
-
-  if (profile === 1) {
-    ctx.beginPath();
-    ctx.moveTo(0, -radius);
-    ctx.lineTo(radius * 0.92, -radius * 0.34);
-    ctx.lineTo(radius * 0.78, radius * 0.72);
-    ctx.lineTo(0, radius);
-    ctx.lineTo(-radius * 0.78, radius * 0.72);
-    ctx.lineTo(-radius * 0.92, -radius * 0.34);
-    ctx.closePath();
-    return;
-  }
-
-  ctx.beginPath();
-  ctx.moveTo(0, -radius);
-  ctx.lineTo(radius * 0.86, -radius * 0.18);
-  ctx.lineTo(radius * 0.58, radius * 0.82);
-  ctx.lineTo(-radius * 0.58, radius * 0.82);
-  ctx.lineTo(-radius * 0.86, -radius * 0.18);
-  ctx.closePath();
-}
-
 /**
- * Compact buoy family: shared language with small profile changes per category.
+ * Single canonical buoy: hex body, glowing core, mount, antenna + beacon ring.
+ * Same silhouette for every deployment; only colorway changes.
  */
 export function drawDeploymentBuoy({
   ctx,
@@ -156,7 +125,6 @@ export function drawDeploymentBuoy({
   colors,
   baseScale,
   seed,
-  variant,
   proximity,
   selected,
   searchOrPointer,
@@ -166,10 +134,9 @@ export function drawDeploymentBuoy({
   const sy = snapPixel(y);
   const s = baseScale;
   const h = hashString(seed);
-  const profile = hashString(variant ?? seed) % 3;
   const phase = h * 0.001;
   const outline = "#0E1628";
-  const lineW = Math.max(1.6, 2.05 * Math.sqrt(baseScale)) / s;
+  const lineW = Math.max(1.7, 2.05 * Math.sqrt(baseScale)) / s;
 
   const idleBob = Math.sin(timestamp / 5200 + phase) * 0.35;
   const beaconPulse = 0.55 + 0.45 * Math.sin(timestamp / 1400 + phase * 2);
@@ -183,16 +150,15 @@ export function drawDeploymentBuoy({
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
 
-  const R = profile === 1 ? 11.4 : profile === 2 ? 10.8 : 11.1;
-  const coreR = profile === 2 ? 4.2 : 4.6;
-  const antennaOffsetX = profile === 2 ? -1.3 : profile === 1 ? 1.3 : 0;
+  const R = 11.8;
+  const coreR = 4.7;
 
   // Mount (darker trapezoid feel — wider base)
   ctx.beginPath();
-  ctx.moveTo(-8.4, 8.5);
-  ctx.lineTo(8.4, 8.5);
-  ctx.lineTo(6.6, 13.8);
-  ctx.lineTo(-6.6, 13.8);
+  ctx.moveTo(-9, 10);
+  ctx.lineTo(9, 10);
+  ctx.lineTo(7, 16);
+  ctx.lineTo(-7, 16);
   ctx.closePath();
   ctx.fillStyle = mixHex(colors.trim, 0.35);
   ctx.fill();
@@ -200,8 +166,8 @@ export function drawDeploymentBuoy({
   ctx.lineWidth = lineW;
   ctx.stroke();
 
-  // Hull
-  drawBuoyHull(ctx, R, profile);
+  // Hex hull
+  hexPath(ctx, R);
   const grad = ctx.createLinearGradient(-R, -R, R, R);
   grad.addColorStop(0, mixHex(colors.light, 0.15 * highlightBoost * nearBoost));
   grad.addColorStop(0.55, colors.main);
@@ -215,7 +181,7 @@ export function drawDeploymentBuoy({
   ctx.beginPath();
   ctx.arc(0, 0, coreR, 0, Math.PI * 2);
   ctx.fillStyle = colors.core;
-  ctx.globalAlpha = 0.92 * focusBoost;
+  ctx.globalAlpha = 0.86 * focusBoost;
   ctx.fill();
   ctx.globalAlpha = 1;
   ctx.strokeStyle = outline;
@@ -223,7 +189,7 @@ export function drawDeploymentBuoy({
   ctx.stroke();
 
   // Antenna + beacon ring (always same geometry)
-  const ax = antennaOffsetX;
+  const ax = 0;
   const ay = -R - 1;
   ctx.beginPath();
   ctx.moveTo(0, -R + 1);
@@ -232,11 +198,11 @@ export function drawDeploymentBuoy({
   ctx.lineWidth = lineW * 0.95;
   ctx.stroke();
 
-  const ringR = 5.2 + (proximity >= 1 ? beaconPulse * 0.6 : beaconPulse * 0.35);
+  const ringR = 4.9 + (proximity >= 1 ? beaconPulse * 0.55 : beaconPulse * 0.3);
   ctx.beginPath();
   ctx.arc(ax, ay - 7, ringR, -Math.PI * 0.85, -Math.PI * 0.15);
   ctx.strokeStyle = colors.beacon;
-  ctx.globalAlpha = 0.45 + (proximity >= 2 ? 0.35 : proximity >= 1 ? 0.2 : 0.1) * beaconPulse;
+  ctx.globalAlpha = 0.38 + (proximity >= 2 ? 0.28 : proximity >= 1 ? 0.18 : 0.08) * beaconPulse;
   ctx.lineWidth = lineW * 1.05;
   ctx.stroke();
   ctx.globalAlpha = 1;
@@ -249,42 +215,10 @@ export function drawDeploymentBuoy({
   ctx.lineWidth = lineW * 0.75;
   ctx.stroke();
 
-  if (profile === 1) {
-    ctx.beginPath();
-    ctx.moveTo(-R - 0.4, -1.2);
-    ctx.lineTo(-R - 4.1, 0.8);
-    ctx.lineTo(-R - 0.6, 3.4);
-    ctx.closePath();
-    ctx.fillStyle = mixHex(colors.light, 0.25);
-    ctx.fill();
-    ctx.strokeStyle = outline;
-    ctx.lineWidth = lineW * 0.75;
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(R + 0.4, -1.2);
-    ctx.lineTo(R + 4.1, 0.8);
-    ctx.lineTo(R + 0.6, 3.4);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-  } else if (profile === 2) {
-    ctx.beginPath();
-    ctx.moveTo(-2.8, R + 0.8);
-    ctx.lineTo(0, R + 5.2);
-    ctx.lineTo(2.8, R + 0.8);
-    ctx.closePath();
-    ctx.fillStyle = mixHex(colors.beacon, 0.18);
-    ctx.fill();
-    ctx.strokeStyle = outline;
-    ctx.lineWidth = lineW * 0.75;
-    ctx.stroke();
-  }
-
   if (selected || searchOrPointer) {
     ctx.strokeStyle = "rgba(255,255,255,0.85)";
     ctx.lineWidth = lineW * 0.9;
-    drawBuoyHull(ctx, R + 1.8, profile);
+    hexPath(ctx, R + 2.2);
     ctx.stroke();
   }
 
@@ -316,7 +250,7 @@ function drawOutlinedCloud(
     ctx.moveTo(p.br + p.bx, p.by);
     ctx.arc(p.bx, p.by, p.br, 0, Math.PI * 2);
   }
-  ctx.fillStyle = "rgba(32, 77, 142, 0.14)";
+  ctx.fillStyle = "rgba(112, 176, 230, 0.1)";
   ctx.fill();
   ctx.beginPath();
   for (const p of puffs) {
@@ -324,10 +258,6 @@ function drawOutlinedCloud(
     ctx.arc(p.bx, p.by, p.br, 0, Math.PI * 2);
   }
   ctx.fillStyle = fill;
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(0.04, -0.08, 0.48, 0.22, -0.18, 0, Math.PI * 2);
-  ctx.fillStyle = "rgba(255,255,255,0.18)";
   ctx.fill();
   ctx.lineWidth = lineW;
   ctx.strokeStyle = outline;
@@ -337,15 +267,12 @@ function drawOutlinedCloud(
 
 /** Fewer, softer clouds — keeps the playfield readable. */
 const LAYER_SEEDS = [
-  { x: 0.12, y: 0.82, s: 0.34, layer: 0 },
-  { x: 0.34, y: 0.78, s: 0.3, layer: 0 },
-  { x: 0.62, y: 0.74, s: 0.4, layer: 0 },
-  { x: 0.88, y: 0.84, s: 0.28, layer: 0 },
-  { x: 0.18, y: 0.58, s: 0.24, layer: 1 },
-  { x: 0.48, y: 0.52, s: 0.3, layer: 1 },
-  { x: 0.78, y: 0.46, s: 0.32, layer: 1 },
-  { x: 0.28, y: 0.3, s: 0.18, layer: 2 },
-  { x: 0.66, y: 0.24, s: 0.2, layer: 2 },
+  { x: 0.18, y: 0.8, s: 0.38, layer: 0 },
+  { x: 0.62, y: 0.76, s: 0.42, layer: 0 },
+  { x: 0.88, y: 0.84, s: 0.32, layer: 0 },
+  { x: 0.35, y: 0.52, s: 0.34, layer: 1 },
+  { x: 0.78, y: 0.48, s: 0.36, layer: 1 },
+  { x: 0.12, y: 0.3, s: 0.28, layer: 1 },
 ];
 
 /**
@@ -365,17 +292,17 @@ export function drawParallaxCloudLayers(
   const short = Math.min(width, height);
   for (const L of LAYER_SEEDS) {
     if (L.layer < lo || L.layer > hi) continue;
-    const parallax = 0.012 + L.layer * 0.01;
-    const drift = timestamp / (6200 + L.layer * 1100) + L.x * 6;
-    const ox = Math.sin(drift) * (12 + L.layer * 3) + camX * parallax * 0.06;
-    const oy = Math.cos(drift * 0.7) * (3 + L.layer * 1.6) + camY * parallax * 0.03;
+    const parallax = (L.layer + 1) * 0.016;
+    const drift = timestamp / (5200 + L.layer * 900) + L.x * 6;
+    const ox = Math.sin(drift) * 10 + camX * parallax * 0.06;
+    const oy = Math.cos(drift * 0.7) * 4 + camY * parallax * 0.04;
     const cx = (L.x * width + ox) % (width + 200);
     const cy = L.y * height + oy;
     const wrapX = cx < -100 ? cx + width + 200 : cx;
-    const alpha = L.layer === 0 ? 0.34 : L.layer === 1 ? 0.42 : 0.22;
+    const alpha = L.layer === 0 ? 0.34 : 0.48;
     const fill = `rgba(255,255,255,${alpha})`;
-    const lw = L.layer === 2 ? 1.15 : L.layer === 1 ? 1.45 : 1.65;
-    drawOutlinedCloud(ctx, wrapX, cy, short * L.s, "#0E1A30", fill, lw);
+    const lw = L.layer === 0 ? 1.35 : 1.55;
+    drawOutlinedCloud(ctx, wrapX, cy, short * L.s, "rgba(14, 26, 48, 0.68)", fill, lw);
   }
 }
 

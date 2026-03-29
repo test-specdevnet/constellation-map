@@ -32,16 +32,14 @@ export const SYSTEM_PROXIMITY_RADIUS = 700;
 const RUNTIME_PROXIMITY_RADIUS = 1_400;
 
 export const FISHEYE_DEFAULTS = {
-  radiusRatio: 0.25,
-  minLensRadius: 120,
-  maxLensRadius: 260,
-  peakMagnification: 1.36,
-  farContextCompression: 0.88,
-  focusExponent: 1.9,
-  falloffMultiplier: 1.45,
+  radiusRatio: 0.19,
+  minLensRadius: 96,
+  maxLensRadius: 190,
+  peakMagnification: 1.32,
+  focusExponent: 2.35,
+  farContextCompression: 0.92,
+  falloffMultiplier: 1.15,
 } as const;
-
-export type FisheyeConfig = Partial<typeof FISHEYE_DEFAULTS>;
 
 const clamp = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value));
@@ -155,38 +153,22 @@ export const getDisclosureState = ({
   };
 };
 
-const resolveFisheyeConfig = (
-  overrides?: FisheyeConfig,
-): typeof FISHEYE_DEFAULTS => ({
-  ...FISHEYE_DEFAULTS,
-  ...overrides,
-});
-
-export const getLensRadius = (
-  canvasSize: { width: number; height: number },
-  overrides?: FisheyeConfig,
-) => {
-  const config = resolveFisheyeConfig(overrides);
-
-  return clamp(
-    Math.min(canvasSize.width, canvasSize.height) * config.radiusRatio,
-    config.minLensRadius,
-    config.maxLensRadius,
+export const getLensRadius = (canvasSize: { width: number; height: number }) =>
+  clamp(
+    Math.min(canvasSize.width, canvasSize.height) * FISHEYE_DEFAULTS.radiusRatio,
+    FISHEYE_DEFAULTS.minLensRadius,
+    FISHEYE_DEFAULTS.maxLensRadius,
   );
-};
 
 export const applyFisheyeToPoint = ({
   point,
   focus,
   lensRadius,
-  config: configOverrides,
 }: {
   point: { x: number; y: number };
   focus: { x: number; y: number };
   lensRadius: number;
-  config?: FisheyeConfig;
 }) => {
-  const config = resolveFisheyeConfig(configOverrides);
   const dx = point.x - focus.x;
   const dy = point.y - focus.y;
   const distance = Math.hypot(dx, dy);
@@ -195,7 +177,7 @@ export const applyFisheyeToPoint = ({
     return {
       x: point.x,
       y: point.y,
-      radialScale: config.peakMagnification,
+      radialScale: FISHEYE_DEFAULTS.peakMagnification,
     };
   }
 
@@ -204,15 +186,18 @@ export const applyFisheyeToPoint = ({
   if (distance <= lensRadius) {
     const ratio = clamp(distance / lensRadius, 0, 1);
     radialScale =
-      config.peakMagnification -
-      (config.peakMagnification - 1) * Math.pow(ratio, config.focusExponent);
+      FISHEYE_DEFAULTS.peakMagnification -
+      (FISHEYE_DEFAULTS.peakMagnification - 1) *
+        Math.pow(ratio, FISHEYE_DEFAULTS.focusExponent);
   } else {
     const ratio =
-      (distance - lensRadius) / (lensRadius * config.falloffMultiplier);
+      (distance - lensRadius) /
+      (lensRadius * FISHEYE_DEFAULTS.falloffMultiplier);
     radialScale =
       1 -
-      (1 - config.farContextCompression) * (1 - Math.exp(-Math.max(0, ratio)));
-    radialScale = clamp(radialScale, config.farContextCompression, 1);
+      (1 - FISHEYE_DEFAULTS.farContextCompression) *
+        (1 - Math.exp(-Math.max(0, ratio)));
+    radialScale = clamp(radialScale, FISHEYE_DEFAULTS.farContextCompression, 1);
   }
 
   const nextDistance = distance * radialScale;
@@ -236,7 +221,7 @@ export const getDensityAlpha = ({
   emphasis?: number;
 }) => {
   const base =
-    band === "overview" ? 0.46 : band === "mid" ? 0.56 : 0.74;
+    band === "overview" ? 0.42 : band === "mid" ? 0.52 : 0.68;
   const penalty = Math.min(0.2, Math.log2(Math.max(1, density)) * 0.045);
 
   return clamp(base - penalty + emphasis, 0.24, 0.96);
@@ -272,12 +257,12 @@ export const getClusterRenderRadius = ({
   band: DisclosureBand;
   isActive: boolean;
 }) => {
-  const base = cluster.level === "region" ? 46 : 26;
+  const base = cluster.level === "region" ? 42 : 23;
   const densityBoost =
     Math.sqrt(cluster.counts.systems + Math.max(1, cluster.counts.instances) * 0.08) *
-    (cluster.level === "region" ? 3.4 : 2.6);
+    (cluster.level === "region" ? 3.15 : 2.25);
   const bandBoost = band === "overview" ? 1.16 : band === "mid" ? 1 : 0.9;
-  const focusBoost = isActive ? 1.12 : 1;
+  const focusBoost = isActive ? 1.08 : 1;
 
   return Math.max(18, (base + densityBoost) * bandBoost * focusBoost);
 };
@@ -291,9 +276,9 @@ export const getAnchorRadius = ({
   band: DisclosureBand;
   isRare: boolean;
 }) => {
-  const base = band === "mid" ? 11 : 9;
-  const countBoost = Math.min(9, Math.sqrt(Math.max(1, instanceCount)) * 2.1);
-  const rarityBoost = isRare ? 2.4 : 0;
+  const base = band === "mid" ? 10 : 8;
+  const countBoost = Math.min(8, Math.sqrt(Math.max(1, instanceCount)) * 1.75);
+  const rarityBoost = isRare ? 1.8 : 0;
 
   return base + countBoost + rarityBoost;
 };
