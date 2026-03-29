@@ -10,4 +10,4 @@ assets/flux-presskit
 # Local junk / accidental copies (do not commit)
 .zip
 *.zip
-constellation map repo/
+/constellation map repo
