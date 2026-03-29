@@ -30,8 +30,18 @@ export const DETAIL_MIN_ZOOM = 0.28;
 export const REGION_PROXIMITY_RADIUS = 2_200;
 export const SYSTEM_PROXIMITY_RADIUS = 700;
 const RUNTIME_PROXIMITY_RADIUS = 1_400;
-const FAR_CONTEXT_COMPRESSION = 0.82;
-const PEAK_MAGNIFICATION = 1.45;
+
+export const FISHEYE_DEFAULTS = {
+  radiusRatio: 0.25,
+  minLensRadius: 120,
+  maxLensRadius: 260,
+  peakMagnification: 1.36,
+  farContextCompression: 0.88,
+  focusExponent: 1.9,
+  falloffMultiplier: 1.45,
+} as const;
+
+export type FisheyeConfig = Partial<typeof FISHEYE_DEFAULTS>;
 
 const clamp = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value));
@@ -145,18 +155,38 @@ export const getDisclosureState = ({
   };
 };
 
-export const getLensRadius = (canvasSize: { width: number; height: number }) =>
-  Math.min(canvasSize.width, canvasSize.height) * 0.34;
+const resolveFisheyeConfig = (
+  overrides?: FisheyeConfig,
+): typeof FISHEYE_DEFAULTS => ({
+  ...FISHEYE_DEFAULTS,
+  ...overrides,
+});
+
+export const getLensRadius = (
+  canvasSize: { width: number; height: number },
+  overrides?: FisheyeConfig,
+) => {
+  const config = resolveFisheyeConfig(overrides);
+
+  return clamp(
+    Math.min(canvasSize.width, canvasSize.height) * config.radiusRatio,
+    config.minLensRadius,
+    config.maxLensRadius,
+  );
+};
 
 export const applyFisheyeToPoint = ({
   point,
   focus,
   lensRadius,
+  config: configOverrides,
 }: {
   point: { x: number; y: number };
   focus: { x: number; y: number };
   lensRadius: number;
+  config?: FisheyeConfig;
 }) => {
+  const config = resolveFisheyeConfig(configOverrides);
   const dx = point.x - focus.x;
   const dy = point.y - focus.y;
   const distance = Math.hypot(dx, dy);
@@ -165,7 +195,7 @@ export const applyFisheyeToPoint = ({
     return {
       x: point.x,
       y: point.y,
-      radialScale: PEAK_MAGNIFICATION,
+      radialScale: config.peakMagnification,
     };
   }
 
@@ -174,12 +204,15 @@ export const applyFisheyeToPoint = ({
   if (distance <= lensRadius) {
     const ratio = clamp(distance / lensRadius, 0, 1);
     radialScale =
-      PEAK_MAGNIFICATION - (PEAK_MAGNIFICATION - 1) * Math.pow(ratio, 1.35);
+      config.peakMagnification -
+      (config.peakMagnification - 1) * Math.pow(ratio, config.focusExponent);
   } else {
-    const ratio = (distance - lensRadius) / (lensRadius * 2.1);
+    const ratio =
+      (distance - lensRadius) / (lensRadius * config.falloffMultiplier);
     radialScale =
-      1 - (1 - FAR_CONTEXT_COMPRESSION) * (1 - Math.exp(-Math.max(0, ratio)));
-    radialScale = clamp(radialScale, FAR_CONTEXT_COMPRESSION, 1);
+      1 -
+      (1 - config.farContextCompression) * (1 - Math.exp(-Math.max(0, ratio)));
+    radialScale = clamp(radialScale, config.farContextCompression, 1);
   }
 
   const nextDistance = distance * radialScale;

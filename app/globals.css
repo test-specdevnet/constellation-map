@@ -401,12 +401,13 @@ h3 {
 .mini-map {
   top: 18px;
   right: 18px;
-  width: 220px;
-  padding: 14px 14px 12px;
+  width: 206px;
+  padding: 12px 12px 10px;
   border-radius: 18px;
   border: 1px solid rgba(109, 167, 255, 0.22);
   background: rgba(7, 14, 29, 0.76);
   backdrop-filter: blur(10px);
+  pointer-events: auto;
 }
 
 .mini-map-header {
@@ -432,10 +433,33 @@ h3 {
     rgba(7, 14, 28, 0.82);
 }
 
+.mini-map-frame {
+  fill: rgba(8, 16, 31, 0.45);
+  stroke: rgba(167, 211, 255, 0.16);
+  stroke-width: 1;
+}
+
+.mini-map-node--interactive {
+  cursor: pointer;
+}
+
+.mini-map-node--interactive:hover .mini-map-marker,
+.mini-map-node--interactive:focus-visible .mini-map-marker {
+  transform: scale(1.04);
+  transform-origin: center;
+}
+
+.mini-map-hit {
+  fill: transparent;
+}
+
 .mini-map-marker {
   fill: rgba(120, 185, 255, 0.75);
   stroke: rgba(255, 255, 255, 0.82);
   stroke-width: 1.2;
+  transition:
+    fill 120ms ease,
+    transform 120ms ease;
 }
 
 .mini-map-marker--active {
@@ -453,6 +477,12 @@ h3 {
   fill: #fff1b0;
   stroke: #101b34;
   stroke-width: 1.4;
+}
+
+.mini-map-heading {
+  stroke: rgba(255, 241, 176, 0.9);
+  stroke-width: 1.6;
+  stroke-linecap: round;
 }
 
 .mini-map-label {

@@ -546,13 +546,13 @@ function ConstellationExperienceBody({
                 : `Snapshot generated ${new Date(activeScene.generatedAt).toLocaleString()}`}
             </span>
             <span>
-              {visibleSystems.length} visible apps · {visibleStars.length} visible instances
+              {visibleSystems.length} visible apps | {visibleStars.length} visible instances
               <span
                 className="build-stamp"
                 title="If this does not match Git, Flux has not deployed the latest build."
               >
                 {" "}
-                · Build {BUILD_STAMP}
+                | Build {BUILD_STAMP}
               </span>
             </span>
           </div>
@@ -572,11 +572,12 @@ function ConstellationExperienceBody({
               <>
                 <MiniMap
                   bounds={activeScene.bounds}
-                  regionClusters={activeScene.clusters.filter(
+                  regionClusters={visibleClusters.filter(
                     (cluster) => cluster.level === "region",
                   )}
                   telemetry={telemetry}
                   visitedRegionIds={progress.visitedRegionIds}
+                  onFocusCluster={handleFocusCluster}
                 />
                 <DiegeticHud
                   telemetry={telemetry}
@@ -614,7 +615,7 @@ function ConstellationExperienceBody({
                       >
                         <strong>{result.appName}</strong>
                         <span>
-                          {result.owner} · {result.runtimeFamily} · {result.projectCategory}
+                          {result.owner} | {result.runtimeFamily} | {result.projectCategory}
                         </span>
                       </button>
                     </li>
@@ -630,7 +631,7 @@ function ConstellationExperienceBody({
                       >
                         <strong>{system.appName}</strong>
                         <span>
-                          {system.regionLabel} · {system.instanceCount} instances
+                          {system.regionLabel} | {system.instanceCount} instances
                         </span>
                       </button>
                     </li>
