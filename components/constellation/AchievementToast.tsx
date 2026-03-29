@@ -15,15 +15,12 @@ export function AchievementToast({
 
   return (
     <div className={`achievement-toast achievement-toast--${toast.tone}`} role="status">
-      <div>
-        <p className="eyebrow">
-          {toast.tone === "quest" ? "Quest complete" : "Hangar update"}
-        </p>
+      <div className="achievement-toast-copy">
         <strong>{toast.title}</strong>
-        <p>{toast.body}</p>
+        <span>{toast.body}</span>
       </div>
-      <button type="button" className="icon-button" onClick={onDismiss}>
-        Dismiss
+      <button type="button" className="icon-button" onClick={onDismiss} aria-label="Dismiss notice">
+        Close
       </button>
     </div>
   );

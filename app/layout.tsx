@@ -4,9 +4,9 @@ import { BUILD_STAMP } from "../lib/buildStamp";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "FluxCloud Constellation Map",
+  title: "FluxCloud Explore",
   description:
-    "Interactive star-atlas view of public FluxCloud deployment data with search, filters, and deployment detail.",
+    "Literally fly through the FluxCloud and explore network deployments, unlocking plane skins as you discover new datapoints with this interactive data visualization tool.",
 };
 
 export default function RootLayout({

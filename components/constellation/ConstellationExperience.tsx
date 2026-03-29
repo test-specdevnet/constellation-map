@@ -4,18 +4,16 @@ import { useEffect, useMemo, useState } from "react";
 import type { FilterState } from "./FilterBar";
 import { FilterBar } from "./FilterBar";
 import { SearchBox } from "./SearchBox";
-import { SceneCanvas, type HoveredEntity } from "./SceneCanvas";
+import { SceneCanvas } from "./SceneCanvas";
 import { DetailDrawer } from "./DetailDrawer";
 import { MiniMap } from "./MiniMap";
 import { DiegeticHud } from "./DiegeticHud";
-import { QuestLog } from "./QuestLog";
 import { HangarPanel } from "./HangarPanel";
 import { AchievementToast } from "./AchievementToast";
 import {
   ConstellationProgressProvider,
   useConstellationProgress,
 } from "./ProgressProvider";
-import { BUILD_STAMP } from "../../lib/buildStamp";
 import type { FlightTelemetry } from "../../lib/layout/focusContext";
 import type {
   AppDetail,
@@ -183,7 +181,6 @@ function ConstellationExperienceBody({
 }) {
   const [filters, setFilters] = useState<FilterState>(initialFilters);
   const [selectedAppName, setSelectedAppName] = useState<string | null>(null);
-  const [hoveredEntity, setHoveredEntity] = useState<HoveredEntity | null>(null);
   const [focusTarget, setFocusTarget] = useState<{
     key: string;
     x: number;
@@ -191,6 +188,7 @@ function ConstellationExperienceBody({
     zoom: number;
   } | null>(null);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [hasSearched, setHasSearched] = useState(false);
   const [searchBusy, setSearchBusy] = useState(false);
   const [detail, setDetail] = useState<AppDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -200,7 +198,6 @@ function ConstellationExperienceBody({
 
   const {
     progress,
-    quests,
     skins,
     activeToast,
     summary,
@@ -221,9 +218,9 @@ function ConstellationExperienceBody({
     () => new Map(activeScene.systems.map((system) => [system.appName, system])),
     [activeScene.systems],
   );
-  const clustersById = useMemo(
-    () => new Map(activeScene.clusters.map((cluster) => [cluster.clusterId, cluster])),
-    [activeScene.clusters],
+  const selectedSkin = useMemo(
+    () => skins.find((skin) => skin.selected) ?? skins[0] ?? null,
+    [skins],
   );
 
   const visibleSystems = useMemo(
@@ -417,11 +414,20 @@ function ConstellationExperienceBody({
   ]);
 
   const handleSearch = async (query: string) => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setHasSearched(false);
+      setSearchResults([]);
+      setStatusMessage("");
+      return;
+    }
+
+    setHasSearched(true);
     setSearchBusy(true);
     setStatusMessage("");
 
     try {
-      const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+      const response = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}`);
       if (!response.ok) {
         throw new Error("Search request failed.");
       }
@@ -439,14 +445,10 @@ function ConstellationExperienceBody({
           zoom: 0.32,
         });
       } else {
-        setStatusMessage(
-          "No matching app or owner was found in the current public snapshot.",
-        );
+        setStatusMessage("No matching app or owner was found in this snapshot.");
       }
     } catch (error) {
-      setStatusMessage(
-        error instanceof Error ? error.message : "Search failed.",
-      );
+      setStatusMessage(error instanceof Error ? error.message : "Search failed.");
     } finally {
       setSearchBusy(false);
     }
@@ -475,24 +477,6 @@ function ConstellationExperienceBody({
     });
   };
 
-  const activeRegionLabel = telemetry?.activeRegionId
-    ? clustersById.get(telemetry.activeRegionId)?.label ?? null
-    : null;
-  const activeRuntimeLabel = telemetry?.activeRuntimeId
-    ? clustersById.get(telemetry.activeRuntimeId)?.label ?? null
-    : null;
-
-  const featuredFallback = useMemo(
-    () => activeScene.featureSystems.slice(0, 8),
-    [activeScene.featureSystems],
-  );
-  const activeQuest = quests.find((quest) => !quest.complete) ?? null;
-
-  const handleResetProgress = () => {
-    resetProgress();
-    setStatusMessage("Explorer progress reset for testing.");
-  };
-
   return (
     <main className="atlas-page">
       <section className="hero-shell">
@@ -501,37 +485,18 @@ function ConstellationExperienceBody({
             <img
               className="flux-logo"
               src="/flux-logo.svg"
-              alt="Flux"
+              alt="FluxCloud Explore"
               width={128}
               height={40}
               decoding="async"
             />
-            <p className="eyebrow">FluxCloud public atlas</p>
           </div>
-          <h1>Explore public FluxCloud deployments in a flyable sky map.</h1>
+          <h1>FluxCloud Explore</h1>
           <p className="hero-text">
-            Start with high-level region clouds, zoom or fly into them to split
-            runtime neighborhoods, then inspect individual deployment buoys only when
-            you want the detail. Quest badges and unlockable plane skins reward the
-            tour without changing the data itself.
+            Literally fly through the FluxCloud and explore network deployments,
+            unlocking plane skins as you discover new datapoints with this
+            interactive data visualization tool.
           </p>
-        </div>
-
-        <div className="hero-metrics">
-          <article>
-            <span>Apps</span>
-            <strong>{activeScene.counts.apps}</strong>
-          </article>
-          <article>
-            <span>Regions</span>
-            <strong>
-              {activeScene.clusters.filter((cluster) => cluster.level === "region").length}
-            </strong>
-          </article>
-          <article>
-            <span>Rare archetypes</span>
-            <strong>{activeScene.rareArchetypes.length}</strong>
-          </article>
         </div>
       </section>
 
@@ -544,24 +509,6 @@ function ConstellationExperienceBody({
               value={filters}
               onChange={setFilters}
             />
-          </div>
-
-          <div className="atlas-status-row">
-            <span>
-              {sceneLoading
-                ? "Loading public FluxCloud snapshot..."
-                : `Snapshot generated ${new Date(activeScene.generatedAt).toLocaleString()}`}
-            </span>
-            <span>
-              {visibleSystems.length} visible apps | {visibleStars.length} visible instances
-              <span
-                className="build-stamp"
-                title="If this does not match Git, Flux has not deployed the latest build."
-              >
-                {" "}
-                | Build {BUILD_STAMP}
-              </span>
-            </span>
           </div>
 
           <SceneCanvas
@@ -584,40 +531,39 @@ function ConstellationExperienceBody({
                   )}
                   telemetry={telemetry}
                   visitedRegionIds={progress.visitedRegionIds}
-                  onFocusCluster={handleFocusCluster}
+                  onSelectCluster={handleFocusCluster}
                 />
                 <DiegeticHud
                   telemetry={telemetry}
-                  activeRegionLabel={activeRegionLabel}
-                  activeRuntimeLabel={activeRuntimeLabel}
-                  hoveredLabel={hoveredEntity?.label ?? null}
-                  completedQuests={summary.completedQuests}
-                  totalQuests={summary.totalQuests}
-                  visitedRegions={summary.visitedRegions}
-                  inspectedApps={summary.inspectedApps}
-                  activeQuestTitle={activeQuest?.title ?? null}
-                  activeQuestProgress={activeQuest?.progressLabel ?? null}
+                  selectedSkinLabel={selectedSkin?.label ?? "Classic"}
+                  unlockedSkinCount={summary.unlockedSkins}
+                  totalSkinCount={skins.length}
                 />
                 <AchievementToast toast={activeToast} onDismiss={dismissToast} />
               </>
             }
             onSelectApp={handleSelectApp}
             onFocusCluster={handleFocusCluster}
-            onHoverEntity={setHoveredEntity}
+            onHoverEntity={() => {
+              // Hover copy stays inside the canvas tooltip.
+            }}
             onTelemetry={setTelemetry}
           />
 
-          <div className="atlas-lower-grid atlas-lower-grid--triple">
-            <section className="panel-card">
-              <div className="panel-card-header">
-                <div>
-                  <p className="eyebrow">Atlas search</p>
-                  <h2>Search results</h2>
+          <div
+            className={`atlas-lower-grid atlas-lower-grid--minimal ${
+              hasSearched && searchResults.length > 0
+                ? "atlas-lower-grid--split"
+                : "atlas-lower-grid--solo"
+            }`}
+          >
+            {hasSearched && searchResults.length > 0 ? (
+              <section className="panel-card panel-card--compact">
+                <div className="panel-card-header panel-card-header--compact">
+                  <h2>Search hits</h2>
+                  <span>{searchResults.length}</span>
                 </div>
-                <span>{searchResults.length || featuredFallback.length} entries</span>
-              </div>
-              {searchResults.length > 0 ? (
-                <ul className="result-list">
+                <ul className="result-list result-list--compact">
                   {searchResults.map((result) => (
                     <li key={result.appName}>
                       <button
@@ -626,37 +572,24 @@ function ConstellationExperienceBody({
                       >
                         <strong>{result.appName}</strong>
                         <span>
-                          {result.owner} | {result.runtimeFamily} | {result.projectCategory}
+                          {result.owner} · {result.runtimeFamily}
                         </span>
                       </button>
                     </li>
                   ))}
                 </ul>
-              ) : (
-                <ul className="result-list compact">
-                  {featuredFallback.map((system) => (
-                    <li key={system.systemId}>
-                      <button
-                        type="button"
-                        onClick={() => handleSelectApp(system.appName)}
-                      >
-                        <strong>{system.appName}</strong>
-                        <span>
-                          {system.regionLabel} | {system.instanceCount} instances
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            <QuestLog quests={quests} completedQuests={summary.completedQuests} />
+              </section>
+            ) : null}
 
             <HangarPanel
               skins={skins}
               onSelectSkin={selectSkin}
-              onResetProgress={handleResetProgress}
+              onResetProgress={() => {
+                resetProgress();
+                setSearchResults([]);
+                setHasSearched(false);
+                setStatusMessage("");
+              }}
             />
           </div>
 

@@ -34,7 +34,6 @@ export type QuestView = {
   description: string;
   reward: string;
   progressLabel: string;
-  progressFraction: number;
   complete: boolean;
 };
 
@@ -64,9 +63,6 @@ type ProgressContextValue = {
     totalQuests: number;
     unlockedSkins: number;
     visitedRegions: number;
-    discoveredRuntimes: number;
-    inspectedApps: number;
-    rareSignals: number;
   };
   markRegionVisited: (regionId: string | null) => void;
   markRuntimeDiscovered: (runtimeClusterId: string | null) => void;
@@ -155,7 +151,6 @@ const buildQuestViews = (progress: ProgressState) => {
       description: "Visit three unique region clouds.",
       reward: "Unlocks early hangar prestige.",
       progressLabel: `${Math.min(3, progress.visitedRegionIds.length)}/3 regions`,
-      progressFraction: Math.min(1, progress.visitedRegionIds.length / 3),
       complete: regionQuestComplete,
     },
     {
@@ -164,7 +159,6 @@ const buildQuestViews = (progress: ProgressState) => {
       description: "Discover two rare runtime-category archetypes.",
       reward: "Unlocks the Midnight Courier skin.",
       progressLabel: `${Math.min(2, progress.rareArchetypeIds.length)}/2 rare finds`,
-      progressFraction: Math.min(1, progress.rareArchetypeIds.length / 2),
       complete: rareQuestComplete,
     },
     {
@@ -172,14 +166,7 @@ const buildQuestViews = (progress: ProgressState) => {
       title: "Runtime Rambler",
       description: "Inspect five apps spanning at least three runtime families.",
       reward: "Boosts your explorer status.",
-      progressLabel: `${Math.min(5, progress.inspectedAppIds.length)}/5 apps | ${Math.min(3, progress.inspectedRuntimeFamilies.length)}/3 runtimes`,
-      progressFraction: Math.min(
-        1,
-        Math.min(
-          progress.inspectedAppIds.length / 5,
-          progress.inspectedRuntimeFamilies.length / 3,
-        ),
-      ),
+      progressLabel: `${Math.min(5, progress.inspectedAppIds.length)}/5 apps · ${Math.min(3, progress.inspectedRuntimeFamilies.length)}/3 runtimes`,
       complete: runtimeQuestComplete,
     },
   ] satisfies QuestView[];
@@ -209,9 +196,6 @@ const reconcileProgress = (
   for (const quest of questViews) {
     if (quest.complete && !nextCompletedQuestIds.has(quest.id)) {
       nextCompletedQuestIds.add(quest.id);
-      toasts.push(
-        createToast(quest.title, `${quest.description} Quest complete.`, "quest"),
-      );
     }
   }
 
@@ -236,8 +220,8 @@ const reconcileProgress = (
     ) {
       toasts.push(
         createToast(
-          `${skin.label} Unlocked`,
-          `${skin.description} Visit the hangar to equip it.`,
+          `${skin.label} ready`,
+          "Unlocked in the hangar.",
           "unlock",
         ),
       );
@@ -415,13 +399,9 @@ export function ConstellationProgressProvider({
   );
 
   const resetProgress = useCallback(() => {
+    window.localStorage.removeItem(STORAGE_KEY);
     setToastQueue([]);
     setProgress(defaultProgress);
-    try {
-      window.localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      /* ignore */
-    }
   }, []);
 
   const dismissToast = useCallback(() => {
@@ -451,9 +431,6 @@ export function ConstellationProgressProvider({
         totalQuests: quests.length,
         unlockedSkins: progress.unlockedSkinIds.length,
         visitedRegions: progress.visitedRegionIds.length,
-        discoveredRuntimes: progress.discoveredRuntimeIds.length,
-        inspectedApps: progress.inspectedAppIds.length,
-        rareSignals: progress.rareArchetypeIds.length,
       },
       markRegionVisited,
       markRuntimeDiscovered,

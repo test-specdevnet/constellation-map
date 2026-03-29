@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { SkinView } from "./ProgressProvider";
 
 export function HangarPanel({
@@ -16,72 +16,43 @@ export function HangarPanel({
   const unlockedCount = skins.filter((skin) => skin.unlocked).length;
   const activeSkin = skins.find((skin) => skin.selected) ?? skins[0];
 
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpen(false);
-      }
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open]);
-
   return (
-    <section className="panel-card">
-      <div className="panel-card-header">
-        <div>
-          <p className="eyebrow">Hangar</p>
-          <h2>Plane skins</h2>
-        </div>
-        <span>{unlockedCount}/{skins.length} unlocked</span>
-      </div>
-
-      <div className="hangar-launcher">
-        <div className={`hangar-swatch hangar-swatch--${activeSkin.id}`} />
-        <div className="hangar-launcher-copy">
-          <strong>{activeSkin.label}</strong>
-          <span>{activeSkin.description}</span>
+    <>
+      <section className="panel-card panel-card--compact hangar-launcher-card">
+        <div className="hangar-launcher-meta">
+          <div className={`hangar-swatch hangar-swatch--${activeSkin.id}`} />
+          <div>
+            <span className="hangar-launcher-label">Hangar</span>
+            <strong>
+              {activeSkin.label} | {unlockedCount}/{skins.length}
+            </strong>
+          </div>
         </div>
         <button
           type="button"
-          className="secondary-action"
+          className="secondary-action hangar-launcher-button"
           onClick={() => setOpen(true)}
         >
-          Open hangar
+          Skins
         </button>
-      </div>
-
-      <p className="panel-copy">
-        Cosmetic only. Equip unlocked skins without changing the deployment data.
-      </p>
+      </section>
 
       {open ? (
-        <div
-          className="hangar-modal-backdrop"
-          role="presentation"
-          onClick={() => setOpen(false)}
-        >
-          <div
+        <div className="hangar-modal-backdrop" role="presentation" onClick={() => setOpen(false)}>
+          <section
             className="hangar-modal"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="hangar-modal-title"
+            aria-labelledby="hangar-title"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="panel-card-header">
-              <div>
-                <p className="eyebrow">Flight deck</p>
-                <h2 id="hangar-modal-title">Choose a plane skin</h2>
-              </div>
+            <div className="panel-card-header panel-card-header--compact">
+              <h2 id="hangar-title">Plane skins</h2>
               <button
                 type="button"
                 className="icon-button"
                 onClick={() => setOpen(false)}
+                aria-label="Close hangar"
               >
                 Close
               </button>
@@ -98,34 +69,22 @@ export function HangarPanel({
                 >
                   <div className={`hangar-swatch hangar-swatch--${skin.id}`} />
                   <strong>{skin.label}</strong>
-                  <span>{skin.description}</span>
-                  <small>{skin.unlocked ? "Ready to equip" : skin.unlockHint}</small>
+                  <span>{skin.unlocked ? "Ready" : skin.unlockHint}</span>
                 </button>
               ))}
             </div>
 
             <div className="hangar-modal-actions">
-              <button
-                type="button"
-                className="secondary-action"
-                onClick={() => {
-                  onResetProgress();
-                  setOpen(false);
-                }}
-              >
+              <button type="button" className="secondary-action" onClick={onResetProgress}>
                 Reset progress
               </button>
-              <button
-                type="button"
-                className="primary-action"
-                onClick={() => setOpen(false)}
-              >
-                Back to flight
+              <button type="button" className="primary-action" onClick={() => setOpen(false)}>
+                Done
               </button>
             </div>
-          </div>
+          </section>
         </div>
       ) : null}
-    </section>
+    </>
   );
 }

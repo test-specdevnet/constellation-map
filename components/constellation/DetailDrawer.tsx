@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import type { AppDetail } from "../../lib/types/star";
 
 type DetailDrawerProps = {
@@ -18,41 +17,25 @@ export function DetailDrawer({
   error,
   onClose,
 }: DetailDrawerProps) {
-  const [message, setMessage] = useState("");
-
-  const copyAppName = async () => {
-    if (!appName) {
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(appName);
-      setMessage("App name copied.");
-    } catch {
-      setMessage("Clipboard access is unavailable in this browser.");
-    }
-  };
-
-  const placeholderAction = (label: string) => {
-    setMessage(`${label} hook reserved for a later workflow.`);
-  };
-
   return (
     <aside className={`detail-drawer ${appName ? "open" : ""}`} aria-live="polite">
       <div className="detail-drawer-header">
         <div>
           <p className="eyebrow">Deployment detail</p>
-          <h2>{appName ?? "Select a system"}</h2>
+          <h2>{appName ?? "Select a deployment"}</h2>
         </div>
-        <button type="button" className="icon-button" onClick={onClose} aria-label="Close detail drawer">
+        <button
+          type="button"
+          className="icon-button"
+          onClick={onClose}
+          aria-label="Close detail drawer"
+        >
           Close
         </button>
       </div>
 
       {!appName ? (
-        <p className="drawer-empty">
-          Select a star or search result to inspect the normalized FluxCloud deployment profile.
-        </p>
+        <p className="drawer-empty">Select a buoy to inspect its deployment profile.</p>
       ) : null}
 
       {loading ? <p className="drawer-message">Loading deployment detail...</p> : null}
@@ -61,7 +44,11 @@ export function DetailDrawer({
       {detail ? (
         <div className="drawer-content">
           <div className="drawer-status-row">
-            <span className={`status-pill ${detail.summary.liveStatus.toLowerCase().replace(/\s+/g, "-")}`}>
+            <span
+              className={`status-pill ${detail.summary.liveStatus
+                .toLowerCase()
+                .replace(/\s+/g, "-")}`}
+            >
               {detail.summary.liveStatus}
             </span>
             <span className="status-pill subtle">{detail.app.projectCategory}</span>
@@ -152,6 +139,22 @@ export function DetailDrawer({
                 <dt>Active nodes</dt>
                 <dd>{detail.summary.runtimeUsage.activeNodes}</dd>
               </div>
+              <div>
+                <dt>Observed regions</dt>
+                <dd>
+                  {detail.summary.regions.length > 0
+                    ? detail.summary.regions.slice(0, 6).join(", ")
+                    : "Unknown"}
+                </dd>
+              </div>
+              <div>
+                <dt>Avg node download</dt>
+                <dd>
+                  {detail.summary.runtimeUsage.avgNodeDownloadMbps !== null
+                    ? `${detail.summary.runtimeUsage.avgNodeDownloadMbps} Mbps`
+                    : "Unknown"}
+                </dd>
+              </div>
             </dl>
           </section>
 
@@ -163,7 +166,8 @@ export function DetailDrawer({
                   <article key={node.id} className="node-card">
                     <strong>{node.ip}</strong>
                     <p>
-                      {node.geolocation.country || "Unknown country"} {node.org ? `• ${node.org}` : ""}
+                      {node.geolocation.country || "Unknown country"}
+                      {node.org ? ` | ${node.org}` : ""}
                     </p>
                     <dl className="definition-grid compact">
                       <div>
@@ -192,67 +196,8 @@ export function DetailDrawer({
               </p>
             )}
           </section>
-
-          <section className="drawer-section">
-            <h3>Visualization rationale</h3>
-            <ul className="plain-list">
-              <li>{detail.rationale.constellationReason}</li>
-              <li>{detail.rationale.sizingReason}</li>
-              <li>{detail.rationale.neighborhoodReason}</li>
-            </ul>
-          </section>
-
-          <section className="drawer-section">
-            <h3>Observed deployment context</h3>
-            <p>
-              This atlas shows observed deployment context from public Flux surfaces. It is not a
-              manual single-node pinning interface.
-            </p>
-            <dl className="definition-grid">
-              <div>
-                <dt>Observed regions</dt>
-                <dd>
-                  {detail.summary.regions.length > 0
-                    ? detail.summary.regions.slice(0, 6).join(", ")
-                    : "Unknown"}
-                </dd>
-              </div>
-              <div>
-                <dt>Avg node download</dt>
-                <dd>
-                  {detail.summary.runtimeUsage.avgNodeDownloadMbps !== null
-                    ? `${detail.summary.runtimeUsage.avgNodeDownloadMbps} Mbps`
-                    : "Unknown"}
-                </dd>
-              </div>
-            </dl>
-          </section>
-
-          <section className="drawer-section">
-            <h3>Action hooks</h3>
-            <div className="drawer-actions">
-              <button type="button" className="secondary-action" onClick={() => placeholderAction("Save")}>
-                Save
-              </button>
-              <button type="button" className="secondary-action" onClick={() => placeholderAction("Compare")}>
-                Compare
-              </button>
-              <button type="button" className="secondary-action" onClick={copyAppName}>
-                Copy app name
-              </button>
-              <button
-                type="button"
-                className="primary-action"
-                onClick={() => placeholderAction("Deploy handoff")}
-              >
-                Open deploy handoff
-              </button>
-            </div>
-          </section>
         </div>
       ) : null}
-
-      {message ? <p className="drawer-message">{message}</p> : null}
     </aside>
   );
 }
