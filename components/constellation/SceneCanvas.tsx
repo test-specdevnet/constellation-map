@@ -251,11 +251,11 @@ const drawClusterCloud = ({
     level === "region"
       ? active
         ? "rgba(255, 255, 255, 0.98)"
-        : "rgba(235, 245, 255, 0.92)"
+        : "rgba(246, 250, 255, 0.94)"
       : active
-        ? "rgba(255, 232, 189, 0.98)"
-        : "rgba(255, 216, 181, 0.9)";
-  const outline = rare ? "rgba(255, 246, 196, 0.86)" : "rgba(10, 28, 60, 0.6)";
+        ? "rgba(255, 240, 214, 0.98)"
+        : "rgba(255, 233, 206, 0.92)";
+  const outline = rare ? "rgba(255, 246, 196, 0.72)" : "rgba(255, 255, 255, 0.34)";
 
   ctx.save();
   ctx.globalAlpha = alpha;
@@ -279,14 +279,14 @@ const drawClusterCloud = ({
       puff.r,
     );
     gradient.addColorStop(0, puffColor);
-    gradient.addColorStop(1, "rgba(255,255,255,0.08)");
+    gradient.addColorStop(1, "rgba(255,255,255,0.18)");
     ctx.fillStyle = gradient;
     ctx.beginPath();
     ctx.arc(x + puff.ox, y + puff.oy + drift, puff.r, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  ctx.lineWidth = active ? 2.8 : 1.8;
+  ctx.lineWidth = active ? 2.2 : 1.2;
   ctx.strokeStyle = outline;
   ctx.beginPath();
   ctx.arc(x, y, radius * 0.88, 0, Math.PI * 2);
@@ -564,10 +564,10 @@ export function SceneCanvas({
       backgroundContext.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
 
       const sky = backgroundContext.createLinearGradient(0, canvasSize.height, 0, 0);
-      sky.addColorStop(0, "#CBEFFF");
-      sky.addColorStop(0.3, "#90D1FF");
-      sky.addColorStop(0.62, "#4C9BE9");
-      sky.addColorStop(1, "#2470D4");
+      sky.addColorStop(0, "#F0FBFF");
+      sky.addColorStop(0.28, "#D6F1FF");
+      sky.addColorStop(0.62, "#9AD8FF");
+      sky.addColorStop(1, "#67BBF8");
       backgroundContext.fillStyle = sky;
       backgroundContext.fillRect(0, 0, canvasSize.width, canvasSize.height);
 
@@ -578,23 +578,16 @@ export function SceneCanvas({
         canvasSize.height,
       );
       horizonGlow.addColorStop(0, "rgba(255, 255, 255, 0)");
-      horizonGlow.addColorStop(0.55, "rgba(255, 244, 224, 0.12)");
-      horizonGlow.addColorStop(1, "rgba(255, 240, 214, 0.26)");
+      horizonGlow.addColorStop(0.55, "rgba(255, 255, 255, 0.08)");
+      horizonGlow.addColorStop(1, "rgba(255, 249, 233, 0.18)");
       backgroundContext.fillStyle = horizonGlow;
       backgroundContext.fillRect(0, 0, canvasSize.width, canvasSize.height);
 
-      const bloom = backgroundContext.createRadialGradient(
-        canvasSize.width * 0.5,
-        canvasSize.height * 0.92,
-        20,
-        canvasSize.width * 0.5,
-        canvasSize.height * 1.05,
-        Math.max(canvasSize.width, canvasSize.height) * 0.85,
-      );
-      bloom.addColorStop(0, "rgba(255, 255, 255, 0.4)");
-      bloom.addColorStop(0.4, "rgba(186, 226, 255, 0.14)");
-      bloom.addColorStop(1, "rgba(36, 112, 212, 0)");
-      backgroundContext.fillStyle = bloom;
+      const mist = backgroundContext.createLinearGradient(0, 0, canvasSize.width, 0);
+      mist.addColorStop(0, "rgba(255, 255, 255, 0.08)");
+      mist.addColorStop(0.5, "rgba(255, 255, 255, 0)");
+      mist.addColorStop(1, "rgba(255, 255, 255, 0.08)");
+      backgroundContext.fillStyle = mist;
       backgroundContext.fillRect(0, 0, canvasSize.width, canvasSize.height);
     }
 
@@ -605,19 +598,19 @@ export function SceneCanvas({
       const dt = clamp((timestamp - lastTs) / 1000, 0, 0.05);
       lastAnimTsRef.current = timestamp;
 
-      const turnAccel = reducedMotion ? 4.2 : 9.5;
-      const turnDamp = Math.exp(-7.5 * dt);
-      const accel = reducedMotion ? 240 : 460;
-      const brake = reducedMotion ? 400 : 760;
-      const maxSpeed = reducedMotion ? 130 : 300;
-      const coast = reducedMotion ? 0.992 : 0.996;
+      const turnAccel = reducedMotion ? 5.2 : 14.5;
+      const turnDamp = Math.exp(-(reducedMotion ? 9 : 10.8) * dt);
+      const accel = reducedMotion ? 280 : 680;
+      const brake = reducedMotion ? 460 : 1_040;
+      const maxSpeed = reducedMotion ? 165 : 460;
+      const coast = reducedMotion ? 0.994 : 0.9975;
 
       let turnInput = 0;
       if (keys.has("ArrowLeft")) turnInput -= 1;
       if (keys.has("ArrowRight")) turnInput += 1;
       flight.angVel += turnInput * turnAccel * dt;
       flight.angVel *= turnDamp;
-      flight.angVel = clamp(flight.angVel, -2.4, 2.4);
+      flight.angVel = clamp(flight.angVel, -3.4, 3.4);
       flight.heading += flight.angVel * dt;
 
       if (keys.has("ArrowUp")) {
@@ -634,11 +627,11 @@ export function SceneCanvas({
       flight.x = clamp(flight.x, bounds.minX, bounds.maxX);
       flight.y = clamp(flight.y, bounds.minY, bounds.maxY);
 
-      const look = Math.min(220, flight.speed * 0.55);
+      const look = Math.min(320, flight.speed * 0.72);
       const desiredCamX = flight.x + Math.cos(flight.heading) * look * 0.11;
       const desiredCamY = flight.y + Math.sin(flight.heading) * look * 0.11;
       const camFollow = camFollowRef.current;
-      const followK = Math.min(1, (reducedMotion ? 11 : 7.8) * dt);
+      const followK = Math.min(1, (reducedMotion ? 12 : 10.6) * dt);
       camFollow.x += (desiredCamX - camFollow.x) * followK;
       camFollow.y += (desiredCamY - camFollow.y) * followK;
 

@@ -1,7 +1,7 @@
 :root {
   color-scheme: dark;
-  --bg: #4b9be8;
-  --bg-deep: #214b86;
+  --bg: #76c6ff;
+  --bg-deep: #3a8fd8;
   --panel: rgba(10, 22, 46, 0.78);
   --panel-strong: rgba(9, 18, 37, 0.92);
   --panel-border: rgba(158, 211, 255, 0.22);
@@ -15,10 +15,9 @@
   --shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
   font-family: "Segoe UI Variable", "Segoe UI", Aptos, sans-serif;
   background:
-    radial-gradient(circle at 18% 10%, rgba(255, 244, 201, 0.46), transparent 26%),
-    radial-gradient(circle at 84% 12%, rgba(149, 221, 255, 0.34), transparent 30%),
-    radial-gradient(circle at 50% 100%, rgba(33, 75, 134, 0.68), transparent 55%),
-    linear-gradient(180deg, #dff3ff 0%, #9ed8ff 18%, #63b5ff 42%, var(--bg) 68%, var(--bg-deep) 100%);
+    radial-gradient(circle at 18% 10%, rgba(255, 250, 228, 0.44), transparent 24%),
+    radial-gradient(circle at 84% 12%, rgba(214, 245, 255, 0.28), transparent 28%),
+    linear-gradient(180deg, #f4fbff 0%, #d9f2ff 16%, #a8ddff 40%, var(--bg) 68%, var(--bg-deep) 100%);
   color: var(--text);
 }
 
@@ -50,13 +49,13 @@ body::after {
   min-height: 120px;
   pointer-events: none;
   z-index: -1;
-  opacity: 0.72;
+  opacity: 0.5;
   background:
-    radial-gradient(circle at 22% 56%, rgba(255, 255, 255, 0.92) 0 20%, transparent 21%),
-    radial-gradient(circle at 44% 42%, rgba(255, 255, 255, 0.9) 0 23%, transparent 24%),
-    radial-gradient(circle at 64% 56%, rgba(255, 255, 255, 0.86) 0 18%, transparent 19%),
-    radial-gradient(circle at 82% 48%, rgba(255, 255, 255, 0.82) 0 16%, transparent 17%);
-  filter: blur(8px);
+    radial-gradient(circle at 22% 56%, rgba(255, 255, 255, 0.88) 0 18%, transparent 19%),
+    radial-gradient(circle at 44% 42%, rgba(255, 255, 255, 0.9) 0 22%, transparent 23%),
+    radial-gradient(circle at 64% 56%, rgba(255, 255, 255, 0.86) 0 17%, transparent 18%),
+    radial-gradient(circle at 82% 48%, rgba(255, 255, 255, 0.82) 0 15%, transparent 16%);
+  filter: blur(10px);
 }
 
 body::before {
@@ -1190,8 +1189,8 @@ h1 {
 
 .scene-wrap {
   background:
-    linear-gradient(180deg, rgba(160, 219, 255, 0.2), rgba(81, 152, 232, 0.1)),
-    linear-gradient(180deg, rgba(100, 188, 255, 0.2), rgba(34, 102, 198, 0.26));
+    linear-gradient(180deg, rgba(245, 252, 255, 0.22), rgba(177, 225, 255, 0.08)),
+    linear-gradient(180deg, rgba(137, 211, 255, 0.18), rgba(86, 168, 235, 0.16));
 }
 
 .scene-flight-tip {
