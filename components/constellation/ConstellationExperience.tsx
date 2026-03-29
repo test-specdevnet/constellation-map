@@ -209,6 +209,7 @@ function ConstellationExperienceBody({
     markRegionVisited,
     markRuntimeDiscovered,
     selectSkin,
+    resetProgress,
     dismissToast,
   } = useConstellationProgress();
 
@@ -485,6 +486,12 @@ function ConstellationExperienceBody({
     () => activeScene.featureSystems.slice(0, 8),
     [activeScene.featureSystems],
   );
+  const activeQuest = quests.find((quest) => !quest.complete) ?? null;
+
+  const handleResetProgress = () => {
+    resetProgress();
+    setStatusMessage("Explorer progress reset for testing.");
+  };
 
   return (
     <main className="atlas-page">
@@ -546,13 +553,13 @@ function ConstellationExperienceBody({
                 : `Snapshot generated ${new Date(activeScene.generatedAt).toLocaleString()}`}
             </span>
             <span>
-              {visibleSystems.length} visible apps · {visibleStars.length} visible instances
+              {visibleSystems.length} visible apps | {visibleStars.length} visible instances
               <span
                 className="build-stamp"
                 title="If this does not match Git, Flux has not deployed the latest build."
               >
                 {" "}
-                · Build {BUILD_STAMP}
+                | Build {BUILD_STAMP}
               </span>
             </span>
           </div>
@@ -585,6 +592,10 @@ function ConstellationExperienceBody({
                   hoveredLabel={hoveredEntity?.label ?? null}
                   completedQuests={summary.completedQuests}
                   totalQuests={summary.totalQuests}
+                  visitedRegions={summary.visitedRegions}
+                  inspectedApps={summary.inspectedApps}
+                  activeQuestTitle={activeQuest?.title ?? null}
+                  activeQuestProgress={activeQuest?.progressLabel ?? null}
                 />
                 <AchievementToast toast={activeToast} onDismiss={dismissToast} />
               </>
@@ -614,7 +625,7 @@ function ConstellationExperienceBody({
                       >
                         <strong>{result.appName}</strong>
                         <span>
-                          {result.owner} · {result.runtimeFamily} · {result.projectCategory}
+                          {result.owner} | {result.runtimeFamily} | {result.projectCategory}
                         </span>
                       </button>
                     </li>
@@ -630,7 +641,7 @@ function ConstellationExperienceBody({
                       >
                         <strong>{system.appName}</strong>
                         <span>
-                          {system.regionLabel} · {system.instanceCount} instances
+                          {system.regionLabel} | {system.instanceCount} instances
                         </span>
                       </button>
                     </li>
@@ -641,7 +652,11 @@ function ConstellationExperienceBody({
 
             <QuestLog quests={quests} completedQuests={summary.completedQuests} />
 
-            <HangarPanel skins={skins} onSelectSkin={selectSkin} />
+            <HangarPanel
+              skins={skins}
+              onSelectSkin={selectSkin}
+              onResetProgress={handleResetProgress}
+            />
           </div>
 
           {sceneError ? (

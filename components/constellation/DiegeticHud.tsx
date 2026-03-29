@@ -20,6 +20,10 @@ export function DiegeticHud({
   hoveredLabel,
   completedQuests,
   totalQuests,
+  visitedRegions,
+  inspectedApps,
+  activeQuestTitle,
+  activeQuestProgress,
 }: {
   telemetry: FlightTelemetry | null;
   activeRegionLabel: string | null;
@@ -27,6 +31,10 @@ export function DiegeticHud({
   hoveredLabel: string | null;
   completedQuests: number;
   totalQuests: number;
+  visitedRegions: number;
+  inspectedApps: number;
+  activeQuestTitle: string | null;
+  activeQuestProgress: string | null;
 }) {
   const heading = headingToCompass(telemetry?.plane.heading ?? -Math.PI / 2);
   const zoomPct = Math.round(((telemetry?.camera.zoom ?? 0.178) / 0.178) * 100);
@@ -37,7 +45,7 @@ export function DiegeticHud({
       <div className="hud-chip">
         <span>Heading</span>
         <strong>
-          {heading.label} {heading.degrees}°
+          {heading.label} {heading.degrees} deg
         </strong>
       </div>
       <div className="hud-chip">
@@ -49,14 +57,21 @@ export function DiegeticHud({
         <strong>{zoomPct}%</strong>
       </div>
       <div className="hud-chip">
-        <span>Focus</span>
-        <strong>{activeRuntimeLabel ?? activeRegionLabel ?? "Wide orbit"}</strong>
+        <span>Atlas</span>
+        <strong>{visitedRegions} sectors | {inspectedApps} apps</strong>
+        <small>Tracked in local progress</small>
       </div>
       <div className="hud-chip">
-        <span>Quests</span>
-        <strong>
-          {completedQuests}/{totalQuests}
-        </strong>
+        <span>Quest</span>
+        <strong>{activeQuestTitle ?? "All quests clear"}</strong>
+        <small>
+          {activeQuestProgress ?? `${completedQuests}/${totalQuests} badges cleared`}
+        </small>
+      </div>
+      <div className="hud-chip">
+        <span>Focus</span>
+        <strong>{activeRuntimeLabel ?? activeRegionLabel ?? "Wide orbit"}</strong>
+        <small>{completedQuests}/{totalQuests} badges cleared</small>
       </div>
       <div className="hud-chip hud-chip--wide">
         <span>Signal</span>
