@@ -497,6 +497,21 @@ function ConstellationExperienceBody({
             unlocking plane skins as you discover new datapoints with this
             interactive data visualization tool.
           </p>
+
+          <div className="hero-metrics hero-metrics--compact" aria-label="Atlas totals">
+            <article>
+              <span>Apps</span>
+              <strong>
+                {(sceneLoading ? activeScene.counts.apps : visibleSystems.length).toLocaleString()}
+              </strong>
+            </article>
+            <article>
+              <span>Deployments</span>
+              <strong>
+                {(sceneLoading ? activeScene.counts.stars : visibleStars.length).toLocaleString()}
+              </strong>
+            </article>
+          </div>
         </div>
       </section>
 
