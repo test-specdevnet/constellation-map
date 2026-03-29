@@ -50,9 +50,6 @@ export function QuestLog({
               <strong>{quest.title}</strong>
               <span>{quest.progressLabel}</span>
             </div>
-            <div className="quest-meter" aria-hidden="true">
-              <span style={{ width: `${Math.round(quest.progressFraction * 100)}%` }} />
-            </div>
             <p>{quest.description}</p>
             <p className="quest-reward">{quest.reward}</p>
           </article>
