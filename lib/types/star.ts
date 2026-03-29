@@ -10,7 +10,40 @@ import type { NodeProfile } from "./node";
 
 export type StarType = "instance" | "app" | "cluster-anchor";
 
-export type ClusterKind = "runtime" | "resource" | "project-category" | "featured";
+export type ClusterKind = "region" | "runtime";
+export type ClusterLevel = ClusterKind;
+
+export type JitterVector = {
+  x: number;
+  y: number;
+};
+
+export type SceneBounds = {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+  width: number;
+  height: number;
+};
+
+export type ArchetypeSummary = {
+  id: string;
+  runtimeFamily: RuntimeFamily;
+  projectCategory: ProjectCategory;
+  systemCount: number;
+};
+
+export type RarityFlags = {
+  hasRareArchetype: boolean;
+  rareArchetypeCount: number;
+  rareArchetypeIds: string[];
+};
+
+export type EntityArchetypeFlags = {
+  isRareArchetype: boolean;
+  rareArchetypeId: string | null;
+};
 
 export type Star = {
   id: string;
@@ -25,6 +58,8 @@ export type Star = {
   locationId?: string;
   nodeProfileId?: string;
   clusterId: string;
+  regionClusterId: string;
+  runtimeClusterId: string;
   systemId: string;
   label: string;
   isRecommended: boolean;
@@ -34,21 +69,32 @@ export type Star = {
   projectCategory: ProjectCategory;
   resourceTier: ResourceTier;
   region?: string;
+  jitterSeed: string;
+  jitterOffset: JitterVector;
+  archetypeId: string;
+  rarityFlags: EntityArchetypeFlags;
   metadata: Record<string, string | number | boolean | null | undefined>;
 };
 
 export type Cluster = {
   clusterId: string;
+  level: ClusterLevel;
+  parentId: string | null;
   label: string;
   kind: ClusterKind;
   centroid: { x: number; y: number };
+  radius: number;
+  systemIds: string[];
   starIds: string[];
-  summaryMetrics: {
+  counts: {
     apps: number;
+    systems: number;
     instances: number;
-    runtimeFamily: RuntimeFamily | "mixed";
-    resourceTier: ResourceTier | "mixed";
+    runtimes: number;
   };
+  rarityFlags: RarityFlags;
+  runtimeFamily: RuntimeFamily | "mixed";
+  regionLabel: string;
 };
 
 export type AppSystem = {
@@ -56,6 +102,9 @@ export type AppSystem = {
   appName: string;
   label: string;
   clusterId: string;
+  regionClusterId: string;
+  runtimeClusterId: string;
+  regionLabel: string;
   x: number;
   y: number;
   instanceCount: number;
@@ -63,6 +112,10 @@ export type AppSystem = {
   projectCategory: ProjectCategory;
   resourceTier: ResourceTier;
   status: string;
+  jitterSeed: string;
+  jitterOffset: JitterVector;
+  archetypeId: string;
+  rarityFlags: EntityArchetypeFlags;
 };
 
 export type ConstellationSnapshot = {
@@ -78,6 +131,8 @@ export type ConstellationSnapshot = {
   systems: AppSystem[];
   stars: Star[];
   featureSystems: AppSystem[];
+  bounds: SceneBounds;
+  rareArchetypes: ArchetypeSummary[];
   counts: {
     apps: number;
     locations: number;

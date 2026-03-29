@@ -90,11 +90,11 @@ const PALETTES: Record<ProjectCategory, BuoyColorway> = {
   misc: SLATE,
 };
 
-export function getBuoyColorway(star: Star): BuoyColorway {
+export function getBuoyColorway(star: Pick<Star, "projectCategory">): BuoyColorway {
   return PALETTES[star.projectCategory] ?? SLATE;
 }
 
-export function categoryLabel(star: Star): string {
+export function categoryLabel(star: Pick<Star, "projectCategory">): string {
   const c = star.projectCategory;
   if (c === "ai") return "AI / ML";
   if (c === "database") return "Database";
