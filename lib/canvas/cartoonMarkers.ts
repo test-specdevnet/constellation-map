@@ -33,6 +33,66 @@ export type DrawDeploymentBuoyOptions = {
   timestamp: number;
 };
 
+export type PlaneSkinId =
+  | "classic"
+  | "sunset-scout"
+  | "mint-radar"
+  | "midnight-courier";
+
+export type PlaneSkinPalette = {
+  body: string;
+  bodyHi: string;
+  wing: string;
+  wingHi: string;
+  trim: string;
+  cockpit: string;
+  prop: string;
+  propGlow: string;
+};
+
+export const planeSkinPalettes: Record<PlaneSkinId, PlaneSkinPalette> = {
+  classic: {
+    body: "#D81F26",
+    bodyHi: "#F25555",
+    wing: "#B81820",
+    wingHi: "#E84850",
+    trim: "#0F1B32",
+    cockpit: "rgba(255,255,255,0.9)",
+    prop: "#F5D030",
+    propGlow: "rgba(245,208,48,0.55)",
+  },
+  "sunset-scout": {
+    body: "#F06B2D",
+    bodyHi: "#FF9A63",
+    wing: "#D24E27",
+    wingHi: "#FF7A54",
+    trim: "#3A1D2F",
+    cockpit: "rgba(255,245,233,0.92)",
+    prop: "#FFD46B",
+    propGlow: "rgba(255,212,107,0.55)",
+  },
+  "mint-radar": {
+    body: "#3AA88E",
+    bodyHi: "#74D8BD",
+    wing: "#2B7F73",
+    wingHi: "#56C7B2",
+    trim: "#0D2E31",
+    cockpit: "rgba(232,255,250,0.92)",
+    prop: "#F4FF92",
+    propGlow: "rgba(244,255,146,0.55)",
+  },
+  "midnight-courier": {
+    body: "#4B58C9",
+    bodyHi: "#7A84F0",
+    wing: "#2F3C8F",
+    wingHi: "#5968DE",
+    trim: "#0B122A",
+    cockpit: "rgba(233,238,255,0.92)",
+    prop: "#9ED0FF",
+    propGlow: "rgba(158,208,255,0.55)",
+  },
+};
+
 function hexPath(ctx: CanvasRenderingContext2D, r: number) {
   ctx.beginPath();
   for (let i = 0; i < 6; i += 1) {
@@ -276,6 +336,7 @@ export function drawTopDownBiplane(
   headingRad: number,
   bankRad: number,
   timestamp: number,
+  skin: PlaneSkinPalette = planeSkinPalettes.classic,
 ) {
   const prop = (timestamp / 32) % (Math.PI * 2);
   const bob = Math.sin(timestamp / 520) * 0.45;
@@ -285,11 +346,7 @@ export function drawTopDownBiplane(
   ctx.rotate(headingRad);
   ctx.rotate(clamp(bankRad, -0.45, 0.45));
 
-  const body = "#D81F26";
-  const bodyHi = "#F25555";
-  const wing = "#B81820";
-  const wingHi = "#E84850";
-  const trim = "#0F1B32";
+  const { body, bodyHi, wing, wingHi, trim, cockpit, prop: propColor, propGlow } = skin;
   const outline = "#0a0810";
 
   ctx.lineJoin = "round";
@@ -361,7 +418,7 @@ export function drawTopDownBiplane(
   ctx.stroke();
 
   // Cockpit
-  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.fillStyle = cockpit;
   ctx.beginPath();
   ctx.ellipse(6, 0, 7, 5.5, 0, 0, Math.PI * 2);
   ctx.fill();
@@ -370,7 +427,7 @@ export function drawTopDownBiplane(
   ctx.stroke();
 
   // Yellow prop hub + motion arcs
-  ctx.fillStyle = "#F5D030";
+  ctx.fillStyle = propColor;
   ctx.beginPath();
   ctx.arc(34, 0, 5.5, 0, Math.PI * 2);
   ctx.fill();
@@ -378,7 +435,7 @@ export function drawTopDownBiplane(
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  ctx.strokeStyle = "rgba(245,208,48,0.55)";
+  ctx.strokeStyle = propGlow;
   ctx.lineWidth = 2.8;
   ctx.beginPath();
   ctx.arc(34, 0, 12, prop, prop + Math.PI * 1.25);

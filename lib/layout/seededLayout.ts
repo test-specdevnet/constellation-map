@@ -1,12 +1,23 @@
 import { getColorBucket, getVisualMass, inferHealthBand } from "../flux/classify";
-import type { AppLocation, AppSpec } from "../types/app";
+import type { AppLocation, AppSpec, ProjectCategory, RuntimeFamily } from "../types/app";
 import type { NodeProfile } from "../types/node";
-import type { AppSystem, Cluster, ClusterKind, Star } from "../types/star";
+import type {
+  AppSystem,
+  ArchetypeSummary,
+  Cluster,
+  JitterVector,
+  SceneBounds,
+  Star,
+} from "../types/star";
 
-/** Wide spacing + later relax pass so buoys stay readable. */
-const clusterRadius = 9200;
-const systemOrbitBase = 460;
-const starOrbitBase = 36;
+const REGION_RADIUS = 13_200;
+const RUNTIME_ORBIT_BASE = 1_860;
+const SYSTEM_ORBIT_BASE = 420;
+const STAR_ORBIT_BASE = 48;
+const MIN_SYSTEM_SEP = 320;
+const MIN_STAR_SEP = 92;
+const SCENE_MARGIN = 1_400;
+const UNKNOWN_REGION_LABEL = "Unknown Sector";
 
 const hashString = (value: string) => {
   let hash = 2166136261;
@@ -20,11 +31,8 @@ const hashString = (value: string) => {
 };
 
 const seeded = (value: string, mod = 1000) => hashString(value) % mod;
-
 const rand01 = (seed: string) => seeded(seed, 1_000_000) / 1_000_000;
-
 const randSigned = (seed: string) => rand01(seed) * 2 - 1;
-
 const gaussianLike = (seedA: string, seedB: string) =>
   (randSigned(seedA) + randSigned(seedB)) * 0.55;
 
@@ -45,6 +53,19 @@ const titleCase = (value: string) =>
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 
+const cleanRegionLabel = (value: string | undefined) => {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  if (/^[a-z0-9-_\s]+$/i.test(trimmed) && trimmed === trimmed.toLowerCase()) {
+    return titleCase(trimmed);
+  }
+
+  return trimmed;
+};
+
 type LayoutInput = {
   apps: AppSpec[];
   locations: AppLocation[];
@@ -56,74 +77,202 @@ type LayoutOutput = {
   systems: AppSystem[];
   stars: Star[];
   featureSystems: AppSystem[];
+  bounds: SceneBounds;
+  rareArchetypes: ArchetypeSummary[];
 };
 
-type ClusterAssignment = {
-  clusterId: string;
-  label: string;
-  kind: ClusterKind;
-};
-
-const getClusterAssignment = (app: AppSpec): ClusterAssignment => {
-  if (app.projectCategory !== "misc") {
-    return {
-      clusterId: `project:${app.projectCategory}`,
-      label: titleCase(app.projectCategory),
-      kind: "project-category",
-    };
-  }
-
-  if (app.runtimeFamily !== "unknown") {
-    return {
-      clusterId: `runtime:${app.runtimeFamily}`,
-      label: `${titleCase(app.runtimeFamily)} Runtime`,
-      kind: "runtime",
-    };
-  }
-
-  return {
-    clusterId: `resource:${app.resourceTier}`,
-    label: `${titleCase(app.resourceTier)} Footprint`,
-    kind: "resource",
-  };
+type DraftSystem = {
+  app: AppSpec;
+  x: number;
+  y: number;
+  status: string;
+  appLocations: AppLocation[];
+  primaryNode?: NodeProfile;
+  regionLabel: string;
+  regionClusterId: string;
+  runtimeClusterId: string;
+  jitterSeed: string;
+  jitterOffset: JitterVector;
+  archetypeId: string;
+  isRareArchetype: boolean;
 };
 
 const getNodeById = (nodes: NodeProfile[]) =>
   Object.fromEntries(nodes.map((node) => [node.id, node]));
 
-const MIN_STAR_SEP = 96;
+const groupBy = <T, K extends string>(items: T[], keyOf: (item: T) => K) => {
+  const map = new Map<K, T[]>();
 
-/** Push instance stars apart within each system (deterministic passes). */
-const relaxStarSeparation = (stars: Star[], passes = 3) => {
-  const bySystem = new Map<string, Star[]>();
-  for (const star of stars) {
-    const list = bySystem.get(star.systemId) ?? [];
-    list.push(star);
-    bySystem.set(star.systemId, list);
+  for (const item of items) {
+    const key = keyOf(item);
+    const existing = map.get(key);
+    if (existing) {
+      existing.push(item);
+    } else {
+      map.set(key, [item]);
+    }
   }
 
+  return map;
+};
+
+const buildJitterVector = (seed: string, strength: number): JitterVector => ({
+  x: gaussianLike(`${seed}:jxA`, `${seed}:jxB`) * strength,
+  y: gaussianLike(`${seed}:jyA`, `${seed}:jyB`) * strength,
+});
+
+const resolveRegionLabel = (
+  app: AppSpec,
+  appLocations: AppLocation[],
+  nodesById: Record<string, NodeProfile>,
+) => {
+  const counts = new Map<string, number>();
+
+  const addCandidate = (candidate: string | undefined) => {
+    const normalized = cleanRegionLabel(candidate);
+    if (!normalized) {
+      return;
+    }
+
+    counts.set(normalized, (counts.get(normalized) ?? 0) + 1);
+  };
+
+  for (const location of appLocations) {
+    const node = nodesById[location.nodeJoinKey];
+    addCandidate(node?.geolocation.regionName);
+    addCandidate(node?.geolocation.country);
+    addCandidate(node?.org);
+    addCandidate(node?.geolocation.org);
+  }
+
+  if (!counts.size && app.geolocationRules.length > 0) {
+    addCandidate(app.geolocationRules[0]);
+  }
+
+  const top = [...counts.entries()].sort(
+    (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
+  )[0]?.[0];
+
+  return top || UNKNOWN_REGION_LABEL;
+};
+
+const buildRareArchetypes = (apps: AppSpec[]) => {
+  const counts = apps.reduce((map, app) => {
+    const key = `${app.runtimeFamily}:${app.projectCategory}`;
+    map.set(key, (map.get(key) ?? 0) + 1);
+    return map;
+  }, new Map<string, number>());
+
+  const sorted = [...counts.entries()]
+    .map(([id, systemCount]) => {
+      const [runtimeFamily, projectCategory] = id.split(":") as [
+        RuntimeFamily,
+        ProjectCategory,
+      ];
+
+      return {
+        id,
+        runtimeFamily,
+        projectCategory,
+        systemCount,
+      } satisfies ArchetypeSummary;
+    })
+    .sort(
+      (left, right) =>
+        left.systemCount - right.systemCount || left.id.localeCompare(right.id),
+    );
+
+  if (!sorted.length) {
+    return [];
+  }
+
+  const percentileIndex = Math.max(0, Math.ceil(sorted.length * 0.1) - 1);
+  const percentileThreshold = sorted[percentileIndex]?.systemCount ?? 1;
+  const rareCutoff = Math.max(1, Math.min(3, percentileThreshold));
+
+  return sorted.filter((entry) => entry.systemCount <= rareCutoff);
+};
+
+const relaxPointSeparation = <T extends { x: number; y: number }>(
+  points: T[],
+  minimumSeparation: number,
+  passes = 3,
+) => {
   for (let pass = 0; pass < passes; pass += 1) {
-    for (const group of bySystem.values()) {
-      if (group.length < 2) continue;
-      for (let i = 0; i < group.length; i += 1) {
-        for (let j = i + 1; j < group.length; j += 1) {
-          const a = group[i];
-          const b = group[j];
-          const dx = b.x - a.x;
-          const dy = b.y - a.y;
-          const d = Math.hypot(dx, dy);
-          if (d >= MIN_STAR_SEP || d < 1e-6) continue;
-          const push = (MIN_STAR_SEP - d) * 0.52;
-          const nx = dx / d;
-          const ny = dy / d;
-          a.x -= nx * push;
-          a.y -= ny * push;
-          b.x += nx * push;
-          b.y += ny * push;
+    for (let index = 0; index < points.length; index += 1) {
+      for (let peerIndex = index + 1; peerIndex < points.length; peerIndex += 1) {
+        const left = points[index];
+        const right = points[peerIndex];
+        const dx = right.x - left.x;
+        const dy = right.y - left.y;
+        const distance = Math.hypot(dx, dy);
+
+        if (distance >= minimumSeparation || distance < 1e-6) {
+          continue;
         }
+
+        const push = (minimumSeparation - distance) * 0.52;
+        const nx = dx / distance;
+        const ny = dy / distance;
+
+        left.x -= nx * push;
+        left.y -= ny * push;
+        right.x += nx * push;
+        right.y += ny * push;
       }
     }
   }
+};
+
+const computeBounds = (clusters: Cluster[], systems: AppSystem[], stars: Star[]): SceneBounds => {
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+
+  const include = (x: number, y: number, radius = 0) => {
+    minX = Math.min(minX, x - radius);
+    minY = Math.min(minY, y - radius);
+    maxX = Math.max(maxX, x + radius);
+    maxY = Math.max(maxY, y + radius);
+  };
+
+  for (const cluster of clusters) {
+    include(cluster.centroid.x, cluster.centroid.y, cluster.radius);
+  }
+
+  for (const system of systems) {
+    include(system.x, system.y, 220);
+  }
+
+  for (const star of stars) {
+    include(star.x, star.y, 86);
+  }
+
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
+    return {
+      minX: -1_000,
+      minY: -1_000,
+      maxX: 1_000,
+      maxY: 1_000,
+      width: 2_000,
+      height: 2_000,
+    };
+  }
+
+  minX -= SCENE_MARGIN;
+  minY -= SCENE_MARGIN;
+  maxX += SCENE_MARGIN;
+  maxY += SCENE_MARGIN;
+
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
 };
 
 export const buildSeededSceneLayout = ({
@@ -131,64 +280,58 @@ export const buildSeededSceneLayout = ({
   locations,
   nodes,
 }: LayoutInput): LayoutOutput => {
-  const locationsByApp = new Map<string, AppLocation[]>();
+  const locationsByApp = groupBy(locations, (location) => location.appName);
   const nodesById = getNodeById(nodes);
+  const rareArchetypes = buildRareArchetypes(apps);
+  const rareArchetypeIds = new Set(rareArchetypes.map((entry) => entry.id));
 
-  for (const location of locations) {
-    const group = locationsByApp.get(location.appName) ?? [];
-    group.push(location);
-    locationsByApp.set(location.appName, group);
-  }
+  const appsWithRegion = apps
+    .map((app) => {
+      const appLocations = locationsByApp.get(app.appName) ?? [];
+      return {
+        app,
+        regionLabel: resolveRegionLabel(app, appLocations, nodesById),
+        appLocations,
+      };
+    })
+    .sort(
+      (left, right) =>
+        left.regionLabel.localeCompare(right.regionLabel) ||
+        left.app.runtimeFamily.localeCompare(right.app.runtimeFamily) ||
+        left.app.appName.localeCompare(right.app.appName),
+    );
 
-  const clusterAssignments = apps.map((app) => ({
-    app,
-    assignment: getClusterAssignment(app),
-  }));
-  const uniqueClusters = [...new Map(clusterAssignments.map((entry) => [entry.assignment.clusterId, entry.assignment])).values()]
-    .sort((left, right) => left.label.localeCompare(right.label));
+  const regionGroups = groupBy(appsWithRegion, (entry) => entry.regionLabel);
+  const orderedRegionLabels = [...regionGroups.keys()].sort((left, right) =>
+    left.localeCompare(right),
+  );
 
-  const clusterCenters = new Map<string, { x: number; y: number }>();
-  const armCount = Math.max(3, Math.min(5, Math.round(Math.sqrt(uniqueClusters.length))));
-  const globalRotation = randSigned("flux:galaxy:rotation") * 0.8;
-  const tilt = randSigned("flux:galaxy:tilt") * 0.22;
-  const coreBias = 0.55 + rand01("flux:galaxy:coreBias") * 0.15;
+  const regionCenters = new Map<string, { x: number; y: number }>();
+  const armCount = Math.max(3, Math.min(6, Math.round(Math.sqrt(orderedRegionLabels.length)) + 1));
+  const globalRotation = randSigned("flux:regions:rotation") * 0.8;
+  const tilt = randSigned("flux:regions:tilt") * 0.2;
 
-  uniqueClusters.forEach((cluster, index) => {
-    const arm = seeded(`${cluster.clusterId}:arm`, armCount);
+  orderedRegionLabels.forEach((regionLabel, index) => {
+    const regionId = `region:${regionLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+    const arm = seeded(`${regionId}:arm`, armCount);
     const armPhase = (arm / Math.max(armCount, 1)) * Math.PI * 2;
     const t =
-      0.6 +
-      (index / Math.max(uniqueClusters.length - 1, 1)) * (3.8 + rand01(`${cluster.clusterId}:tSpan`) * 1.6) +
-      randSigned(`${cluster.clusterId}:tJitter`) * 0.35;
-
-    const armTightness = 0.36 + rand01(`${cluster.clusterId}:tight`) * 0.22;
-    const baseRadius =
-      clusterRadius *
-      Math.pow(rand01(`${cluster.clusterId}:rad`) * 0.95 + 0.05, coreBias) *
-      (0.78 + rand01(`${cluster.clusterId}:radGain`) * 0.58);
-
+      0.7 +
+      (index / Math.max(orderedRegionLabels.length - 1, 1)) *
+        (4.2 + rand01(`${regionId}:span`) * 1.1) +
+      randSigned(`${regionId}:tJitter`) * 0.28;
+    const radius =
+      REGION_RADIUS *
+      (0.42 + Math.pow(rand01(`${regionId}:rad`) * 0.94 + 0.06, 0.78) * 0.8);
     const angle =
       armPhase +
-      t * (1.1 + armTightness) +
-      randSigned(`${cluster.clusterId}:angNoise`) * 0.38;
-
-    const spiral = polar(angle, baseRadius + t * 520);
-    const lobe =
-      (arm % 2 === 0 ? 1 : -1) *
-      gaussianLike(`${cluster.clusterId}:lobeA`, `${cluster.clusterId}:lobeB`) *
-      920;
+      t * (1.16 + rand01(`${regionId}:tight`) * 0.18) +
+      randSigned(`${regionId}:angle`) * 0.32;
+    const spiral = polar(angle, radius + t * 420);
     const drift = {
-      x:
-        gaussianLike(`${cluster.clusterId}:dxA`, `${cluster.clusterId}:dxB`) *
-          720 +
-        lobe,
-      y:
-        gaussianLike(`${cluster.clusterId}:dyA`, `${cluster.clusterId}:dyB`) *
-          720 +
-        gaussianLike(`${cluster.clusterId}:dyC`, `${cluster.clusterId}:dyD`) *
-          380,
+      x: gaussianLike(`${regionId}:dxA`, `${regionId}:dxB`) * 760,
+      y: gaussianLike(`${regionId}:dyA`, `${regionId}:dyB`) * 760,
     };
-
     const rotated = rotate(
       {
         x: spiral.x + drift.x,
@@ -197,153 +340,320 @@ export const buildSeededSceneLayout = ({
       globalRotation,
     );
 
-    const projected = {
+    regionCenters.set(regionLabel, {
       x: rotated.x,
       y: rotated.y * (1 + tilt),
-    };
-
-    clusterCenters.set(cluster.clusterId, projected);
+    });
   });
 
   const clusters: Cluster[] = [];
   const systems: AppSystem[] = [];
   const stars: Star[] = [];
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
 
-  for (const cluster of uniqueClusters) {
-    const clusterApps = clusterAssignments
-      .filter((entry) => entry.assignment.clusterId === cluster.clusterId)
-      .map((entry) => entry.app)
-      .sort((left, right) => left.appName.localeCompare(right.appName));
-    const centroid = clusterCenters.get(cluster.clusterId) ?? { x: 0, y: 0 };
-    const clusterStarIds: string[] = [];
-    const clusterResource = new Set(clusterApps.map((app) => app.resourceTier));
-    const clusterRuntime = new Set(clusterApps.map((app) => app.runtimeFamily));
+  for (const regionLabel of orderedRegionLabels) {
+    const regionClusterId = `region:${regionLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+    const regionCenter = regionCenters.get(regionLabel) ?? { x: 0, y: 0 };
+    const regionEntries = regionGroups.get(regionLabel) ?? [];
+    const runtimeGroups = groupBy(regionEntries, (entry) => entry.app.runtimeFamily);
+    const orderedRuntimes = [...runtimeGroups.keys()].sort((left, right) =>
+      left.localeCompare(right),
+    );
+    const regionSystemIds: string[] = [];
+    const regionStarIds: string[] = [];
+    let regionRadius = 1_800;
 
-    const goldenAngle = Math.PI * (3 - Math.sqrt(5));
-    const ellipseAngle = randSigned(`${cluster.clusterId}:ellipse`) * 0.7;
-    const ellipseScale = 0.75 + rand01(`${cluster.clusterId}:ellipseScale`) * 0.35;
-
-    clusterApps.forEach((app, systemIndex) => {
-      const systemId = `system:${app.appName}`;
-      const jitter = randSigned(`${app.appName}:sysJitter`);
-      const systemAngle = systemIndex * goldenAngle + jitter * 0.55;
-      const spread =
-        systemOrbitBase +
-        Math.pow(rand01(`${app.appName}:sysRad`) * 0.98 + 0.02, 0.62) * 2180;
-      const base = polar(systemAngle, spread);
-      const warped = rotate({ x: base.x * (1.08 + ellipseScale), y: base.y * ellipseScale }, ellipseAngle);
-      const systemX = centroid.x + warped.x;
-      const systemY = centroid.y + warped.y;
-      const appLocations = locationsByApp.get(app.appName) ?? [];
-      const primaryLocation = appLocations[0];
-      const primaryNode = primaryLocation ? nodesById[primaryLocation.nodeJoinKey] : undefined;
-      const status = primaryLocation?.status || "unknown";
-
-      const system: AppSystem = {
-        systemId,
-        appName: app.appName,
-        label: app.appName,
-        clusterId: cluster.clusterId,
-        x: systemX,
-        y: systemY,
-        instanceCount: Math.max(app.instances, appLocations.length || 1),
-        runtimeFamily: app.runtimeFamily,
-        projectCategory: app.projectCategory,
-        resourceTier: app.resourceTier,
-        status,
+    orderedRuntimes.forEach((runtimeFamily, runtimeIndex) => {
+      const runtimeEntries = runtimeGroups.get(runtimeFamily) ?? [];
+      const runtimeClusterId = `${regionClusterId}:runtime:${runtimeFamily}`;
+      const runtimeAngle =
+        (runtimeIndex / Math.max(orderedRuntimes.length, 1)) * Math.PI * 2 +
+        randSigned(`${runtimeClusterId}:angle`) * 0.22;
+      const runtimeDistance =
+        RUNTIME_ORBIT_BASE +
+        Math.sqrt(runtimeEntries.length) * 230 +
+        rand01(`${runtimeClusterId}:distance`) * 420;
+      const runtimeCentroid = {
+        x: regionCenter.x + Math.cos(runtimeAngle) * runtimeDistance,
+        y: regionCenter.y + Math.sin(runtimeAngle) * runtimeDistance * 0.78,
       };
+      const runtimeSystemIds: string[] = [];
+      const runtimeStarIds: string[] = [];
 
-      systems.push(system);
-
-      const renderLocations =
-        appLocations.length > 0
-          ? appLocations
-          : [
-              {
-                id: `${app.appName}:app`,
-                appName: app.appName,
-                ip: "",
-                hash: app.hash,
-                broadcastedAt: null,
-                expireAt: null,
-                status: "unknown",
-                locationKey: `${app.appName}:app`,
-                freshness: "unknown",
-                nodeJoinKey: "",
-              } satisfies AppLocation,
-            ];
-
-      renderLocations.forEach((location, locationIndex) => {
-        const angle = rand01(`${location.id}:theta`) * Math.PI * 2;
-        const radius =
-          starOrbitBase +
-          Math.pow(rand01(`${location.id}:rad`) * 0.98 + 0.02, 0.6) * (88 + rand01(`${location.id}:radGain`) * 86);
+      const draftSystems = runtimeEntries.map((entry, systemIndex) => {
+        const app = entry.app;
+        const systemAngle =
+          systemIndex * goldenAngle + randSigned(`${app.appName}:system-angle`) * 0.5;
+        const spread =
+          SYSTEM_ORBIT_BASE +
+          Math.pow(rand01(`${app.appName}:system-rad`) * 0.98 + 0.02, 0.62) *
+            (480 + runtimeEntries.length * 42);
+        const ellipse = 0.72 + rand01(`${app.appName}:system-ellipse`) * 0.42;
+        const base = polar(systemAngle, spread);
         const offset = rotate(
           {
-            x: Math.cos(angle) * radius,
-            y: Math.sin(angle) * radius * (0.72 + rand01(`${location.id}:ecc`) * 0.55),
+            x: base.x * (1.08 + rand01(`${app.appName}:system-squash`) * 0.22),
+            y: base.y * ellipse,
           },
-          randSigned(`${location.id}:rot`) * 0.8,
+          randSigned(`${app.appName}:system-rot`) * 0.7,
         );
-        const node = location.nodeJoinKey ? nodesById[location.nodeJoinKey] : primaryNode;
-        const visualMass = getVisualMass(app, renderLocations.length, node);
-        const starId = `star:${location.id}`;
-        const region =
-          node?.geolocation.regionName ?? node?.geolocation.country ?? node?.org ?? undefined;
+        const primaryLocation = entry.appLocations[0];
+        const primaryNode = primaryLocation
+          ? nodesById[primaryLocation.nodeJoinKey]
+          : undefined;
+        const status = primaryLocation?.status || "unknown";
+        const archetypeId = `${app.runtimeFamily}:${app.projectCategory}`;
 
-        stars.push({
-          id: starId,
-          type: "instance",
-          x: systemX + offset.x,
-          y: systemY + offset.y,
-          size: Math.max(3, Math.min(18, 3 + visualMass * 0.12)),
-          brightness: Math.max(0.4, Math.min(1, 0.42 + visualMass / 70)),
-          colorBucket: getColorBucket(app),
-          appName: app.appName,
-          appId: app.appName,
-          locationId: location.id,
-          nodeProfileId: node?.id,
-          clusterId: cluster.clusterId,
-          systemId,
-          label: app.appName,
-          isRecommended: app.projectCategory === "api" || app.projectCategory === "website",
+        return {
+          app,
+          x: runtimeCentroid.x + offset.x,
+          y: runtimeCentroid.y + offset.y,
           status,
-          healthBand: inferHealthBand(status),
-          runtimeFamily: app.runtimeFamily,
-          projectCategory: app.projectCategory,
-          resourceTier: app.resourceTier,
-          region,
-          metadata: {
-            owner: app.owner,
-            instances: app.instances,
-            benchmarkTier: node?.benchmarkTier ?? null,
-            country: node?.geolocation.country ?? null,
+          appLocations: entry.appLocations,
+          primaryNode,
+          regionLabel,
+          regionClusterId,
+          runtimeClusterId,
+          jitterSeed: `system:${app.appName}`,
+          jitterOffset: buildJitterVector(`system:${app.appName}`, 44),
+          archetypeId,
+          isRareArchetype: rareArchetypeIds.has(archetypeId),
+        } satisfies DraftSystem;
+      });
+
+      relaxPointSeparation(draftSystems, MIN_SYSTEM_SEP, 3);
+
+      let runtimeRadius = 780;
+
+      for (const draft of draftSystems.sort((left, right) =>
+        left.app.appName.localeCompare(right.app.appName),
+      )) {
+        const systemId = `system:${draft.app.appName}`;
+        const system: AppSystem = {
+          systemId,
+          appName: draft.app.appName,
+          label: draft.app.appName,
+          clusterId: draft.runtimeClusterId,
+          regionClusterId: draft.regionClusterId,
+          runtimeClusterId: draft.runtimeClusterId,
+          regionLabel: draft.regionLabel,
+          x: draft.x,
+          y: draft.y,
+          instanceCount: Math.max(draft.app.instances, draft.appLocations.length || 1),
+          runtimeFamily: draft.app.runtimeFamily,
+          projectCategory: draft.app.projectCategory,
+          resourceTier: draft.app.resourceTier,
+          status: draft.status,
+          jitterSeed: draft.jitterSeed,
+          jitterOffset: draft.jitterOffset,
+          archetypeId: draft.archetypeId,
+          rarityFlags: {
+            isRareArchetype: draft.isRareArchetype,
+            rareArchetypeId: draft.isRareArchetype ? draft.archetypeId : null,
           },
+        };
+
+        systems.push(system);
+        runtimeSystemIds.push(systemId);
+        regionSystemIds.push(systemId);
+
+        const renderLocations =
+          draft.appLocations.length > 0
+            ? draft.appLocations
+            : [
+                {
+                  id: `${draft.app.appName}:app`,
+                  appName: draft.app.appName,
+                  ip: "",
+                  hash: draft.app.hash,
+                  broadcastedAt: null,
+                  expireAt: null,
+                  status: "unknown",
+                  locationKey: `${draft.app.appName}:app`,
+                  freshness: "unknown",
+                  nodeJoinKey: "",
+                } satisfies AppLocation,
+              ];
+
+        const draftStars = renderLocations.map((location, locationIndex) => {
+          const angle = rand01(`${location.id}:theta`) * Math.PI * 2;
+          const radius =
+            STAR_ORBIT_BASE +
+            Math.pow(rand01(`${location.id}:rad`) * 0.98 + 0.02, 0.58) *
+              (96 + renderLocations.length * 8);
+          const offset = rotate(
+            {
+              x: Math.cos(angle) * radius,
+              y:
+                Math.sin(angle) *
+                radius *
+                (0.7 + rand01(`${location.id}:ecc`) * 0.52),
+            },
+            randSigned(`${location.id}:rot`) * 0.7,
+          );
+
+          return {
+            location,
+            x: draft.x + offset.x,
+            y: draft.y + offset.y,
+          };
         });
-        clusterStarIds.push(starId);
+
+        relaxPointSeparation(draftStars, MIN_STAR_SEP, 3);
+
+        draftStars.forEach(({ location, x, y }, locationIndex) => {
+          const node = location.nodeJoinKey
+            ? nodesById[location.nodeJoinKey]
+            : draft.primaryNode;
+          const visualMass = getVisualMass(draft.app, renderLocations.length, node);
+          const starId = `star:${location.id}`;
+          const region =
+            cleanRegionLabel(node?.geolocation.regionName) ||
+            cleanRegionLabel(node?.geolocation.country) ||
+            cleanRegionLabel(node?.org) ||
+            draft.regionLabel;
+
+          stars.push({
+            id: starId,
+            type: "instance",
+            x,
+            y,
+            size: Math.max(3, Math.min(18, 3 + visualMass * 0.12)),
+            brightness: Math.max(0.4, Math.min(1, 0.42 + visualMass / 70)),
+            colorBucket: getColorBucket(draft.app),
+            appName: draft.app.appName,
+            appId: draft.app.appName,
+            locationId: location.id,
+            nodeProfileId: node?.id,
+            clusterId: draft.runtimeClusterId,
+            regionClusterId: draft.regionClusterId,
+            runtimeClusterId: draft.runtimeClusterId,
+            systemId,
+            label: draft.app.appName,
+            isRecommended:
+              draft.app.projectCategory === "api" ||
+              draft.app.projectCategory === "website",
+            status: location.status || draft.status,
+            healthBand: inferHealthBand(location.status || draft.status),
+            runtimeFamily: draft.app.runtimeFamily,
+            projectCategory: draft.app.projectCategory,
+            resourceTier: draft.app.resourceTier,
+            region,
+            jitterSeed: `star:${location.id}`,
+            jitterOffset: buildJitterVector(
+              `star:${location.id}:${locationIndex}`,
+              12,
+            ),
+            archetypeId: draft.archetypeId,
+            rarityFlags: {
+              isRareArchetype: draft.isRareArchetype,
+              rareArchetypeId: draft.isRareArchetype ? draft.archetypeId : null,
+            },
+            metadata: {
+              owner: draft.app.owner,
+              instances: draft.app.instances,
+              benchmarkTier: node?.benchmarkTier ?? null,
+              country: node?.geolocation.country ?? null,
+              regionLabel: draft.regionLabel,
+            },
+          });
+
+          runtimeStarIds.push(starId);
+          regionStarIds.push(starId);
+        });
+
+        const systemDistance = Math.hypot(draft.x - runtimeCentroid.x, draft.y - runtimeCentroid.y);
+        runtimeRadius = Math.max(runtimeRadius, systemDistance + 420);
+        regionRadius = Math.max(
+          regionRadius,
+          Math.hypot(draft.x - regionCenter.x, draft.y - regionCenter.y) + 860,
+        );
+      }
+
+      const runtimeRareIds = [
+        ...new Set(
+          runtimeEntries
+            .map((entry) => `${entry.app.runtimeFamily}:${entry.app.projectCategory}`)
+            .filter((id) => rareArchetypeIds.has(id)),
+        ),
+      ];
+
+      clusters.push({
+        clusterId: runtimeClusterId,
+        level: "runtime",
+        parentId: regionClusterId,
+        label: `${titleCase(runtimeFamily)} Runtime`,
+        kind: "runtime",
+        centroid: runtimeCentroid,
+        radius: runtimeRadius,
+        systemIds: runtimeSystemIds,
+        starIds: runtimeStarIds,
+        counts: {
+          apps: runtimeEntries.length,
+          systems: runtimeSystemIds.length,
+          instances: runtimeStarIds.length,
+          runtimes: 1,
+        },
+        rarityFlags: {
+          hasRareArchetype: runtimeRareIds.length > 0,
+          rareArchetypeCount: runtimeRareIds.length,
+          rareArchetypeIds: runtimeRareIds,
+        },
+        runtimeFamily,
+        regionLabel,
       });
     });
 
+    const regionRareIds = [
+      ...new Set(
+        regionEntries
+          .map((entry) => `${entry.app.runtimeFamily}:${entry.app.projectCategory}`)
+          .filter((id) => rareArchetypeIds.has(id)),
+      ),
+    ];
+
     clusters.push({
-      clusterId: cluster.clusterId,
-      label: cluster.label,
-      kind: cluster.kind,
-      centroid,
-      starIds: clusterStarIds,
-      summaryMetrics: {
-        apps: clusterApps.length,
-        instances: clusterStarIds.length,
-        runtimeFamily: clusterRuntime.size === 1 ? [...clusterRuntime][0] : "mixed",
-        resourceTier: clusterResource.size === 1 ? [...clusterResource][0] : "mixed",
+      clusterId: regionClusterId,
+      level: "region",
+      parentId: null,
+      label: regionLabel,
+      kind: "region",
+      centroid: regionCenter,
+      radius: regionRadius,
+      systemIds: regionSystemIds,
+      starIds: regionStarIds,
+      counts: {
+        apps: regionEntries.length,
+        systems: regionSystemIds.length,
+        instances: regionStarIds.length,
+        runtimes: new Set(regionEntries.map((entry) => entry.app.runtimeFamily)).size,
       },
+      rarityFlags: {
+        hasRareArchetype: regionRareIds.length > 0,
+        rareArchetypeCount: regionRareIds.length,
+        rareArchetypeIds: regionRareIds,
+      },
+      runtimeFamily: "mixed",
+      regionLabel,
     });
   }
 
   const featureSystems = [...systems]
-    .sort((left, right) => right.instanceCount - left.instanceCount || left.appName.localeCompare(right.appName))
+    .sort(
+      (left, right) =>
+        right.instanceCount - left.instanceCount ||
+        left.appName.localeCompare(right.appName),
+    )
     .slice(0, 12);
 
-  relaxStarSeparation(stars);
+  const bounds = computeBounds(clusters, systems, stars);
 
-  return { clusters, systems, stars, featureSystems };
+  return {
+    clusters,
+    systems,
+    stars,
+    featureSystems,
+    bounds,
+    rareArchetypes,
+  };
 };

@@ -334,6 +334,13 @@ h3 {
     linear-gradient(180deg, rgba(43, 97, 209, 0.35), rgba(15, 47, 92, 0.92));
 }
 
+.scene-overlay-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
 .scene-canvas {
   display: block;
   width: 100%;
@@ -383,6 +390,175 @@ h3 {
 
 .scene-flight-tip-dismiss {
   width: 100%;
+}
+
+.mini-map,
+.diegetic-hud,
+.achievement-toast {
+  position: absolute;
+}
+
+.mini-map {
+  top: 18px;
+  right: 18px;
+  width: 206px;
+  padding: 12px 12px 10px;
+  border-radius: 18px;
+  border: 1px solid rgba(109, 167, 255, 0.22);
+  background: rgba(7, 14, 29, 0.76);
+  backdrop-filter: blur(10px);
+  pointer-events: auto;
+}
+
+.mini-map-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 0.82rem;
+}
+
+.mini-map-header span,
+.mini-map-label {
+  color: var(--muted);
+}
+
+.mini-map-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(83, 130, 219, 0.25), transparent 65%),
+    rgba(7, 14, 28, 0.82);
+}
+
+.mini-map-frame {
+  fill: rgba(8, 16, 31, 0.45);
+  stroke: rgba(167, 211, 255, 0.16);
+  stroke-width: 1;
+}
+
+.mini-map-node--interactive {
+  cursor: pointer;
+}
+
+.mini-map-node--interactive:hover .mini-map-marker,
+.mini-map-node--interactive:focus-visible .mini-map-marker {
+  transform: scale(1.04);
+  transform-origin: center;
+}
+
+.mini-map-hit {
+  fill: transparent;
+}
+
+.mini-map-marker {
+  fill: rgba(120, 185, 255, 0.75);
+  stroke: rgba(255, 255, 255, 0.82);
+  stroke-width: 1.2;
+  transition:
+    fill 120ms ease,
+    transform 120ms ease;
+}
+
+.mini-map-marker--active {
+  fill: rgba(255, 208, 112, 0.9);
+}
+
+.mini-map-marker--quest {
+  fill: none;
+  stroke: rgba(255, 223, 145, 0.72);
+  stroke-width: 1.6;
+  stroke-dasharray: 4 4;
+}
+
+.mini-map-plane {
+  fill: #fff1b0;
+  stroke: #101b34;
+  stroke-width: 1.4;
+}
+
+.mini-map-heading {
+  stroke: rgba(255, 241, 176, 0.9);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.mini-map-label {
+  margin: 8px 0 0;
+  font-size: 0.78rem;
+}
+
+.diegetic-hud {
+  top: 18px;
+  left: 18px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  width: min(520px, calc(100% - 260px));
+}
+
+.hud-chip {
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(109, 167, 255, 0.18);
+  background: rgba(8, 14, 28, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.hud-chip span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.hud-chip strong {
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+
+.hud-chip--wide {
+  grid-column: span 3;
+}
+
+.achievement-toast {
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  width: min(520px, calc(100% - 32px));
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(109, 167, 255, 0.22);
+  background: rgba(7, 14, 29, 0.88);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.42);
+  pointer-events: auto;
+}
+
+.achievement-toast p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.achievement-toast strong {
+  display: block;
+  font-size: 1rem;
+}
+
+.achievement-toast--quest {
+  border-color: rgba(104, 214, 255, 0.34);
+}
+
+.achievement-toast--unlock {
+  border-color: rgba(255, 214, 107, 0.34);
 }
 
 .scene-flight-pad {
@@ -445,6 +621,10 @@ h3 {
   gap: 16px;
 }
 
+.atlas-lower-grid--triple {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .panel-card {
   padding: 20px;
   border-radius: 24px;
@@ -497,6 +677,84 @@ h3 {
 
 .hover-card strong {
   font-size: 1rem;
+}
+
+.quest-log,
+.hangar-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.quest-card,
+.hangar-card {
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(109, 167, 255, 0.12);
+  background: rgba(7, 14, 28, 0.82);
+}
+
+.quest-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.quest-card p,
+.hangar-card span,
+.hangar-card small {
+  margin: 0;
+  color: var(--muted);
+}
+
+.quest-card--complete {
+  border-color: rgba(119, 217, 164, 0.35);
+  background: linear-gradient(180deg, rgba(16, 39, 42, 0.9), rgba(7, 14, 28, 0.9));
+}
+
+.quest-reward {
+  margin-top: 10px !important;
+  color: rgba(255, 241, 176, 0.86) !important;
+  font-size: 0.84rem;
+}
+
+.hangar-card {
+  width: 100%;
+  display: grid;
+  gap: 8px;
+  text-align: left;
+  color: var(--text);
+}
+
+.hangar-card:disabled {
+  opacity: 0.7;
+}
+
+.hangar-card--selected {
+  border-color: rgba(104, 214, 255, 0.34);
+  box-shadow: inset 0 0 0 1px rgba(104, 214, 255, 0.24);
+}
+
+.hangar-swatch {
+  height: 54px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.hangar-swatch--classic {
+  background: linear-gradient(135deg, #d81f26, #f25555);
+}
+
+.hangar-swatch--sunset-scout {
+  background: linear-gradient(135deg, #f06b2d, #ff9a63);
+}
+
+.hangar-swatch--mint-radar {
+  background: linear-gradient(135deg, #3aa88e, #74d8bd);
+}
+
+.hangar-swatch--midnight-courier {
+  background: linear-gradient(135deg, #2f3c8f, #7a84f0);
 }
 
 .status-banner {
@@ -630,6 +888,10 @@ h3 {
     grid-template-columns: 1fr;
   }
 
+  .atlas-lower-grid--triple {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .detail-drawer {
     position: static;
     max-height: none;
@@ -652,6 +914,7 @@ h3 {
 
   .filter-bar,
   .atlas-lower-grid,
+  .atlas-lower-grid--triple,
   .definition-grid,
   .definition-grid.compact,
   .hero-metrics {
@@ -671,6 +934,21 @@ h3 {
   .scene-canvas {
     min-height: 600px;
     height: 600px;
+  }
+
+  .diegetic-hud {
+    width: calc(100% - 36px);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .hud-chip--wide {
+    grid-column: span 2;
+  }
+
+  .mini-map {
+    top: auto;
+    bottom: 120px;
+    width: min(220px, calc(100% - 36px));
   }
 }
 

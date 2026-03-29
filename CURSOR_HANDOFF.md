@@ -3,161 +3,135 @@
 ## Project
 
 - Project root: `C:\Users\awcar\Downloads\fluxcloud-fit-evaluator\fluxcloud-constellation-map`
-- Source spec: `C:\Users\awcar\Downloads\fluxcloud_constellation_map_spec.md`
+- App type: Next.js App Router + TypeScript
 
-## What Was Built
+## What Changed
 
-This is a new Next.js App Router project implementing the FluxCloud Constellation Map as a dark, interactive public atlas of FluxCloud deployments.
+The constellation map was refactored around a focus+context exploration model with progressive disclosure and local game-like progression.
 
 Implemented areas:
 
-- App shell and global styling
-- Internal API routes:
-  - `/api/stars`
-  - `/api/detail/[appName]`
-  - `/api/search`
-  - `/api/filters`
-  - `/api/refresh`
-- Flux API client and normalization layer
-- Deterministic constellation layout generator
-- Interactive client UI:
-  - search
-  - filters
-  - pan and zoom canvas
-  - hover preview
-  - detail drawer
+- Hierarchical layout and snapshot model:
+  - region clouds
+  - runtime subclusters
+  - app systems
+  - instance stars
+  - scene bounds
+  - rare archetype metadata
+- New client-side focus/context helpers:
+  - disclosure band selection
+  - fisheye lens transform
+  - density alpha and deterministic jitter helpers
+- Scene rendering overhaul:
+  - region/runtime clouds render first
+  - app anchors appear when a region is active
+  - full stars appear only in detail mode
+  - hover uses lightweight tooltips
+  - cluster click focuses
+  - app/star click opens the detail drawer
+- New diegetic overlays and progression UI:
+  - mini-map
+  - HUD
+  - quest log
+  - hangar / plane skins
+  - achievement toast
+- Local persistence for:
+  - visited regions
+  - discovered runtimes
+  - inspected apps
+  - rare archetype discoveries
+  - unlocked skins
+  - selected skin
 
 ## Important Files
 
-- `app/page.tsx`
-- `app/layout.tsx`
-- `app/not-found.tsx`
-- `app/global-error.tsx`
-- `app/api/stars/route.ts`
-- `app/api/detail/[appName]/route.ts`
-- `app/api/search/route.ts`
-- `app/api/filters/route.ts`
-- `app/api/refresh/route.ts`
+Modified:
+
 - `app/globals.css`
 - `components/constellation/ConstellationExperience.tsx`
 - `components/constellation/SceneCanvas.tsx`
-- `components/constellation/DetailDrawer.tsx`
-- `components/constellation/SearchBox.tsx`
-- `components/constellation/FilterBar.tsx`
-- `lib/flux/client.ts`
+- `lib/canvas/buoyCategory.ts`
+- `lib/canvas/cartoonMarkers.ts`
 - `lib/flux/normalize.ts`
-- `lib/flux/classify.ts`
-- `lib/flux/cache.ts`
 - `lib/layout/seededLayout.ts`
-- `lib/types/app.ts`
-- `lib/types/node.ts`
 - `lib/types/star.ts`
-- `next.config.ts`
-- `package.json`
 
-## Current Build Status
+New:
 
-### Passing
+- `components/constellation/AchievementToast.tsx`
+- `components/constellation/DiegeticHud.tsx`
+- `components/constellation/HangarPanel.tsx`
+- `components/constellation/MiniMap.tsx`
+- `components/constellation/ProgressProvider.tsx`
+- `components/constellation/QuestLog.tsx`
+- `lib/layout/focusContext.ts`
+
+## Data Model Notes
+
+`/api/stars` now returns:
+
+- `clusters` with `level`, `parentId`, `radius`, `systemIds`, `counts`, and `rarityFlags`
+- `systems` with `regionClusterId`, `runtimeClusterId`, jitter metadata, and archetype rarity metadata
+- `stars` with matching cluster links plus jitter/archetype metadata
+- `bounds`
+- `rareArchetypes`
+
+Region label derivation uses node `regionName`, then country/org fallbacks, then `Unknown Sector`.
+
+## Current Verification Status
+
+Passing:
 
 - `npm.cmd run typecheck`
-- `npm.cmd run build -- --experimental-build-mode compile`
 - `npm.cmd run build -- --experimental-build-mode generate-env`
 
-### Failing in this sandbox
+Blocked in this sandbox by process spawning restrictions (`spawn EPERM`):
 
 - `npm.cmd run build`
+- `npm.cmd run build -- --experimental-build-mode compile`
+- `npm.cmd run dev`
 
-Failure:
+Observed behavior:
 
-- Next.js reaches `Generating static pages`
-- then throws:
-  - `Error [DataCloneError]: ()=>null could not be cloned.`
+- Next compiles successfully
+- type validation completes
+- then the environment fails during a later spawn step
 
-## What Was Already Tried
+This looks environment-specific, not like a TypeScript or bundling error in the app code.
 
-The failing standard build was debugged extensively.
+## Manual Smoke Coverage Still Needed In Cursor
 
-Changes already made:
-
-- moved scene loading to the client in `components/constellation/ConstellationExperience.tsx`
-  - the page no longer passes the scene snapshot from server to client
-  - the client now fetches `/api/stars` after mount
-- marked the live API routes as dynamic
-- added local `app/not-found.tsx`
-- added local `app/global-error.tsx`
-- disabled Next webpack build worker in `next.config.ts`
-- constrained build CPUs in `next.config.ts`
-- removed `AbortController` usage from the Flux fetch helper
-
-Extra isolation that was tested:
-
-- `app/page.tsx` was temporarily reduced to a minimal `<main>` element
-- the same `DataCloneError` still happened during `Generating static pages`
-
-Conclusion from current evidence:
-
-- app code typechecks and compile-builds
-- the remaining failure appears tied to Next 15 static generation in this sandboxed environment, not the page logic itself
-
-## Current Next Config
-
-`next.config.ts`
-
-```ts
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  reactStrictMode: true,
-  experimental: {
-    cpus: 1,
-    workerThreads: true,
-    webpackBuildWorker: false,
-  },
-};
-
-export default nextConfig;
-```
-
-## Notes About the Main Refactor
-
-`components/constellation/ConstellationExperience.tsx` now:
-
-- takes no props
-- fetches `/api/stars` in a `useEffect`
-- keeps the search, filter, focus, hover, and detail flows intact
-- uses the existing internal API architecture instead of server-passing the scene
-
-This was done specifically to reduce server/client serialization pressure during build.
-
-## Recommended Next Steps in Cursor
-
-1. Open the folder:
-   - `C:\Users\awcar\Downloads\fluxcloud-fit-evaluator\fluxcloud-constellation-map`
-2. Run:
+Run outside this sandbox:
 
 ```powershell
-npm install
 npm run typecheck
 npm run build
+npm run dev
 ```
 
-3. If `npm run build` succeeds outside this sandbox:
-   - treat the earlier failure as environment-specific
-   - proceed to GitHub and deployment
+Then verify:
 
-4. If `npm run build` still fails outside the sandbox with the same `DataCloneError`:
-   - inspect whether Next is still trying to statically process one of:
-     - `/`
-     - `/_not-found`
-     - a framework fallback route
-   - check if downgrading or pinning a different Next 15 patch version resolves it
-   - test whether removing `workerThreads: true` changes the failure mode
-   - test whether `output` settings or forcing all app routes dynamic changes the static-generation phase
+- first load shows region clouds only
+- zooming or flying into a region reveals runtime clouds and app anchors
+- deep zoom / close approach reveals individual stars
+- cluster click focuses without opening the drawer
+- app/star click opens the existing detail drawer
+- mini-map tracks plane position and active region
+- quests progress and skins unlock only once
+- selected skin persists across reload
+- mobile flight pad still works with overlays present
 
-## Practical Summary
+## Implementation Notes
 
-- The app itself is built and wired up.
-- TypeScript is clean.
-- Compile-mode Next build is clean.
-- The unresolved item is the standard static-generation stage of `next build` in this sandbox.
+- Progress is browser-local only via `localStorage`
+- The one-time flight tip still uses `sessionStorage`
+- Plane skins affect only visuals; no data semantics changed
+- Search remains app-focused and still jumps to app systems
+- Detail API remains app-focused; no cluster detail endpoint was added
 
+## Suggested Next Steps
+
+1. Run the app in Cursor or a native shell where Next can spawn child processes.
+2. Do a manual UX pass on overlay sizing and canvas readability with real data volume.
+3. If needed, tune disclosure thresholds in `lib/layout/focusContext.ts`.
+4. If needed, tune cluster positioning and rarity thresholds in `lib/layout/seededLayout.ts`.

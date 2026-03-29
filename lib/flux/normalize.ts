@@ -343,11 +343,12 @@ export const buildConstellationSnapshot = async (force = false): Promise<Constel
     .map((record) => normalizeNodeProfile(record as Record<string, unknown>))
     .filter((node): node is NodeProfile => Boolean(node));
 
-  const { clusters, systems, stars, featureSystems } = buildSeededSceneLayout({
-    apps,
-    locations,
-    nodes,
-  });
+  const { clusters, systems, stars, featureSystems, bounds, rareArchetypes } =
+    buildSeededSceneLayout({
+      apps,
+      locations,
+      nodes,
+    });
 
   const constraints = extractObject(deploymentInfo);
 
@@ -368,6 +369,8 @@ export const buildConstellationSnapshot = async (force = false): Promise<Constel
     systems,
     stars,
     featureSystems,
+    bounds,
+    rareArchetypes,
     counts: {
       apps: apps.length,
       locations: locations.length,
@@ -392,9 +395,13 @@ const buildFallbackAppDetail = (
 
   const locations = snapshot.locations.filter((location) => location.appName === appName);
   const relatedStars = snapshot.stars.filter((star) => star.appName === appName);
+  const relatedRuntimeClusterId =
+    snapshot.systems.find((system) => system.appName === appName)?.runtimeClusterId ??
+    relatedStars[0]?.runtimeClusterId;
   const relatedSystems = snapshot.systems.filter(
     (system) =>
-      system.clusterId === relatedStars[0]?.clusterId && system.appName !== appName,
+      system.runtimeClusterId === relatedRuntimeClusterId &&
+      system.appName !== appName,
   ).slice(0, 6);
   const nodes = snapshot.nodes.filter((node) =>
     locations.some((location) => location.nodeJoinKey === node.id),
@@ -573,6 +580,8 @@ export const getSceneSummary = async (force = false) => {
     systems: snapshot.systems,
     stars: snapshot.stars,
     featureSystems: snapshot.featureSystems,
+    bounds: snapshot.bounds,
+    rareArchetypes: snapshot.rareArchetypes,
     counts: snapshot.counts,
     filters,
   };

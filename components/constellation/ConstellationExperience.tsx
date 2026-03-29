@@ -4,14 +4,26 @@ import { useEffect, useMemo, useState } from "react";
 import type { FilterState } from "./FilterBar";
 import { FilterBar } from "./FilterBar";
 import { SearchBox } from "./SearchBox";
-import { SceneCanvas } from "./SceneCanvas";
+import { SceneCanvas, type HoveredEntity } from "./SceneCanvas";
 import { DetailDrawer } from "./DetailDrawer";
+import { MiniMap } from "./MiniMap";
+import { DiegeticHud } from "./DiegeticHud";
+import { QuestLog } from "./QuestLog";
+import { HangarPanel } from "./HangarPanel";
+import { AchievementToast } from "./AchievementToast";
+import {
+  ConstellationProgressProvider,
+  useConstellationProgress,
+} from "./ProgressProvider";
 import { BUILD_STAMP } from "../../lib/buildStamp";
+import type { FlightTelemetry } from "../../lib/layout/focusContext";
 import type {
   AppDetail,
   AppSystem,
+  ArchetypeSummary,
   Cluster,
   FilterMetadata,
+  SceneBounds,
   Star,
 } from "../../lib/types/star";
 
@@ -39,6 +51,8 @@ type InitialScene = {
   systems: AppSystem[];
   stars: Star[];
   featureSystems: AppSystem[];
+  bounds: SceneBounds;
+  rareArchetypes: ArchetypeSummary[];
   counts: {
     apps: number;
     locations: number;
@@ -64,6 +78,15 @@ const emptyScene: InitialScene = {
   systems: [],
   stars: [],
   featureSystems: [],
+  bounds: {
+    minX: -1_000,
+    minY: -1_000,
+    maxX: 1_000,
+    maxY: 1_000,
+    width: 2_000,
+    height: 2_000,
+  },
+  rareArchetypes: [],
   counts: {
     apps: 0,
     locations: 0,
@@ -83,21 +106,6 @@ export function ConstellationExperience() {
   const [sceneLoading, setSceneLoading] = useState(true);
   const [sceneError, setSceneError] = useState("");
   const [sceneReloadNonce, setSceneReloadNonce] = useState(0);
-  const [filters, setFilters] = useState<FilterState>(initialFilters);
-  const [selectedAppName, setSelectedAppName] = useState<string | null>(null);
-  const [hoveredStar, setHoveredStar] = useState<Star | null>(null);
-  const [focusTarget, setFocusTarget] = useState<{
-    key: string;
-    x: number;
-    y: number;
-    zoom: number;
-  } | null>(null);
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-  const [searchBusy, setSearchBusy] = useState(false);
-  const [detail, setDetail] = useState<AppDetail | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailError, setDetailError] = useState("");
-  const [statusMessage, setStatusMessage] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -143,34 +151,122 @@ export function ConstellationExperience() {
   }, [sceneReloadNonce]);
 
   const activeScene = scene ?? emptyScene;
+  const totalRegionCount = activeScene.clusters.filter(
+    (cluster) => cluster.level === "region",
+  ).length;
 
-  const visibleStars = useMemo(
+  return (
+    <ConstellationProgressProvider totalRegionCount={totalRegionCount}>
+      <ConstellationExperienceBody
+        activeScene={activeScene}
+        sceneLoading={sceneLoading}
+        sceneError={sceneError}
+        onRetryScene={() => {
+          setSceneError("");
+          setSceneReloadNonce((current) => current + 1);
+        }}
+      />
+    </ConstellationProgressProvider>
+  );
+}
+
+function ConstellationExperienceBody({
+  activeScene,
+  sceneLoading,
+  sceneError,
+  onRetryScene,
+}: {
+  activeScene: InitialScene;
+  sceneLoading: boolean;
+  sceneError: string;
+  onRetryScene: () => void;
+}) {
+  const [filters, setFilters] = useState<FilterState>(initialFilters);
+  const [selectedAppName, setSelectedAppName] = useState<string | null>(null);
+  const [hoveredEntity, setHoveredEntity] = useState<HoveredEntity | null>(null);
+  const [focusTarget, setFocusTarget] = useState<{
+    key: string;
+    x: number;
+    y: number;
+    zoom: number;
+  } | null>(null);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchBusy, setSearchBusy] = useState(false);
+  const [detail, setDetail] = useState<AppDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState("");
+  const [statusMessage, setStatusMessage] = useState("");
+  const [telemetry, setTelemetry] = useState<FlightTelemetry | null>(null);
+
+  const {
+    progress,
+    quests,
+    skins,
+    activeToast,
+    summary,
+    markAppInspected,
+    markRareArchetypeDiscovered,
+    markRegionVisited,
+    markRuntimeDiscovered,
+    selectSkin,
+    dismissToast,
+  } = useConstellationProgress();
+
+  const systemsById = useMemo(
+    () => new Map(activeScene.systems.map((system) => [system.systemId, system])),
+    [activeScene.systems],
+  );
+  const systemsByApp = useMemo(
+    () => new Map(activeScene.systems.map((system) => [system.appName, system])),
+    [activeScene.systems],
+  );
+  const clustersById = useMemo(
+    () => new Map(activeScene.clusters.map((cluster) => [cluster.clusterId, cluster])),
+    [activeScene.clusters],
+  );
+
+  const visibleSystems = useMemo(
     () =>
-      activeScene.stars.filter((star) => {
+      activeScene.systems.filter((system) => {
         if (
           filters.runtimeFamily !== "all" &&
-          star.runtimeFamily !== filters.runtimeFamily
+          system.runtimeFamily !== filters.runtimeFamily
         ) {
           return false;
         }
         if (
           filters.projectCategory !== "all" &&
-          star.projectCategory !== filters.projectCategory
+          system.projectCategory !== filters.projectCategory
         ) {
           return false;
         }
         if (
           filters.resourceTier !== "all" &&
-          star.resourceTier !== filters.resourceTier
+          system.resourceTier !== filters.resourceTier
         ) {
           return false;
         }
-        if (filters.status !== "all" && star.status !== filters.status) {
+        if (filters.status !== "all" && system.status !== filters.status) {
           return false;
         }
         return true;
       }),
-    [activeScene.stars, filters],
+    [activeScene.systems, filters],
+  );
+
+  const visibleSystemIds = useMemo(
+    () => new Set(visibleSystems.map((system) => system.systemId)),
+    [visibleSystems],
+  );
+
+  const visibleStars = useMemo(
+    () =>
+      activeScene.stars.filter(
+        (star) =>
+          visibleSystemIds.has(star.systemId) &&
+          (filters.status === "all" || star.status === filters.status),
+      ),
+    [activeScene.stars, filters.status, visibleSystemIds],
   );
 
   const visibleStarIds = useMemo(
@@ -178,21 +274,52 @@ export function ConstellationExperience() {
     [visibleStars],
   );
 
-  const visibleAppNames = useMemo(
-    () => new Set(visibleStars.map((star) => star.appName)),
-    [visibleStars],
-  );
-
-  const visibleSystems = useMemo(
-    () =>
-      activeScene.systems.filter((system) => visibleAppNames.has(system.appName)),
-    [activeScene.systems, visibleAppNames],
-  );
-
   const visibleClusters = useMemo(
     () =>
-      activeScene.clusters.filter((cluster) => cluster.starIds.some((starId) => visibleStarIds.has(starId))),
-    [activeScene.clusters, visibleStarIds],
+      activeScene.clusters
+        .map((cluster) => {
+          const systemIds = cluster.systemIds.filter((id) => visibleSystemIds.has(id));
+          const starIds = cluster.starIds.filter((id) => visibleStarIds.has(id));
+
+          if (!systemIds.length) {
+            return null;
+          }
+
+          const visibleClusterSystems = systemIds
+            .map((id) => systemsById.get(id))
+            .filter((value): value is AppSystem => Boolean(value));
+          const rareIds = [
+            ...new Set(
+              visibleClusterSystems
+                .filter((system) => system.rarityFlags.isRareArchetype)
+                .map((system) => system.archetypeId),
+            ),
+          ];
+
+          return {
+            ...cluster,
+            systemIds,
+            starIds,
+            counts: {
+              apps: new Set(visibleClusterSystems.map((system) => system.appName)).size,
+              systems: visibleClusterSystems.length,
+              instances: starIds.length,
+              runtimes:
+                cluster.level === "region"
+                  ? new Set(
+                      visibleClusterSystems.map((system) => system.runtimeFamily),
+                    ).size
+                  : 1,
+            },
+            rarityFlags: {
+              hasRareArchetype: rareIds.length > 0,
+              rareArchetypeCount: rareIds.length,
+              rareArchetypeIds: rareIds,
+            },
+          } satisfies Cluster;
+        })
+        .filter((cluster): cluster is Cluster => Boolean(cluster)),
+    [activeScene.clusters, systemsById, visibleStarIds, visibleSystemIds],
   );
 
   useEffect(() => {
@@ -208,20 +335,16 @@ export function ConstellationExperience() {
 
     fetchAppDetail(selectedAppName)
       .then((payload) => {
-        if (cancelled) {
-          return;
+        if (!cancelled) {
+          setDetail(payload);
         }
-
-        setDetail(payload);
       })
       .catch((error) => {
-        if (cancelled) {
-          return;
+        if (!cancelled) {
+          setDetailError(
+            error instanceof Error ? error.message : "Unable to load app detail.",
+          );
         }
-
-        setDetailError(
-          error instanceof Error ? error.message : "Unable to load app detail.",
-        );
       })
       .finally(() => {
         if (!cancelled) {
@@ -233,6 +356,64 @@ export function ConstellationExperience() {
       cancelled = true;
     };
   }, [selectedAppName]);
+
+  useEffect(() => {
+    if (!telemetry?.activeRegionId) {
+      return;
+    }
+
+    markRegionVisited(telemetry.activeRegionId);
+  }, [markRegionVisited, telemetry?.activeRegionId]);
+
+  useEffect(() => {
+    if (!telemetry?.activeRuntimeId) {
+      return;
+    }
+
+    markRuntimeDiscovered(telemetry.activeRuntimeId);
+  }, [markRuntimeDiscovered, telemetry?.activeRuntimeId]);
+
+  useEffect(() => {
+    if (!telemetry?.nearbySystemId) {
+      return;
+    }
+
+    const system = systemsById.get(telemetry.nearbySystemId);
+    if (!system) {
+      return;
+    }
+
+    markAppInspected(system.appName, system.runtimeFamily);
+    if (system.rarityFlags.rareArchetypeId) {
+      markRareArchetypeDiscovered(system.rarityFlags.rareArchetypeId);
+    }
+  }, [
+    markAppInspected,
+    markRareArchetypeDiscovered,
+    systemsById,
+    telemetry?.nearbySystemId,
+  ]);
+
+  useEffect(() => {
+    if (!selectedAppName) {
+      return;
+    }
+
+    const system = systemsByApp.get(selectedAppName);
+    if (!system) {
+      return;
+    }
+
+    markAppInspected(system.appName, system.runtimeFamily);
+    if (system.rarityFlags.rareArchetypeId) {
+      markRareArchetypeDiscovered(system.rarityFlags.rareArchetypeId);
+    }
+  }, [
+    markAppInspected,
+    markRareArchetypeDiscovered,
+    selectedAppName,
+    systemsByApp,
+  ]);
 
   const handleSearch = async (query: string) => {
     setSearchBusy(true);
@@ -254,7 +435,7 @@ export function ConstellationExperience() {
           key: `search:${top.appName}:${Date.now()}`,
           x: top.x,
           y: top.y,
-          zoom: 0.95,
+          zoom: 0.32,
         });
       } else {
         setStatusMessage(
@@ -272,17 +453,38 @@ export function ConstellationExperience() {
 
   const handleSelectApp = (appName: string) => {
     setSelectedAppName(appName);
-    const system = activeScene.systems.find((entry) => entry.appName === appName);
+    const system = systemsByApp.get(appName);
 
     if (system) {
       setFocusTarget({
         key: `select:${appName}:${Date.now()}`,
         x: system.x,
         y: system.y,
-        zoom: 1.15,
+        zoom: 0.34,
       });
     }
   };
+
+  const handleFocusCluster = (cluster: Cluster) => {
+    setFocusTarget({
+      key: `cluster:${cluster.clusterId}:${Date.now()}`,
+      x: cluster.centroid.x,
+      y: cluster.centroid.y,
+      zoom: cluster.level === "region" ? 0.23 : 0.31,
+    });
+  };
+
+  const activeRegionLabel = telemetry?.activeRegionId
+    ? clustersById.get(telemetry.activeRegionId)?.label ?? null
+    : null;
+  const activeRuntimeLabel = telemetry?.activeRuntimeId
+    ? clustersById.get(telemetry.activeRuntimeId)?.label ?? null
+    : null;
+
+  const featuredFallback = useMemo(
+    () => activeScene.featureSystems.slice(0, 8),
+    [activeScene.featureSystems],
+  );
 
   return (
     <main className="atlas-page">
@@ -301,10 +503,10 @@ export function ConstellationExperience() {
           </div>
           <h1>Explore public FluxCloud deployments in a flyable sky map.</h1>
           <p className="hero-text">
-            Click the map, then use arrow keys or <strong>WASD</strong> to fly; scroll
-            to zoom. Color-coded <strong>buoys</strong> mark deployments—fly near one to
-            see its name, then click for details. Search and filters jump your plane to
-            matches. Phones: use the on-screen direction pad.
+            Start with high-level region clouds, zoom or fly into them to split
+            runtime neighborhoods, then inspect individual deployment buoys only when
+            you want the detail. Quest badges and unlockable plane skins reward the
+            tour without changing the data itself.
           </p>
         </div>
 
@@ -314,15 +516,14 @@ export function ConstellationExperience() {
             <strong>{activeScene.counts.apps}</strong>
           </article>
           <article>
-            <span>Stars</span>
-            <strong>{activeScene.counts.stars}</strong>
+            <span>Regions</span>
+            <strong>
+              {activeScene.clusters.filter((cluster) => cluster.level === "region").length}
+            </strong>
           </article>
           <article>
-            <span>Constraints</span>
-            <strong>
-              {activeScene.deploymentConstraints.minimumInstances ?? "?"}-
-              {activeScene.deploymentConstraints.maximumInstances ?? "?"} instances
-            </strong>
+            <span>Rare archetypes</span>
+            <strong>{activeScene.rareArchetypes.length}</strong>
           </article>
         </div>
       </section>
@@ -345,10 +546,13 @@ export function ConstellationExperience() {
                 : `Snapshot generated ${new Date(activeScene.generatedAt).toLocaleString()}`}
             </span>
             <span>
-              {visibleStars.length} visible stars after filtering
-              <span className="build-stamp" title="If this does not match Git, Flux has not deployed the latest build.">
+              {visibleSystems.length} visible apps | {visibleStars.length} visible instances
+              <span
+                className="build-stamp"
+                title="If this does not match Git, Flux has not deployed the latest build."
+              >
                 {" "}
-                · Build {BUILD_STAMP}
+                | Build {BUILD_STAMP}
               </span>
             </span>
           </div>
@@ -357,20 +561,49 @@ export function ConstellationExperience() {
             stars={visibleStars}
             clusters={visibleClusters}
             systems={visibleSystems}
+            bounds={activeScene.bounds}
             selectedAppName={selectedAppName}
+            selectedSkinId={progress.selectedSkinId}
             searchMatches={searchResults.map((item) => item.appName)}
             focusTarget={focusTarget}
             mapDataLoading={sceneLoading}
             snapshotError={!!sceneError}
+            overlay={
+              <>
+                <MiniMap
+                  bounds={activeScene.bounds}
+                  regionClusters={visibleClusters.filter(
+                    (cluster) => cluster.level === "region",
+                  )}
+                  telemetry={telemetry}
+                  visitedRegionIds={progress.visitedRegionIds}
+                  onFocusCluster={handleFocusCluster}
+                />
+                <DiegeticHud
+                  telemetry={telemetry}
+                  activeRegionLabel={activeRegionLabel}
+                  activeRuntimeLabel={activeRuntimeLabel}
+                  hoveredLabel={hoveredEntity?.label ?? null}
+                  completedQuests={summary.completedQuests}
+                  totalQuests={summary.totalQuests}
+                />
+                <AchievementToast toast={activeToast} onDismiss={dismissToast} />
+              </>
+            }
             onSelectApp={handleSelectApp}
-            onHoverStar={setHoveredStar}
+            onFocusCluster={handleFocusCluster}
+            onHoverEntity={setHoveredEntity}
+            onTelemetry={setTelemetry}
           />
 
-          <div className="atlas-lower-grid">
+          <div className="atlas-lower-grid atlas-lower-grid--triple">
             <section className="panel-card">
               <div className="panel-card-header">
-                <h2>Search and filter results</h2>
-                <span>{searchResults.length} matches</span>
+                <div>
+                  <p className="eyebrow">Atlas search</p>
+                  <h2>Search results</h2>
+                </div>
+                <span>{searchResults.length || featuredFallback.length} entries</span>
               </div>
               {searchResults.length > 0 ? (
                 <ul className="result-list">
@@ -382,45 +615,15 @@ export function ConstellationExperience() {
                       >
                         <strong>{result.appName}</strong>
                         <span>
-                          {result.owner} - {result.runtimeFamily} -{" "}
-                          {result.projectCategory}
+                          {result.owner} | {result.runtimeFamily} | {result.projectCategory}
                         </span>
                       </button>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="panel-copy">
-                  Use search or filters to jump your plane near apps, owners, or
-                  runtime cohorts, then fly to explore nearby deployments.
-                </p>
-              )}
-            </section>
-
-            <section className="panel-card">
-              <div className="panel-card-header">
-                <h2>{hoveredStar ? "Hover preview" : "Featured systems"}</h2>
-                <span>
-                  {hoveredStar
-                    ? hoveredStar.runtimeFamily
-                    : activeScene.featureSystems.length}
-                </span>
-              </div>
-              {hoveredStar ? (
-                <div className="hover-card">
-                  <strong>{hoveredStar.appName}</strong>
-                  <p>
-                    {hoveredStar.projectCategory} - {hoveredStar.resourceTier} -{" "}
-                    {hoveredStar.status}
-                  </p>
-                  <span>
-                    Observed region: {hoveredStar.region || "Unknown"} - owner
-                    context {String(hoveredStar.metadata.owner || "Unknown")}
-                  </span>
-                </div>
-              ) : (
                 <ul className="result-list compact">
-                  {activeScene.featureSystems.map((system) => (
+                  {featuredFallback.map((system) => (
                     <li key={system.systemId}>
                       <button
                         type="button"
@@ -428,8 +631,7 @@ export function ConstellationExperience() {
                       >
                         <strong>{system.appName}</strong>
                         <span>
-                          {system.projectCategory} - {system.instanceCount} instances
-                          - {system.status}
+                          {system.regionLabel} | {system.instanceCount} instances
                         </span>
                       </button>
                     </li>
@@ -437,6 +639,10 @@ export function ConstellationExperience() {
                 </ul>
               )}
             </section>
+
+            <QuestLog quests={quests} completedQuests={summary.completedQuests} />
+
+            <HangarPanel skins={skins} onSelectSkin={selectSkin} />
           </div>
 
           {sceneError ? (
@@ -445,10 +651,7 @@ export function ConstellationExperience() {
               <button
                 type="button"
                 className="primary-action"
-                onClick={() => {
-                  setSceneError("");
-                  setSceneReloadNonce((n) => n + 1);
-                }}
+                onClick={onRetryScene}
               >
                 Retry loading snapshot
               </button>
