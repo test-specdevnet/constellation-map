@@ -27,6 +27,7 @@ import {
   getLensRadius,
   scaleDensityJitter,
   type FlightTelemetry,
+  type DisclosureBand,
 } from "../../lib/layout/focusContext";
 import type { AppSystem, Cluster, SceneBounds, Star } from "../../lib/types/star";
 
@@ -232,6 +233,7 @@ const drawClusterCloud = ({
   active,
   rare,
   level,
+  band,
   timestamp,
 }: {
   ctx: CanvasRenderingContext2D;
@@ -244,9 +246,12 @@ const drawClusterCloud = ({
   active: boolean;
   rare: boolean;
   level: Cluster["level"];
+  band: DisclosureBand;
   timestamp: number;
 }) => {
   const phase = timestamp / 3000;
+  const compact = band === "detail";
+  const displayRadius = compact ? Math.min(radius, level === "runtime" ? 22 : 18) : radius;
   const puffColor =
     level === "region"
       ? active
@@ -260,53 +265,78 @@ const drawClusterCloud = ({
   ctx.save();
   ctx.globalAlpha = alpha;
 
-  const puffs = [
-    { ox: -radius * 0.45, oy: radius * 0.04, r: radius * 0.55 },
-    { ox: radius * 0.08, oy: -radius * 0.14, r: radius * 0.62 },
-    { ox: radius * 0.45, oy: radius * 0.08, r: radius * 0.5 },
-    { ox: 0, oy: radius * 0.2, r: radius * 0.54 },
-  ];
+  if (!compact) {
+    const puffs = [
+      { ox: -displayRadius * 0.45, oy: displayRadius * 0.04, r: displayRadius * 0.55 },
+      { ox: displayRadius * 0.08, oy: -displayRadius * 0.14, r: displayRadius * 0.62 },
+      { ox: displayRadius * 0.45, oy: displayRadius * 0.08, r: displayRadius * 0.5 },
+      { ox: 0, oy: displayRadius * 0.2, r: displayRadius * 0.54 },
+    ];
 
-  for (let index = 0; index < puffs.length; index += 1) {
-    const puff = puffs[index];
-    const drift = Math.sin(phase + index * 0.8) * 4;
-    const gradient = ctx.createRadialGradient(
-      x + puff.ox,
-      y + puff.oy,
-      radius * 0.18,
-      x + puff.ox,
-      y + puff.oy,
-      puff.r,
-    );
-    gradient.addColorStop(0, puffColor);
-    gradient.addColorStop(1, "rgba(255,255,255,0.18)");
-    ctx.fillStyle = gradient;
+    for (let index = 0; index < puffs.length; index += 1) {
+      const puff = puffs[index];
+      const drift = Math.sin(phase + index * 0.8) * 4;
+      const gradient = ctx.createRadialGradient(
+        x + puff.ox,
+        y + puff.oy,
+        displayRadius * 0.18,
+        x + puff.ox,
+        y + puff.oy,
+        puff.r,
+      );
+      gradient.addColorStop(0, puffColor);
+      gradient.addColorStop(1, "rgba(255,255,255,0.18)");
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(x + puff.ox, y + puff.oy + drift, puff.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.lineWidth = active ? 2.2 : 1.2;
+    ctx.strokeStyle = outline;
     ctx.beginPath();
-    ctx.arc(x + puff.ox, y + puff.oy + drift, puff.r, 0, Math.PI * 2);
+    ctx.arc(x, y, displayRadius * 0.88, 0, Math.PI * 2);
+    ctx.stroke();
+  } else {
+    ctx.fillStyle =
+      level === "runtime"
+        ? active
+          ? "rgba(255, 243, 220, 0.2)"
+          : "rgba(255, 243, 220, 0.12)"
+        : "rgba(255,255,255,0.1)";
+    ctx.beginPath();
+    ctx.arc(x, y, displayRadius * 0.72, 0, Math.PI * 2);
     ctx.fill();
+    ctx.lineWidth = active ? 2.2 : 1.4;
+    ctx.strokeStyle = rare
+      ? "rgba(255, 246, 196, 0.9)"
+      : active
+        ? "rgba(255,255,255,0.72)"
+        : "rgba(255,255,255,0.42)";
+    ctx.beginPath();
+    ctx.arc(x, y, displayRadius * 0.72, 0, Math.PI * 2);
+    ctx.stroke();
   }
-
-  ctx.lineWidth = active ? 2.2 : 1.2;
-  ctx.strokeStyle = outline;
-  ctx.beginPath();
-  ctx.arc(x, y, radius * 0.88, 0, Math.PI * 2);
-  ctx.stroke();
 
   if (rare) {
     ctx.setLineDash([4, 6]);
     ctx.strokeStyle = "rgba(255, 246, 196, 0.88)";
     ctx.beginPath();
-    ctx.arc(x, y, radius + 8, 0, Math.PI * 2);
+    ctx.arc(x, y, displayRadius + 8, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
   }
 
   ctx.fillStyle = "rgba(255,255,255,0.94)";
   ctx.font = active
-    ? "700 13px Segoe UI, system-ui, sans-serif"
-    : "600 12px Segoe UI, system-ui, sans-serif";
+    ? compact
+      ? "700 12px Segoe UI, system-ui, sans-serif"
+      : "700 13px Segoe UI, system-ui, sans-serif"
+    : compact
+      ? "600 11px Segoe UI, system-ui, sans-serif"
+      : "600 12px Segoe UI, system-ui, sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText(label, x, y + 4);
+  ctx.fillText(label, x, y + (compact ? 34 : 4));
   ctx.restore();
 };
 
@@ -564,24 +594,30 @@ export function SceneCanvas({
       backgroundContext.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
 
       const sky = backgroundContext.createLinearGradient(0, canvasSize.height, 0, 0);
-      sky.addColorStop(0, "#bcd8f5");
-      sky.addColorStop(0.38, "#84c7f1");
-      sky.addColorStop(1, "#1698da");
+      sky.addColorStop(0, "#d7efff");
+      sky.addColorStop(0.42, "#8fd5ff");
+      sky.addColorStop(1, "#1aa3e7");
       backgroundContext.fillStyle = sky;
       backgroundContext.fillRect(0, 0, canvasSize.width, canvasSize.height);
 
       const sunGlow = backgroundContext.createRadialGradient(
-        canvasSize.width * 0.16,
-        canvasSize.height * 0.12,
+        canvasSize.width * 0.14,
+        canvasSize.height * 0.14,
         0,
-        canvasSize.width * 0.16,
-        canvasSize.height * 0.12,
-        canvasSize.height * 0.36,
+        canvasSize.width * 0.14,
+        canvasSize.height * 0.14,
+        canvasSize.height * 0.42,
       );
-      sunGlow.addColorStop(0, "rgba(255,255,255,0.24)");
+      sunGlow.addColorStop(0, "rgba(255,255,255,0.3)");
       sunGlow.addColorStop(1, "rgba(255,255,255,0)");
       backgroundContext.fillStyle = sunGlow;
       backgroundContext.fillRect(0, 0, canvasSize.width, canvasSize.height);
+
+      const lowerHaze = backgroundContext.createLinearGradient(0, canvasSize.height * 0.58, 0, canvasSize.height);
+      lowerHaze.addColorStop(0, "rgba(255,255,255,0)");
+      lowerHaze.addColorStop(1, "rgba(255,255,255,0.2)");
+      backgroundContext.fillStyle = lowerHaze;
+      backgroundContext.fillRect(0, canvasSize.height * 0.52, canvasSize.width, canvasSize.height * 0.48);
     }
 
     const draw = (timestamp: number) => {
@@ -591,12 +627,12 @@ export function SceneCanvas({
       const dt = clamp((timestamp - lastTs) / 1000, 0, 0.05);
       lastAnimTsRef.current = timestamp;
 
-      const maxTurnRate = reducedMotion ? 2.2 : 4.6;
-      const turnResponse = reducedMotion ? 9 : 20;
-      const accel = reducedMotion ? 340 : 900;
-      const brake = reducedMotion ? 680 : 1_550;
-      const passiveDrag = reducedMotion ? 90 : 130;
-      const maxSpeed = reducedMotion ? 220 : 620;
+      const maxTurnRate = reducedMotion ? 2.6 : 5.1;
+      const turnResponse = reducedMotion ? 12 : 24;
+      const accel = reducedMotion ? 420 : 1_180;
+      const brake = reducedMotion ? 760 : 1_760;
+      const passiveDrag = reducedMotion ? 76 : 96;
+      const maxSpeed = reducedMotion ? 260 : 760;
 
       let turnInput = 0;
       if (keys.has("ArrowLeft")) turnInput -= 1;
@@ -620,11 +656,11 @@ export function SceneCanvas({
       flight.x = clamp(flight.x, bounds.minX, bounds.maxX);
       flight.y = clamp(flight.y, bounds.minY, bounds.maxY);
 
-      const look = Math.min(420, flight.speed * 0.78);
-      const desiredCamX = flight.x + Math.cos(flight.heading) * look * 0.12;
-      const desiredCamY = flight.y + Math.sin(flight.heading) * look * 0.12;
+      const look = Math.min(520, flight.speed * 0.82);
+      const desiredCamX = flight.x + Math.cos(flight.heading) * look * 0.14;
+      const desiredCamY = flight.y + Math.sin(flight.heading) * look * 0.14;
       const camFollow = camFollowRef.current;
-      const followK = Math.min(1, (reducedMotion ? 18 : 28) * dt);
+      const followK = Math.min(1, (reducedMotion ? 28 : 64) * dt);
       camFollow.x += (desiredCamX - camFollow.x) * followK;
       camFollow.y += (desiredCamY - camFollow.y) * followK;
 
@@ -710,6 +746,9 @@ export function SceneCanvas({
       for (const cluster of regionClusters) {
         const projected = projectWorld(cluster.centroid);
         const active = disclosure.activeRegionId === cluster.clusterId;
+        if (disclosure.band === "detail" && active) {
+          continue;
+        }
         const radius =
           getClusterRenderRadius({
             cluster,
@@ -738,6 +777,7 @@ export function SceneCanvas({
           active,
           rare: cluster.rarityFlags.hasRareArchetype,
           level: cluster.level,
+          band: disclosure.band,
           timestamp,
         });
 
@@ -750,7 +790,10 @@ export function SceneCanvas({
           },
           x: projected.x,
           y: projected.y,
-          radius: radius + 16,
+          radius:
+            disclosure.band === "detail"
+              ? Math.min(radius + 8, 28)
+              : radius + 16,
           cluster,
         });
       }
@@ -769,7 +812,7 @@ export function SceneCanvas({
             density: cluster.counts.systems,
             band: disclosure.band,
             emphasis: active ? 0.18 : 0,
-          });
+          }) * (disclosure.band === "detail" ? 0.42 : 1);
 
           if (offscreen(projected, radius + 80, canvasSize)) {
             continue;
@@ -786,6 +829,7 @@ export function SceneCanvas({
             active,
             rare: cluster.rarityFlags.hasRareArchetype,
             level: cluster.level,
+            band: disclosure.band,
             timestamp,
           });
 
@@ -798,7 +842,10 @@ export function SceneCanvas({
             },
             x: projected.x,
             y: projected.y,
-            radius: radius + 12,
+            radius:
+              disclosure.band === "detail"
+                ? Math.min(radius + 8, 34)
+                : radius + 12,
             cluster,
           });
         }
