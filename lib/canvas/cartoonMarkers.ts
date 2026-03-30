@@ -4,7 +4,7 @@
 
 import type { BuoyColorway } from "./buoyCategory";
 
-const PIX = 3;
+const PIX = 1;
 
 const hashString = (value: string) => {
   let hash = 2166136261;
@@ -227,61 +227,129 @@ export function drawDeploymentBuoy({
 
 type Puff = { bx: number; by: number; br: number };
 
-function drawOutlinedCloud(
+type CloudSeed = {
+  x: number;
+  y: number;
+  s: number;
+  layer: 0 | 1 | 2;
+  drift: number;
+};
+
+const CLOUD_SEEDS: CloudSeed[] = [
+  { x: 0.08, y: 0.12, s: 0.07, layer: 0, drift: 0.78 },
+  { x: 0.28, y: 0.18, s: 0.082, layer: 0, drift: 0.84 },
+  { x: 0.58, y: 0.1, s: 0.076, layer: 0, drift: 0.74 },
+  { x: 0.84, y: 0.16, s: 0.068, layer: 0, drift: 0.8 },
+  { x: 0.14, y: 0.34, s: 0.104, layer: 1, drift: 1 },
+  { x: 0.48, y: 0.3, s: 0.118, layer: 1, drift: 1.06 },
+  { x: 0.76, y: 0.38, s: 0.1, layer: 1, drift: 0.96 },
+  { x: 0.24, y: 0.54, s: 0.132, layer: 2, drift: 1.18 },
+  { x: 0.64, y: 0.5, s: 0.122, layer: 2, drift: 1.1 },
+];
+
+const CLOUD_LAYER_STYLE = {
+  0: {
+    parallax: 0.008,
+    bobAmount: 2.8,
+    speed: 0.008,
+    alpha: 0.72,
+    shadowAlpha: 0.09,
+    scale: 0.86,
+    outline: "rgba(224, 238, 250, 0.92)",
+  },
+  1: {
+    parallax: 0.014,
+    bobAmount: 3.6,
+    speed: 0.011,
+    alpha: 0.84,
+    shadowAlpha: 0.12,
+    scale: 1,
+    outline: "rgba(214, 232, 248, 0.94)",
+  },
+  2: {
+    parallax: 0.022,
+    bobAmount: 4.6,
+    speed: 0.014,
+    alpha: 0.92,
+    shadowAlpha: 0.14,
+    scale: 1.12,
+    outline: "rgba(208, 228, 247, 0.96)",
+  },
+} as const;
+
+const buildCloudPuffs = (seed: string): Puff[] => {
+  const hash = hashString(seed);
+  const spread = 0.04 + (hash % 7) * 0.01;
+  const dome = 0.02 + ((hash >>> 3) % 5) * 0.015;
+  return [
+    { bx: -0.6 - spread, by: 0.07, br: 0.28 },
+    { bx: -0.26, by: -0.14 - dome, br: 0.34 },
+    { bx: 0.04, by: -0.19 - dome * 0.6, br: 0.39 },
+    { bx: 0.34 + spread * 0.5, by: -0.06, br: 0.29 },
+    { bx: 0.62 + spread, by: 0.08, br: 0.23 },
+    { bx: 0.06, by: 0.16, br: 0.28 },
+  ];
+};
+
+function cloudBodyPath(ctx: CanvasRenderingContext2D, puffs: Puff[]) {
+  ctx.beginPath();
+  for (const puff of puffs) {
+    ctx.moveTo(puff.bx + puff.br, puff.by);
+    ctx.arc(puff.bx, puff.by, puff.br, 0, Math.PI * 2);
+  }
+}
+
+function drawFluffyCloud(
   ctx: CanvasRenderingContext2D,
   cx: number,
   cy: number,
   scale: number,
-  outline: string,
-  fill: string,
-  lineW: number,
+  seed: string,
+  layer: keyof typeof CLOUD_LAYER_STYLE,
 ) {
-  const puffs: Puff[] = [
-    { bx: -0.54, by: 0.08, br: 0.3 },
-    { bx: -0.18, by: -0.12, br: 0.36 },
-    { bx: 0.2, by: -0.04, br: 0.28 },
-    { bx: 0.52, by: 0.08, br: 0.24 },
-    { bx: 0.02, by: 0.16, br: 0.26 },
-  ];
+  const puffs = buildCloudPuffs(seed);
+  const style = CLOUD_LAYER_STYLE[layer];
+
   ctx.save();
   ctx.translate(cx, cy);
-  ctx.scale(scale, scale);
+  ctx.scale(scale * style.scale, scale * style.scale);
+  ctx.globalAlpha = style.alpha;
 
   ctx.save();
-  ctx.translate(0.03, 0.16);
-  ctx.scale(1.02, 0.38);
-  ctx.beginPath();
-  for (const p of puffs) {
-    ctx.moveTo(p.br + p.bx, p.by);
-    ctx.arc(p.bx, p.by, p.br, 0, Math.PI * 2);
-  }
-  ctx.fillStyle = "rgba(194, 202, 216, 0.08)";
+  ctx.translate(0.04, 0.2);
+  ctx.scale(1.05, 0.42);
+  cloudBodyPath(ctx, puffs);
+  const shadow = ctx.createLinearGradient(0, -0.5, 0, 0.7);
+  shadow.addColorStop(0, `rgba(214, 226, 240, ${style.shadowAlpha * 0.45})`);
+  shadow.addColorStop(1, `rgba(166, 185, 209, ${style.shadowAlpha})`);
+  ctx.fillStyle = shadow;
   ctx.fill();
   ctx.restore();
 
-  ctx.beginPath();
-  for (const p of puffs) {
-    ctx.moveTo(p.br + p.bx, p.by);
-    ctx.arc(p.bx, p.by, p.br, 0, Math.PI * 2);
-  }
-  ctx.fillStyle = "rgba(255,255,255,0.99)";
+  cloudBodyPath(ctx, puffs);
+  const body = ctx.createLinearGradient(0, -0.8, 0, 0.8);
+  body.addColorStop(0, "rgba(255,255,255,1)");
+  body.addColorStop(0.55, "rgba(250,253,255,0.99)");
+  body.addColorStop(1, "rgba(231,241,250,0.98)");
+  ctx.fillStyle = body;
   ctx.fill();
-  ctx.lineWidth = lineW;
-  ctx.strokeStyle = outline;
+
+  ctx.lineWidth = 0.04;
+  ctx.strokeStyle = style.outline;
   ctx.stroke();
+
+  ctx.save();
+  ctx.globalAlpha = 0.46;
+  for (const puff of puffs.slice(1, 4)) {
+    ctx.beginPath();
+    ctx.arc(puff.bx - 0.05, puff.by - puff.br * 0.35, puff.br * 0.48, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,255,255,0.92)";
+    ctx.fill();
+  }
+  ctx.restore();
+
   ctx.restore();
 }
-
-/** Small white sky clouds that drift by without covering the playfield. */
-const LAYER_SEEDS = [
-  { x: 0.02, y: 0.14, s: 0.058, layer: 0 },
-  { x: 0.26, y: 0.12, s: 0.07, layer: 0 },
-  { x: 0.54, y: 0.18, s: 0.064, layer: 0 },
-  { x: 0.82, y: 0.13, s: 0.056, layer: 0 },
-  { x: 0.14, y: 0.3, s: 0.082, layer: 1 },
-  { x: 0.42, y: 0.38, s: 0.094, layer: 1 },
-  { x: 0.74, y: 0.28, s: 0.078, layer: 1 },
-];
 
 /**
  * Distant / mid / foreground cartoon clouds with horizontal parallax tied to camera.
@@ -298,21 +366,29 @@ export function drawParallaxCloudLayers(
   const lo = opts?.layerMin ?? 0;
   const hi = opts?.layerMax ?? 2;
   const short = Math.min(width, height);
-  for (const L of LAYER_SEEDS) {
-    if (L.layer < lo || L.layer > hi) continue;
-    const parallax = L.layer === 0 ? 0.012 : 0.02;
-    const wrapSpan = width + short * 0.24;
-    const travel = (timestamp / (150 - L.layer * 18)) % wrapSpan;
-    const cx =
-      ((((L.x * wrapSpan - travel + camX * parallax) % wrapSpan) + wrapSpan) % wrapSpan) -
-      short * 0.12;
-    const oy =
-      Math.sin(timestamp / (5200 + L.layer * 700) + L.x * 8) * 3 + camY * parallax * 0.012;
-    const cy = L.y * height + oy;
-    const alpha = L.layer === 0 ? 0.99 : 0.97;
-    const fill = `rgba(255,255,255,${alpha})`;
-    const lw = L.layer === 0 ? 1.05 : 1.2;
-    drawOutlinedCloud(ctx, cx, cy, short * L.s, "#dfe7f1", fill, lw);
+
+  for (const cloud of CLOUD_SEEDS) {
+    if (cloud.layer < lo || cloud.layer > hi) continue;
+
+    const style = CLOUD_LAYER_STYLE[cloud.layer];
+    const wrapSpan = width + short * 0.36;
+    const travel =
+      ((timestamp * style.speed * cloud.drift + camX * style.parallax) % wrapSpan + wrapSpan) %
+      wrapSpan;
+    const cx = ((cloud.x * wrapSpan - travel + wrapSpan) % wrapSpan) - short * 0.16;
+    const cy =
+      cloud.y * height +
+      Math.sin(timestamp / (4800 - cloud.layer * 380) + cloud.x * 11) * style.bobAmount +
+      camY * style.parallax * 0.015;
+
+    drawFluffyCloud(
+      ctx,
+      cx,
+      cy,
+      short * cloud.s,
+      `${cloud.layer}:${cloud.x}:${cloud.y}:${cloud.s}`,
+      cloud.layer,
+    );
   }
 }
 
