@@ -249,7 +249,7 @@ const drawClusterCloud = ({
   rare,
   level,
   band,
-  timestamp,
+  timestamp: _timestamp,
 }: {
   ctx: CanvasRenderingContext2D;
   x: number;
@@ -264,33 +264,32 @@ const drawClusterCloud = ({
   band: DisclosureBand;
   timestamp: number;
 }) => {
-  const phase = timestamp / 3000;
   const compact = band !== "overview";
   const displayRadius = getClusterBadgeRadius({ radius, level, band });
-  const fillColor =
+  const coreColor =
     level === "region"
       ? active
-        ? "rgba(255, 255, 255, 0.96)"
-        : "rgba(249, 252, 255, 0.94)"
+        ? "rgba(255, 255, 255, 0.98)"
+        : "rgba(247, 251, 255, 0.95)"
       : active
-        ? "rgba(255, 239, 210, 0.96)"
-        : "rgba(255, 233, 206, 0.94)";
-  const outline = rare ? "rgba(255, 246, 196, 0.86)" : "rgba(255, 255, 255, 0.64)";
+        ? "rgba(255, 236, 197, 0.98)"
+        : "rgba(255, 228, 192, 0.95)";
+  const outline = rare ? "rgba(255, 246, 196, 0.92)" : "rgba(255, 255, 255, 0.82)";
 
   ctx.save();
-  ctx.globalAlpha = alpha;
+  ctx.globalAlpha = Math.min(alpha, compact ? 0.84 : 0.78);
 
-  const glowRadius = displayRadius * (compact ? 1.45 : 1.7);
-  const glow = ctx.createRadialGradient(x, y, displayRadius * 0.2, x, y, glowRadius);
+  const glowRadius = displayRadius * (compact ? 1.15 : 1.35);
+  const glow = ctx.createRadialGradient(x, y, displayRadius * 0.08, x, y, glowRadius);
   glow.addColorStop(
     0,
     level === "runtime"
       ? active
-        ? "rgba(255, 240, 214, 0.28)"
-        : "rgba(255, 240, 214, 0.18)"
+        ? "rgba(255, 240, 214, 0.16)"
+        : "rgba(255, 240, 214, 0.08)"
       : active
-        ? "rgba(255,255,255,0.24)"
-        : "rgba(255,255,255,0.14)",
+        ? "rgba(255,255,255,0.12)"
+        : "rgba(255,255,255,0.06)",
   );
   glow.addColorStop(1, "rgba(255,255,255,0)");
   ctx.fillStyle = glow;
@@ -298,32 +297,16 @@ const drawClusterCloud = ({
   ctx.arc(x, y, glowRadius, 0, Math.PI * 2);
   ctx.fill();
 
-  const puffs = compact
-    ? [
-        { ox: -displayRadius * 0.34, oy: displayRadius * 0.06, r: displayRadius * 0.28 },
-        { ox: 0, oy: -displayRadius * 0.12, r: displayRadius * 0.34 },
-        { ox: displayRadius * 0.34, oy: displayRadius * 0.06, r: displayRadius * 0.25 },
-      ]
-    : [
-        { ox: -displayRadius * 0.4, oy: displayRadius * 0.05, r: displayRadius * 0.36 },
-        { ox: displayRadius * 0.02, oy: -displayRadius * 0.12, r: displayRadius * 0.42 },
-        { ox: displayRadius * 0.38, oy: displayRadius * 0.06, r: displayRadius * 0.3 },
-      ];
-
-  for (let index = 0; index < puffs.length; index += 1) {
-    const puff = puffs[index];
-    const drift = Math.sin(phase + index * 0.7) * (compact ? 1.2 : 1.8);
-    ctx.fillStyle = fillColor;
-    ctx.beginPath();
-    ctx.arc(x + puff.ox, y + puff.oy + drift, puff.r, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
   ctx.lineWidth = active ? 2.1 : 1.5;
   ctx.strokeStyle = outline;
   ctx.beginPath();
   ctx.arc(x, y, displayRadius * 0.92, 0, Math.PI * 2);
   ctx.stroke();
+
+  ctx.fillStyle = coreColor;
+  ctx.beginPath();
+  ctx.arc(x, y, compact ? 4.2 : 5.2, 0, Math.PI * 2);
+  ctx.fill();
 
   if (rare) {
     ctx.setLineDash([4, 6]);
