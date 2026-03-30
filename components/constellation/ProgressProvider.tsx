@@ -12,8 +12,10 @@ import {
 } from "react";
 import type { RuntimeFamily } from "../../lib/types/app";
 import type { PlaneSkinId } from "../../lib/canvas/cartoonMarkers";
+import type { LeaderboardEntry, RunRecord } from "../../lib/game/arcade";
+import { getWeeklyLeaderboardKey } from "../../lib/game/arcade";
 
-const STORAGE_KEY = "flux-constellation-progress-v1";
+const STORAGE_KEY = "flux-constellation-progress-v2";
 
 type QuestId = "regional-surveyor" | "rare-signal" | "runtime-rambler";
 
@@ -26,6 +28,8 @@ type ProgressState = {
   completedQuestIds: QuestId[];
   unlockedSkinIds: PlaneSkinId[];
   selectedSkinId: PlaneSkinId;
+  playerCallsign: string;
+  weeklyLeaderboards: Record<string, LeaderboardEntry[]>;
 };
 
 export type QuestView = {
@@ -53,6 +57,12 @@ export type ProgressToast = {
   tone: "quest" | "unlock";
 };
 
+export type LeaderboardWeekView = {
+  weekKey: string;
+  label: string;
+  entries: LeaderboardEntry[];
+};
+
 type ProgressContextValue = {
   progress: ProgressState;
   quests: QuestView[];
@@ -63,6 +73,12 @@ type ProgressContextValue = {
     totalQuests: number;
     unlockedSkins: number;
     visitedRegions: number;
+    bestWeeklyScore: number;
+  };
+  playerCallsign: string;
+  leaderboard: {
+    currentWeekKey: string;
+    weeks: LeaderboardWeekView[];
   };
   markRegionVisited: (regionId: string | null) => void;
   markRuntimeDiscovered: (runtimeClusterId: string | null) => void;
@@ -72,6 +88,8 @@ type ProgressContextValue = {
   ) => void;
   markRareArchetypeDiscovered: (rareArchetypeId: string | null) => void;
   selectSkin: (skinId: PlaneSkinId) => void;
+  setPlayerCallsign: (callsign: string) => void;
+  recordRun: (record: RunRecord) => void;
   resetProgress: () => void;
   dismissToast: () => void;
 };
@@ -85,6 +103,8 @@ const defaultProgress: ProgressState = {
   completedQuestIds: [],
   unlockedSkinIds: ["classic"],
   selectedSkinId: "classic",
+  playerCallsign: "Pilot",
+  weeklyLeaderboards: {},
 };
 
 const skinCatalog: Array<{
@@ -123,6 +143,37 @@ const ProgressContext = createContext<ProgressContextValue | null>(null);
 
 const unique = <T,>(values: T[]) => [...new Set(values)];
 
+const normalizeLeaderboardEntry = (entry: Partial<LeaderboardEntry>): LeaderboardEntry | null => {
+  if (!entry.id || !entry.weekKey || !entry.recordedAt || typeof entry.score !== "number") {
+    return null;
+  }
+
+  return {
+    id: entry.id,
+    callsign: typeof entry.callsign === "string" && entry.callsign.trim() ? entry.callsign.trim() : "Pilot",
+    score: entry.score,
+    kills: typeof entry.kills === "number" ? entry.kills : 0,
+    discoveries: typeof entry.discoveries === "number" ? entry.discoveries : 0,
+    durationMs: typeof entry.durationMs === "number" ? entry.durationMs : 0,
+    weekKey: entry.weekKey,
+    recordedAt: entry.recordedAt,
+  };
+};
+
+const normalizeLeaderboards = (
+  input: Record<string, LeaderboardEntry[] | Partial<LeaderboardEntry>[] | undefined> | undefined,
+) =>
+  Object.fromEntries(
+    Object.entries(input ?? {}).map(([weekKey, entries]) => [
+      weekKey,
+      (entries ?? [])
+        .map((entry) => normalizeLeaderboardEntry(entry))
+        .filter((entry): entry is LeaderboardEntry => Boolean(entry))
+        .sort((left, right) => right.score - left.score || right.kills - left.kills)
+        .slice(0, 10),
+    ]),
+  ) as Record<string, LeaderboardEntry[]>;
+
 const normalizeProgress = (input: Partial<ProgressState> | null | undefined): ProgressState => ({
   visitedRegionIds: unique(input?.visitedRegionIds ?? []),
   discoveredRuntimeIds: unique(input?.discoveredRuntimeIds ?? []),
@@ -135,6 +186,11 @@ const normalizeProgress = (input: Partial<ProgressState> | null | undefined): Pr
     input?.selectedSkinId && skinCatalog.some((skin) => skin.id === input.selectedSkinId)
       ? input.selectedSkinId
       : "classic",
+  playerCallsign:
+    typeof input?.playerCallsign === "string" && input.playerCallsign.trim()
+      ? input.playerCallsign.trim().slice(0, 18)
+      : "Pilot",
+  weeklyLeaderboards: normalizeLeaderboards(input?.weeklyLeaderboards),
 });
 
 const buildQuestViews = (progress: ProgressState) => {
@@ -182,6 +238,17 @@ const createToast = (
   body,
   tone,
 });
+
+const formatWeekLabel = (weekKey: string) => {
+  const parsed = new Date(`${weekKey}T00:00:00`);
+  return Number.isNaN(parsed.getTime())
+    ? weekKey
+    : parsed.toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+};
 
 const reconcileProgress = (
   source: ProgressState,
@@ -398,6 +465,57 @@ export function ConstellationProgressProvider({
     [updateProgress],
   );
 
+  const setPlayerCallsign = useCallback(
+    (callsign: string) => {
+      const nextCallsign = callsign.trim().slice(0, 18) || "Pilot";
+      updateProgress((current) => ({
+        ...current,
+        playerCallsign: nextCallsign,
+      }));
+    },
+    [updateProgress],
+  );
+
+  const recordRun = useCallback(
+    (record: RunRecord) => {
+      if (record.score <= 0) {
+        return;
+      }
+
+      updateProgress((current) => {
+        const weekKey = record.weekKey || getWeeklyLeaderboardKey(new Date(record.recordedAt));
+        const entry: LeaderboardEntry = {
+          id: `leader:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
+          callsign: current.playerCallsign || "Pilot",
+          score: record.score,
+          kills: record.kills,
+          discoveries: record.discoveries,
+          durationMs: record.durationMs,
+          weekKey,
+          recordedAt: record.recordedAt,
+        };
+
+        const nextEntries = [...(current.weeklyLeaderboards[weekKey] ?? []), entry]
+          .sort(
+            (left, right) =>
+              right.score - left.score ||
+              right.kills - left.kills ||
+              right.discoveries - left.discoveries,
+          )
+          .slice(0, 10);
+
+        return {
+          ...current,
+          weeklyLeaderboards: {
+            ...current.weeklyLeaderboards,
+            [weekKey]: nextEntries,
+          },
+        };
+      });
+    },
+    [updateProgress],
+  );
+
   const resetProgress = useCallback(() => {
     window.localStorage.removeItem(STORAGE_KEY);
     setToastQueue([]);
@@ -419,6 +537,19 @@ export function ConstellationProgressProvider({
       })),
     [progress.selectedSkinId, progress.unlockedSkinIds],
   );
+  const currentWeekKey = useMemo(() => getWeeklyLeaderboardKey(), []);
+  const leaderboardWeeks = useMemo(
+    () =>
+      Object.entries(progress.weeklyLeaderboards)
+        .map(([weekKey, entries]) => ({
+          weekKey,
+          label: formatWeekLabel(weekKey),
+          entries,
+        }))
+        .sort((left, right) => right.weekKey.localeCompare(left.weekKey)),
+    [progress.weeklyLeaderboards],
+  );
+  const bestWeeklyScore = progress.weeklyLeaderboards[currentWeekKey]?.[0]?.score ?? 0;
 
   const value = useMemo(
     () => ({
@@ -431,25 +562,38 @@ export function ConstellationProgressProvider({
         totalQuests: quests.length,
         unlockedSkins: progress.unlockedSkinIds.length,
         visitedRegions: progress.visitedRegionIds.length,
+        bestWeeklyScore,
+      },
+      playerCallsign: progress.playerCallsign,
+      leaderboard: {
+        currentWeekKey,
+        weeks: leaderboardWeeks,
       },
       markRegionVisited,
       markRuntimeDiscovered,
       markAppInspected,
       markRareArchetypeDiscovered,
       selectSkin,
+      setPlayerCallsign,
+      recordRun,
       resetProgress,
       dismissToast,
     }),
     [
+      bestWeeklyScore,
+      currentWeekKey,
       dismissToast,
+      leaderboardWeeks,
       markAppInspected,
       markRareArchetypeDiscovered,
       markRegionVisited,
       markRuntimeDiscovered,
       progress,
       quests,
+      recordRun,
       resetProgress,
       selectSkin,
+      setPlayerCallsign,
       toastQueue,
     ],
   );

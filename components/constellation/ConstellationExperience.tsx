@@ -10,11 +10,14 @@ import { MiniMap } from "./MiniMap";
 import { DiegeticHud } from "./DiegeticHud";
 import { HangarPanel } from "./HangarPanel";
 import { AchievementToast } from "./AchievementToast";
+import { FuelGauge } from "./FuelGauge";
+import { LeaderboardPanel } from "./LeaderboardPanel";
 import {
   ConstellationProgressProvider,
   useConstellationProgress,
 } from "./ProgressProvider";
 import type { FlightTelemetry } from "../../lib/layout/focusContext";
+import type { GameSessionSnapshot } from "../../lib/game/arcade";
 import type {
   AppDetail,
   AppSystem,
@@ -195,17 +198,22 @@ function ConstellationExperienceBody({
   const [detailError, setDetailError] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [telemetry, setTelemetry] = useState<FlightTelemetry | null>(null);
+  const [gameSnapshot, setGameSnapshot] = useState<GameSessionSnapshot | null>(null);
 
   const {
     progress,
     skins,
     activeToast,
     summary,
+    playerCallsign,
+    leaderboard,
     markAppInspected,
     markRareArchetypeDiscovered,
     markRegionVisited,
     markRuntimeDiscovered,
     selectSkin,
+    setPlayerCallsign,
+    recordRun,
     resetProgress,
     dismissToast,
   } = useConstellationProgress();
@@ -550,10 +558,12 @@ function ConstellationExperienceBody({
                 />
                 <DiegeticHud
                   telemetry={telemetry}
+                  snapshot={gameSnapshot}
                   selectedSkinLabel={selectedSkin?.label ?? "Classic"}
                   unlockedSkinCount={summary.unlockedSkins}
                   totalSkinCount={skins.length}
                 />
+                <FuelGauge snapshot={gameSnapshot} />
                 <AchievementToast toast={activeToast} onDismiss={dismissToast} />
               </>
             }
@@ -563,10 +573,12 @@ function ConstellationExperienceBody({
               // Hover copy stays inside the canvas tooltip.
             }}
             onTelemetry={setTelemetry}
+            onGameStateChange={setGameSnapshot}
+            onRunComplete={recordRun}
           />
 
           <div
-            className={`atlas-lower-grid atlas-lower-grid--minimal ${
+            className={`atlas-lower-grid atlas-lower-grid--minimal atlas-lower-grid--game ${
               hasSearched && searchResults.length > 0
                 ? "atlas-lower-grid--split"
                 : "atlas-lower-grid--solo"
@@ -601,10 +613,18 @@ function ConstellationExperienceBody({
               onSelectSkin={selectSkin}
               onResetProgress={() => {
                 resetProgress();
+                setGameSnapshot(null);
                 setSearchResults([]);
                 setHasSearched(false);
                 setStatusMessage("");
               }}
+            />
+
+            <LeaderboardPanel
+              callsign={playerCallsign}
+              onChangeCallsign={setPlayerCallsign}
+              leaderboard={leaderboard}
+              snapshot={gameSnapshot}
             />
           </div>
 
