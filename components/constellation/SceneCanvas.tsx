@@ -222,6 +222,21 @@ const titleCase = (value: string) =>
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 
+const getClusterBadgeRadius = ({
+  radius,
+  level,
+  band,
+}: {
+  radius: number;
+  level: Cluster["level"];
+  band: DisclosureBand;
+}) => {
+  const scale = band === "overview" ? 0.52 : band === "mid" ? 0.42 : 0.34;
+  const min = level === "region" ? 16 : 12;
+  const max = level === "region" ? (band === "overview" ? 54 : 32) : 24;
+  return clamp(radius * scale, min, max);
+};
+
 const drawClusterCloud = ({
   ctx,
   x,
@@ -250,73 +265,65 @@ const drawClusterCloud = ({
   timestamp: number;
 }) => {
   const phase = timestamp / 3000;
-  const compact = band === "detail";
-  const displayRadius = compact ? Math.min(radius, level === "runtime" ? 22 : 18) : radius;
-  const puffColor =
+  const compact = band !== "overview";
+  const displayRadius = getClusterBadgeRadius({ radius, level, band });
+  const fillColor =
     level === "region"
       ? active
-        ? "rgba(255, 255, 255, 0.98)"
-        : "rgba(246, 250, 255, 0.94)"
+        ? "rgba(255, 255, 255, 0.96)"
+        : "rgba(249, 252, 255, 0.94)"
       : active
-        ? "rgba(255, 240, 214, 0.98)"
-        : "rgba(255, 233, 206, 0.92)";
-  const outline = rare ? "rgba(255, 246, 196, 0.72)" : "rgba(255, 255, 255, 0.34)";
+        ? "rgba(255, 239, 210, 0.96)"
+        : "rgba(255, 233, 206, 0.94)";
+  const outline = rare ? "rgba(255, 246, 196, 0.86)" : "rgba(255, 255, 255, 0.64)";
 
   ctx.save();
   ctx.globalAlpha = alpha;
 
-  if (!compact) {
-    const puffs = [
-      { ox: -displayRadius * 0.45, oy: displayRadius * 0.04, r: displayRadius * 0.55 },
-      { ox: displayRadius * 0.08, oy: -displayRadius * 0.14, r: displayRadius * 0.62 },
-      { ox: displayRadius * 0.45, oy: displayRadius * 0.08, r: displayRadius * 0.5 },
-      { ox: 0, oy: displayRadius * 0.2, r: displayRadius * 0.54 },
-    ];
-
-    for (let index = 0; index < puffs.length; index += 1) {
-      const puff = puffs[index];
-      const drift = Math.sin(phase + index * 0.8) * 4;
-      const gradient = ctx.createRadialGradient(
-        x + puff.ox,
-        y + puff.oy,
-        displayRadius * 0.18,
-        x + puff.ox,
-        y + puff.oy,
-        puff.r,
-      );
-      gradient.addColorStop(0, puffColor);
-      gradient.addColorStop(1, "rgba(255,255,255,0.18)");
-      ctx.fillStyle = gradient;
-      ctx.beginPath();
-      ctx.arc(x + puff.ox, y + puff.oy + drift, puff.r, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    ctx.lineWidth = active ? 2.2 : 1.2;
-    ctx.strokeStyle = outline;
-    ctx.beginPath();
-    ctx.arc(x, y, displayRadius * 0.88, 0, Math.PI * 2);
-    ctx.stroke();
-  } else {
-    ctx.fillStyle =
-      level === "runtime"
-        ? active
-          ? "rgba(255, 243, 220, 0.2)"
-          : "rgba(255, 243, 220, 0.12)"
-        : "rgba(255,255,255,0.1)";
-    ctx.beginPath();
-    ctx.arc(x, y, displayRadius * 0.72, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.lineWidth = active ? 2.2 : 1.4;
-    ctx.strokeStyle = rare
-      ? "rgba(255, 246, 196, 0.9)"
+  const glowRadius = displayRadius * (compact ? 1.45 : 1.7);
+  const glow = ctx.createRadialGradient(x, y, displayRadius * 0.2, x, y, glowRadius);
+  glow.addColorStop(
+    0,
+    level === "runtime"
+      ? active
+        ? "rgba(255, 240, 214, 0.28)"
+        : "rgba(255, 240, 214, 0.18)"
       : active
-        ? "rgba(255,255,255,0.72)"
-        : "rgba(255,255,255,0.42)";
+        ? "rgba(255,255,255,0.24)"
+        : "rgba(255,255,255,0.14)",
+  );
+  glow.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(x, y, glowRadius, 0, Math.PI * 2);
+  ctx.fill();
+
+  const puffs = compact
+    ? [
+        { ox: -displayRadius * 0.34, oy: displayRadius * 0.06, r: displayRadius * 0.28 },
+        { ox: 0, oy: -displayRadius * 0.12, r: displayRadius * 0.34 },
+        { ox: displayRadius * 0.34, oy: displayRadius * 0.06, r: displayRadius * 0.25 },
+      ]
+    : [
+        { ox: -displayRadius * 0.4, oy: displayRadius * 0.05, r: displayRadius * 0.36 },
+        { ox: displayRadius * 0.02, oy: -displayRadius * 0.12, r: displayRadius * 0.42 },
+        { ox: displayRadius * 0.38, oy: displayRadius * 0.06, r: displayRadius * 0.3 },
+      ];
+
+  for (let index = 0; index < puffs.length; index += 1) {
+    const puff = puffs[index];
+    const drift = Math.sin(phase + index * 0.7) * (compact ? 1.2 : 1.8);
+    ctx.fillStyle = fillColor;
     ctx.beginPath();
-    ctx.arc(x, y, displayRadius * 0.72, 0, Math.PI * 2);
-    ctx.stroke();
+    ctx.arc(x + puff.ox, y + puff.oy + drift, puff.r, 0, Math.PI * 2);
+    ctx.fill();
   }
+
+  ctx.lineWidth = active ? 2.1 : 1.5;
+  ctx.strokeStyle = outline;
+  ctx.beginPath();
+  ctx.arc(x, y, displayRadius * 0.92, 0, Math.PI * 2);
+  ctx.stroke();
 
   if (rare) {
     ctx.setLineDash([4, 6]);
@@ -336,7 +343,7 @@ const drawClusterCloud = ({
       ? "600 11px Segoe UI, system-ui, sans-serif"
       : "600 12px Segoe UI, system-ui, sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText(label, x, y + (compact ? 34 : 4));
+  ctx.fillText(label, x, y + displayRadius + 16);
   ctx.restore();
 };
 
@@ -627,12 +634,12 @@ export function SceneCanvas({
       const dt = clamp((timestamp - lastTs) / 1000, 0, 0.05);
       lastAnimTsRef.current = timestamp;
 
-      const maxTurnRate = reducedMotion ? 2.6 : 5.1;
-      const turnResponse = reducedMotion ? 12 : 24;
-      const accel = reducedMotion ? 420 : 1_180;
-      const brake = reducedMotion ? 760 : 1_760;
-      const passiveDrag = reducedMotion ? 76 : 96;
-      const maxSpeed = reducedMotion ? 260 : 760;
+      const maxTurnRate = reducedMotion ? 2.3 : 4.35;
+      const turnResponse = reducedMotion ? 9 : 15;
+      const accel = reducedMotion ? 360 : 1_020;
+      const brake = reducedMotion ? 700 : 1_520;
+      const passiveDrag = reducedMotion ? 82 : 102;
+      const maxSpeed = reducedMotion ? 230 : 700;
 
       let turnInput = 0;
       if (keys.has("ArrowLeft")) turnInput -= 1;
@@ -656,11 +663,11 @@ export function SceneCanvas({
       flight.x = clamp(flight.x, bounds.minX, bounds.maxX);
       flight.y = clamp(flight.y, bounds.minY, bounds.maxY);
 
-      const look = Math.min(520, flight.speed * 0.82);
-      const desiredCamX = flight.x + Math.cos(flight.heading) * look * 0.14;
-      const desiredCamY = flight.y + Math.sin(flight.heading) * look * 0.14;
+      const look = Math.min(460, flight.speed * 0.76);
+      const desiredCamX = flight.x + Math.cos(flight.heading) * look * 0.12;
+      const desiredCamY = flight.y + Math.sin(flight.heading) * look * 0.12;
       const camFollow = camFollowRef.current;
-      const followK = Math.min(1, (reducedMotion ? 28 : 64) * dt);
+      const followK = Math.min(1, (reducedMotion ? 18 : 34) * dt);
       camFollow.x += (desiredCamX - camFollow.x) * followK;
       camFollow.y += (desiredCamY - camFollow.y) * followK;
 
@@ -715,18 +722,48 @@ export function SceneCanvas({
       });
       const lensRadius = getLensRadius(canvasSize);
       const focusPoint = { x: canvasSize.width / 2, y: canvasSize.height / 2 };
-      const runtimeFocusClusters = disclosure.activeRegionId
-        ? runtimeClustersByRegion.get(disclosure.activeRegionId) ?? []
-        : [];
+      const localSystems = systems.filter(
+        (system) =>
+          Math.hypot(system.x - flight.x, system.y - flight.y) <= 1_650 ||
+          system.appName === selectedAppName ||
+          matchSet.has(system.appName),
+      );
       const regionSystems = disclosure.activeRegionId
         ? systemsByRegion.get(disclosure.activeRegionId) ?? []
         : [];
+      const visibleSystemsMap = new Map<string, AppSystem>();
+      for (const system of regionSystems) {
+        visibleSystemsMap.set(system.systemId, system);
+      }
+      for (const system of localSystems) {
+        visibleSystemsMap.set(system.systemId, system);
+      }
+      const visibleSystems = Array.from(visibleSystemsMap.values());
+      const runtimeClusterById = new Map(
+        runtimeClusters.map((cluster) => [cluster.clusterId, cluster] as const),
+      );
+      const runtimeFocusClusterMap = new Map<string, Cluster>();
+      if (disclosure.activeRegionId) {
+        for (const cluster of runtimeClustersByRegion.get(disclosure.activeRegionId) ?? []) {
+          runtimeFocusClusterMap.set(cluster.clusterId, cluster);
+        }
+      }
+      for (const system of visibleSystems) {
+        const match = runtimeClusterById.get(system.runtimeClusterId);
+        if (match) {
+          runtimeFocusClusterMap.set(match.clusterId, match);
+        }
+      }
+      const runtimeFocusClusters = Array.from(runtimeFocusClusterMap.values()).sort((left, right) =>
+        left.label.localeCompare(right.label),
+      );
       const detailSystemIds = new Set(
-        regionSystems
+        visibleSystems
           .filter(
             (system) =>
-              Math.hypot(system.x - flight.x, system.y - flight.y) <= 920 ||
+              Math.hypot(system.x - flight.x, system.y - flight.y) <= 1_050 ||
               system.appName === selectedAppName ||
+              matchSet.has(system.appName) ||
               (disclosure.activeRuntimeId !== null &&
                 system.runtimeClusterId === disclosure.activeRuntimeId),
           )
@@ -791,14 +828,16 @@ export function SceneCanvas({
           x: projected.x,
           y: projected.y,
           radius:
-            disclosure.band === "detail"
-              ? Math.min(radius + 8, 28)
-              : radius + 16,
+            getClusterBadgeRadius({
+              radius,
+              level: cluster.level,
+              band: disclosure.band,
+            }) + 12,
           cluster,
         });
       }
 
-      if (disclosure.band !== "overview") {
+      if (disclosure.band !== "overview" || visibleSystems.length > 0) {
         for (const cluster of runtimeFocusClusters) {
           const projected = projectWorld(cluster.centroid);
           const active = disclosure.activeRuntimeId === cluster.clusterId;
@@ -843,18 +882,20 @@ export function SceneCanvas({
             x: projected.x,
             y: projected.y,
             radius:
-              disclosure.band === "detail"
-                ? Math.min(radius + 8, 34)
-                : radius + 12,
+              getClusterBadgeRadius({
+                radius,
+                level: cluster.level,
+                band: disclosure.band,
+              }) + 10,
             cluster,
           });
         }
 
-        for (const system of regionSystems) {
+        for (const system of visibleSystems) {
           const projected = projectWorld(system);
           const jitter = scaleDensityJitter({
             jitterOffset: system.jitterOffset,
-            density: regionSystems.length,
+            density: visibleSystems.length,
             band: disclosure.band,
             multiplier: camera.zoom * 0.22,
           });
