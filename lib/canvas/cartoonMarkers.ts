@@ -248,14 +248,14 @@ function drawOutlinedCloud(
   ctx.scale(scale, scale);
 
   ctx.save();
-  ctx.translate(0.04, 0.14);
-  ctx.scale(1.02, 0.46);
+  ctx.translate(0.03, 0.16);
+  ctx.scale(1.02, 0.38);
   ctx.beginPath();
   for (const p of puffs) {
     ctx.moveTo(p.br + p.bx, p.by);
     ctx.arc(p.bx, p.by, p.br, 0, Math.PI * 2);
   }
-  ctx.fillStyle = "rgba(182, 190, 204, 0.16)";
+  ctx.fillStyle = "rgba(194, 202, 216, 0.08)";
   ctx.fill();
   ctx.restore();
 
@@ -264,7 +264,7 @@ function drawOutlinedCloud(
     ctx.moveTo(p.br + p.bx, p.by);
     ctx.arc(p.bx, p.by, p.br, 0, Math.PI * 2);
   }
-  ctx.fillStyle = fill;
+  ctx.fillStyle = "rgba(255,255,255,0.99)";
   ctx.fill();
   ctx.lineWidth = lineW;
   ctx.strokeStyle = outline;
@@ -272,15 +272,15 @@ function drawOutlinedCloud(
   ctx.restore();
 }
 
-/** Fewer, softer clouds — keeps the playfield readable. */
+/** Small white sky clouds that drift by without covering the playfield. */
 const LAYER_SEEDS = [
-  { x: 0.06, y: 0.18, s: 0.12, layer: 0 },
-  { x: 0.34, y: 0.14, s: 0.14, layer: 0 },
-  { x: 0.66, y: 0.22, s: 0.13, layer: 0 },
-  { x: 0.88, y: 0.16, s: 0.11, layer: 0 },
-  { x: 0.18, y: 0.36, s: 0.16, layer: 1 },
-  { x: 0.48, y: 0.44, s: 0.18, layer: 1 },
-  { x: 0.8, y: 0.38, s: 0.15, layer: 1 },
+  { x: 0.02, y: 0.14, s: 0.058, layer: 0 },
+  { x: 0.26, y: 0.12, s: 0.07, layer: 0 },
+  { x: 0.54, y: 0.18, s: 0.064, layer: 0 },
+  { x: 0.82, y: 0.13, s: 0.056, layer: 0 },
+  { x: 0.14, y: 0.3, s: 0.082, layer: 1 },
+  { x: 0.42, y: 0.38, s: 0.094, layer: 1 },
+  { x: 0.74, y: 0.28, s: 0.078, layer: 1 },
 ];
 
 /**
@@ -300,19 +300,19 @@ export function drawParallaxCloudLayers(
   const short = Math.min(width, height);
   for (const L of LAYER_SEEDS) {
     if (L.layer < lo || L.layer > hi) continue;
-    const parallax = L.layer === 0 ? 0.018 : 0.03;
-    const wrapSpan = width + short * 0.42;
-    const travel = (timestamp / (110 - L.layer * 14)) % wrapSpan;
+    const parallax = L.layer === 0 ? 0.012 : 0.02;
+    const wrapSpan = width + short * 0.24;
+    const travel = (timestamp / (150 - L.layer * 18)) % wrapSpan;
     const cx =
       ((((L.x * wrapSpan - travel + camX * parallax) % wrapSpan) + wrapSpan) % wrapSpan) -
-      short * 0.18;
+      short * 0.12;
     const oy =
-      Math.sin(timestamp / (3600 + L.layer * 480) + L.x * 8) * 5 + camY * parallax * 0.02;
+      Math.sin(timestamp / (5200 + L.layer * 700) + L.x * 8) * 3 + camY * parallax * 0.012;
     const cy = L.y * height + oy;
-    const alpha = L.layer === 0 ? 0.98 : 0.95;
+    const alpha = L.layer === 0 ? 0.99 : 0.97;
     const fill = `rgba(255,255,255,${alpha})`;
-    const lw = L.layer === 0 ? 1.4 : 1.7;
-    drawOutlinedCloud(ctx, cx, cy, short * L.s, "#d5dce6", fill, lw);
+    const lw = L.layer === 0 ? 1.05 : 1.2;
+    drawOutlinedCloud(ctx, cx, cy, short * L.s, "#dfe7f1", fill, lw);
   }
 }
 
