@@ -567,6 +567,59 @@ h3 {
   grid-column: span 3;
 }
 
+.fuel-gauge {
+  position: absolute;
+  top: 126px;
+  left: 18px;
+  z-index: 3;
+  width: min(260px, calc(100% - 286px));
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(109, 167, 255, 0.18);
+  background: rgba(8, 14, 28, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.fuel-gauge-header,
+.fuel-gauge-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.fuel-gauge-header strong {
+  font-size: 0.88rem;
+}
+
+.fuel-gauge-header span,
+.fuel-gauge-meta span {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.fuel-gauge-track {
+  height: 12px;
+  margin: 10px 0 8px;
+  border-radius: 999px;
+  background: rgba(12, 24, 46, 0.88);
+  overflow: hidden;
+}
+
+.fuel-gauge-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #7cf09f, #ffe36e);
+}
+
+.fuel-gauge-fill.warn {
+  background: linear-gradient(90deg, #ffc777, #ffe36e);
+}
+
+.fuel-gauge-fill.danger {
+  background: linear-gradient(90deg, #ff8a7b, #ffb176);
+}
+
 .achievement-toast {
   left: 50%;
   bottom: 18px;
@@ -647,6 +700,24 @@ h3 {
   background: rgba(43, 97, 209, 0.55);
 }
 
+.scene-flight-pad-row--fire {
+  margin-top: 2px;
+}
+
+.scene-flight-pad-btn--fire {
+  min-width: 92px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: rgba(255, 173, 71, 0.35);
+  border-color: rgba(255, 214, 143, 0.34);
+}
+
+.scene-flight-pad-btn--fire:active {
+  background: rgba(255, 173, 71, 0.56);
+}
+
 @media (min-width: 900px) {
   .scene-flight-pad {
     opacity: 0.88;
@@ -665,6 +736,10 @@ h3 {
 
 .atlas-lower-grid--triple {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.atlas-lower-grid--game {
+  align-items: start;
 }
 
 .panel-card {
@@ -832,6 +907,82 @@ h3 {
 
 .hangar-launcher-copy span {
   color: var(--muted);
+}
+
+.leaderboard-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.leaderboard-callsign {
+  display: grid;
+  gap: 8px;
+}
+
+.leaderboard-callsign span,
+.leaderboard-live span,
+.leaderboard-empty {
+  color: var(--muted);
+}
+
+.leaderboard-callsign input {
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid rgba(109, 167, 255, 0.16);
+  background: rgba(5, 12, 24, 0.9);
+  color: var(--text);
+  padding: 12px 13px;
+}
+
+.leaderboard-live {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(7, 14, 28, 0.72);
+  border: 1px solid rgba(109, 167, 255, 0.12);
+}
+
+.leaderboard-live strong {
+  font-size: 1.15rem;
+}
+
+.leaderboard-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.leaderboard-list li {
+  display: grid;
+  gap: 4px;
+}
+
+.leaderboard-list span,
+.leaderboard-list small {
+  color: var(--muted);
+}
+
+.leaderboard-archive {
+  display: grid;
+  gap: 8px;
+}
+
+.leaderboard-archive details {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(7, 14, 28, 0.68);
+  border: 1px solid rgba(109, 167, 255, 0.12);
+}
+
+.leaderboard-archive summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.leaderboard-list--archive {
+  margin-top: 10px;
 }
 
 .hangar-card:disabled {

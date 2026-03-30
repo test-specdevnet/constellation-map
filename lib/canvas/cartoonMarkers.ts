@@ -506,3 +506,109 @@ export function drawProximityHoverCard(
   }
   ctx.restore();
 }
+
+export function drawFuelCanPickup(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  scale: number,
+  rotation: number,
+) {
+  ctx.save();
+  ctx.translate(snapPixel(x), snapPixel(y));
+  ctx.rotate(rotation);
+  ctx.scale(scale, scale);
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 2.2;
+  ctx.strokeStyle = "#11203a";
+
+  const body = ctx.createLinearGradient(-12, -10, 14, 16);
+  body.addColorStop(0, "#ffb259");
+  body.addColorStop(0.55, "#f17a2b");
+  body.addColorStop(1, "#ca4c12");
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.roundRect(-11, -14, 22, 28, 6);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(255, 236, 203, 0.86)";
+  ctx.beginPath();
+  ctx.roundRect(-5, -6, 10, 11, 4);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(-5, -14);
+  ctx.lineTo(-1, -21);
+  ctx.lineTo(8, -21);
+  ctx.lineTo(10, -14);
+  ctx.closePath();
+  ctx.fillStyle = "#f8ca64";
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.strokeStyle = "#11203a";
+  ctx.beginPath();
+  ctx.moveTo(-3, -9);
+  ctx.lineTo(3, -9);
+  ctx.moveTo(0, -12);
+  ctx.lineTo(0, -6);
+  ctx.stroke();
+  ctx.restore();
+}
+
+export function drawSpeedBoostPickup(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  scale: number,
+  rotation: number,
+) {
+  ctx.save();
+  ctx.translate(snapPixel(x), snapPixel(y));
+  ctx.rotate(rotation);
+  ctx.scale(scale, scale);
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 2.2;
+  ctx.strokeStyle = "#11203a";
+
+  ctx.fillStyle = "#ffe36e";
+  ctx.beginPath();
+  ctx.moveTo(-3, -17);
+  ctx.lineTo(10, -4);
+  ctx.lineTo(2, -4);
+  ctx.lineTo(8, 17);
+  ctx.lineTo(-9, 1);
+  ctx.lineTo(-1, 1);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.strokeStyle = "rgba(255,255,255,0.72)";
+  ctx.lineWidth = 1.1;
+  ctx.beginPath();
+  ctx.moveTo(0, -12);
+  ctx.lineTo(6, -5);
+  ctx.lineTo(1, -5);
+  ctx.stroke();
+  ctx.restore();
+}
+
+export function drawProjectile(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  radius: number,
+  owner: "player" | "enemy",
+) {
+  ctx.save();
+  ctx.translate(snapPixel(x), snapPixel(y));
+  ctx.fillStyle = owner === "player" ? "#fff3ae" : "#ff7a7a";
+  ctx.strokeStyle = owner === "player" ? "#11203a" : "#2f0910";
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
