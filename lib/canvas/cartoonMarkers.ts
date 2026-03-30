@@ -245,13 +245,19 @@ function drawOutlinedCloud(
   ctx.save();
   ctx.translate(cx, cy);
   ctx.scale(scale, scale * 0.92);
+
+  ctx.save();
+  ctx.translate(0, 0.14);
+  ctx.scale(1, 0.78);
   ctx.beginPath();
   for (const p of puffs) {
     ctx.moveTo(p.br + p.bx, p.by);
     ctx.arc(p.bx, p.by, p.br, 0, Math.PI * 2);
   }
-  ctx.fillStyle = "rgba(128, 193, 239, 0.12)";
+  ctx.fillStyle = "rgba(191, 198, 214, 0.72)";
   ctx.fill();
+  ctx.restore();
+
   ctx.beginPath();
   for (const p of puffs) {
     ctx.moveTo(p.br + p.bx, p.by);
@@ -303,15 +309,7 @@ export function drawParallaxCloudLayers(
     const alpha = L.layer === 0 ? 0.74 : 0.86;
     const fill = `rgba(255,255,255,${alpha})`;
     const lw = L.layer === 0 ? 1.1 : 1.25;
-    drawOutlinedCloud(
-      ctx,
-      wrapX,
-      cy,
-      short * L.s,
-      "rgba(255, 255, 255, 0.45)",
-      fill,
-      lw,
-    );
+    drawOutlinedCloud(ctx, wrapX, cy, short * L.s, "rgba(144, 161, 184, 0.95)", fill, lw);
   }
 }
 
