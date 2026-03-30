@@ -564,30 +564,23 @@ export function SceneCanvas({
       backgroundContext.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
 
       const sky = backgroundContext.createLinearGradient(0, canvasSize.height, 0, 0);
-      sky.addColorStop(0, "#F0FBFF");
-      sky.addColorStop(0.28, "#D6F1FF");
-      sky.addColorStop(0.62, "#9AD8FF");
-      sky.addColorStop(1, "#67BBF8");
+      sky.addColorStop(0, "#bcd8f5");
+      sky.addColorStop(0.38, "#84c7f1");
+      sky.addColorStop(1, "#1698da");
       backgroundContext.fillStyle = sky;
       backgroundContext.fillRect(0, 0, canvasSize.width, canvasSize.height);
 
-      const horizonGlow = backgroundContext.createLinearGradient(
+      const sunGlow = backgroundContext.createRadialGradient(
+        canvasSize.width * 0.16,
+        canvasSize.height * 0.12,
         0,
-        canvasSize.height * 0.46,
-        0,
-        canvasSize.height,
+        canvasSize.width * 0.16,
+        canvasSize.height * 0.12,
+        canvasSize.height * 0.36,
       );
-      horizonGlow.addColorStop(0, "rgba(255, 255, 255, 0)");
-      horizonGlow.addColorStop(0.55, "rgba(255, 255, 255, 0.08)");
-      horizonGlow.addColorStop(1, "rgba(255, 249, 233, 0.18)");
-      backgroundContext.fillStyle = horizonGlow;
-      backgroundContext.fillRect(0, 0, canvasSize.width, canvasSize.height);
-
-      const mist = backgroundContext.createLinearGradient(0, 0, canvasSize.width, 0);
-      mist.addColorStop(0, "rgba(255, 255, 255, 0.08)");
-      mist.addColorStop(0.5, "rgba(255, 255, 255, 0)");
-      mist.addColorStop(1, "rgba(255, 255, 255, 0.08)");
-      backgroundContext.fillStyle = mist;
+      sunGlow.addColorStop(0, "rgba(255,255,255,0.24)");
+      sunGlow.addColorStop(1, "rgba(255,255,255,0)");
+      backgroundContext.fillStyle = sunGlow;
       backgroundContext.fillRect(0, 0, canvasSize.width, canvasSize.height);
     }
 
@@ -598,19 +591,19 @@ export function SceneCanvas({
       const dt = clamp((timestamp - lastTs) / 1000, 0, 0.05);
       lastAnimTsRef.current = timestamp;
 
-      const turnAccel = reducedMotion ? 5.2 : 14.5;
-      const turnDamp = Math.exp(-(reducedMotion ? 9 : 10.8) * dt);
-      const accel = reducedMotion ? 280 : 680;
-      const brake = reducedMotion ? 460 : 1_040;
-      const maxSpeed = reducedMotion ? 165 : 460;
-      const coast = reducedMotion ? 0.994 : 0.9975;
+      const maxTurnRate = reducedMotion ? 2.2 : 4.6;
+      const turnResponse = reducedMotion ? 9 : 20;
+      const accel = reducedMotion ? 340 : 900;
+      const brake = reducedMotion ? 680 : 1_550;
+      const passiveDrag = reducedMotion ? 90 : 130;
+      const maxSpeed = reducedMotion ? 220 : 620;
 
       let turnInput = 0;
       if (keys.has("ArrowLeft")) turnInput -= 1;
       if (keys.has("ArrowRight")) turnInput += 1;
-      flight.angVel += turnInput * turnAccel * dt;
-      flight.angVel *= turnDamp;
-      flight.angVel = clamp(flight.angVel, -3.4, 3.4);
+      const targetTurnRate = turnInput * maxTurnRate;
+      const turnBlend = Math.min(1, turnResponse * dt);
+      flight.angVel += (targetTurnRate - flight.angVel) * turnBlend;
       flight.heading += flight.angVel * dt;
 
       if (keys.has("ArrowUp")) {
@@ -618,7 +611,7 @@ export function SceneCanvas({
       } else if (keys.has("ArrowDown")) {
         flight.speed -= brake * dt;
       } else {
-        flight.speed *= coast;
+        flight.speed -= passiveDrag * dt;
       }
       flight.speed = clamp(flight.speed, 0, maxSpeed);
 
@@ -627,11 +620,11 @@ export function SceneCanvas({
       flight.x = clamp(flight.x, bounds.minX, bounds.maxX);
       flight.y = clamp(flight.y, bounds.minY, bounds.maxY);
 
-      const look = Math.min(320, flight.speed * 0.72);
-      const desiredCamX = flight.x + Math.cos(flight.heading) * look * 0.11;
-      const desiredCamY = flight.y + Math.sin(flight.heading) * look * 0.11;
+      const look = Math.min(420, flight.speed * 0.78);
+      const desiredCamX = flight.x + Math.cos(flight.heading) * look * 0.12;
+      const desiredCamY = flight.y + Math.sin(flight.heading) * look * 0.12;
       const camFollow = camFollowRef.current;
-      const followK = Math.min(1, (reducedMotion ? 12 : 10.6) * dt);
+      const followK = Math.min(1, (reducedMotion ? 18 : 28) * dt);
       camFollow.x += (desiredCamX - camFollow.x) * followK;
       camFollow.y += (desiredCamY - camFollow.y) * followK;
 
