@@ -17,7 +17,7 @@ import {
   useConstellationProgress,
 } from "./ProgressProvider";
 import type { FlightTelemetry } from "../../lib/layout/focusContext";
-import type { GameSessionSnapshot } from "../../lib/game/arcade";
+import type { GameSessionSnapshot } from "../../lib/game/types";
 import type {
   AppDetail,
   AppSystem,
@@ -122,21 +122,17 @@ export function ConstellationExperience() {
         }
 
         const payload = (await response.json()) as InitialScene;
-        if (cancelled) {
-          return;
+        if (!cancelled) {
+          setScene(payload);
         }
-
-        setScene(payload);
       } catch (error) {
-        if (cancelled) {
-          return;
+        if (!cancelled) {
+          setSceneError(
+            error instanceof Error
+              ? error.message
+              : "Unable to load the public FluxCloud snapshot.",
+          );
         }
-
-        setSceneError(
-          error instanceof Error
-            ? error.message
-            : "Unable to load the public FluxCloud snapshot.",
-        );
       } finally {
         if (!cancelled) {
           setSceneLoading(false);
@@ -145,7 +141,6 @@ export function ConstellationExperience() {
     };
 
     void loadScene();
-
     return () => {
       cancelled = true;
     };
@@ -207,12 +202,16 @@ function ConstellationExperienceBody({
     summary,
     playerCallsign,
     leaderboard,
+    flightSettings,
+    featureFlags,
     markAppInspected,
     markRareArchetypeDiscovered,
     markRegionVisited,
     markRuntimeDiscovered,
     selectSkin,
     setPlayerCallsign,
+    updateFlightSettings,
+    updateFeatureFlags,
     recordRun,
     resetProgress,
     dismissToast,
@@ -267,17 +266,17 @@ function ConstellationExperienceBody({
 
   const visibleStars = useMemo(
     () =>
-      activeScene.stars.filter(
-        (star) =>
-          visibleSystemIds.has(star.systemId) &&
-          (filters.status === "all" || star.status === filters.status),
-      ),
-    [activeScene.stars, filters.status, visibleSystemIds],
+      activeScene.stars.filter((star) => visibleSystemIds.has(star.systemId)),
+    [activeScene.stars, visibleSystemIds],
   );
 
-  const visibleStarIds = useMemo(
-    () => new Set(visibleStars.map((star) => star.id)),
-    [visibleStars],
+  const visibleStarCount = useMemo(
+    () =>
+      visibleSystems.reduce(
+        (total, system) => total + Math.max(1, system.instanceCount),
+        0,
+      ),
+    [visibleSystems],
   );
 
   const visibleClusters = useMemo(
@@ -285,8 +284,6 @@ function ConstellationExperienceBody({
       activeScene.clusters
         .map((cluster) => {
           const systemIds = cluster.systemIds.filter((id) => visibleSystemIds.has(id));
-          const starIds = cluster.starIds.filter((id) => visibleStarIds.has(id));
-
           if (!systemIds.length) {
             return null;
           }
@@ -305,11 +302,13 @@ function ConstellationExperienceBody({
           return {
             ...cluster,
             systemIds,
-            starIds,
             counts: {
               apps: new Set(visibleClusterSystems.map((system) => system.appName)).size,
               systems: visibleClusterSystems.length,
-              instances: starIds.length,
+              instances: visibleClusterSystems.reduce(
+                (total, system) => total + Math.max(system.instanceCount, 1),
+                0,
+              ),
               runtimes:
                 cluster.level === "region"
                   ? new Set(
@@ -325,7 +324,7 @@ function ConstellationExperienceBody({
           } satisfies Cluster;
         })
         .filter((cluster): cluster is Cluster => Boolean(cluster)),
-    [activeScene.clusters, systemsById, visibleStarIds, visibleSystemIds],
+    [activeScene.clusters, systemsById, visibleSystemIds],
   );
 
   useEffect(() => {
@@ -364,19 +363,15 @@ function ConstellationExperienceBody({
   }, [selectedAppName]);
 
   useEffect(() => {
-    if (!telemetry?.activeRegionId) {
-      return;
+    if (telemetry?.activeRegionId) {
+      markRegionVisited(telemetry.activeRegionId);
     }
-
-    markRegionVisited(telemetry.activeRegionId);
   }, [markRegionVisited, telemetry?.activeRegionId]);
 
   useEffect(() => {
-    if (!telemetry?.activeRuntimeId) {
-      return;
+    if (telemetry?.activeRuntimeId) {
+      markRuntimeDiscovered(telemetry.activeRuntimeId);
     }
-
-    markRuntimeDiscovered(telemetry.activeRuntimeId);
   }, [markRuntimeDiscovered, telemetry?.activeRuntimeId]);
 
   useEffect(() => {
@@ -465,15 +460,16 @@ function ConstellationExperienceBody({
   const handleSelectApp = (appName: string) => {
     setSelectedAppName(appName);
     const system = systemsByApp.get(appName);
-
-    if (system) {
-      setFocusTarget({
-        key: `select:${appName}:${Date.now()}`,
-        x: system.x,
-        y: system.y,
-        zoom: 0.34,
-      });
+    if (!system) {
+      return;
     }
+
+    setFocusTarget({
+      key: `select:${appName}:${Date.now()}`,
+      x: system.x,
+      y: system.y,
+      zoom: 0.34,
+    });
   };
 
   const handleFocusCluster = (cluster: Cluster) => {
@@ -501,9 +497,8 @@ function ConstellationExperienceBody({
           </div>
           <h1>FluxCloud Explore</h1>
           <p className="hero-text">
-            Literally fly through the FluxCloud and explore network deployments,
-            unlocking plane skins as you discover new datapoints with this
-            interactive data visualization tool.
+            Fly through FluxCloud deployments, discover the busiest sectors, and layer in
+            gameplay systems only when they are stable enough to earn their place.
           </p>
 
           <div className="hero-metrics hero-metrics--compact" aria-label="Atlas totals">
@@ -516,7 +511,7 @@ function ConstellationExperienceBody({
             <article>
               <span>Deployments</span>
               <strong>
-                {(sceneLoading ? activeScene.counts.stars : visibleStars.length).toLocaleString()}
+                {(sceneLoading ? activeScene.counts.stars : visibleStarCount).toLocaleString()}
               </strong>
             </article>
           </div>
@@ -527,11 +522,7 @@ function ConstellationExperienceBody({
         <div className="atlas-main">
           <div className="control-bar">
             <SearchBox onSearch={handleSearch} busy={searchBusy || sceneLoading} />
-            <FilterBar
-              filters={activeScene.filters}
-              value={filters}
-              onChange={setFilters}
-            />
+            <FilterBar filters={activeScene.filters} value={filters} onChange={setFilters} />
           </div>
 
           <SceneCanvas
@@ -545,6 +536,10 @@ function ConstellationExperienceBody({
             focusTarget={focusTarget}
             mapDataLoading={sceneLoading}
             snapshotError={!!sceneError}
+            flightSettings={flightSettings}
+            featureFlags={featureFlags}
+            onUpdateFlightSettings={updateFlightSettings}
+            onUpdateFeatureFlags={updateFeatureFlags}
             overlay={
               <>
                 <MiniMap
@@ -553,6 +548,7 @@ function ConstellationExperienceBody({
                     (cluster) => cluster.level === "region",
                   )}
                   telemetry={telemetry}
+                  snapshot={gameSnapshot}
                   visitedRegionIds={progress.visitedRegionIds}
                   onSelectCluster={handleFocusCluster}
                 />
@@ -574,7 +570,7 @@ function ConstellationExperienceBody({
             }}
             onTelemetry={setTelemetry}
             onGameStateChange={setGameSnapshot}
-            onRunComplete={recordRun}
+            onRunComplete={featureFlags.leaderboard ? recordRun : undefined}
           />
 
           <div
@@ -593,10 +589,7 @@ function ConstellationExperienceBody({
                 <ul className="result-list result-list--compact">
                   {searchResults.map((result) => (
                     <li key={result.appName}>
-                      <button
-                        type="button"
-                        onClick={() => handleSelectApp(result.appName)}
-                      >
+                      <button type="button" onClick={() => handleSelectApp(result.appName)}>
                         <strong>{result.appName}</strong>
                         <span>
                           {result.owner} · {result.runtimeFamily}
@@ -620,26 +613,25 @@ function ConstellationExperienceBody({
               }}
             />
 
-            <LeaderboardPanel
-              callsign={playerCallsign}
-              onChangeCallsign={setPlayerCallsign}
-              leaderboard={leaderboard}
-              snapshot={gameSnapshot}
-            />
+            {featureFlags.leaderboard ? (
+              <LeaderboardPanel
+                callsign={playerCallsign}
+                onChangeCallsign={setPlayerCallsign}
+                leaderboard={leaderboard}
+                snapshot={gameSnapshot}
+              />
+            ) : null}
           </div>
 
           {sceneError ? (
             <div className="status-banner status-banner--error">
               <p>{sceneError}</p>
-              <button
-                type="button"
-                className="primary-action"
-                onClick={onRetryScene}
-              >
+              <button type="button" className="primary-action" onClick={onRetryScene}>
                 Retry loading snapshot
               </button>
             </div>
           ) : null}
+
           {statusMessage ? <p className="status-banner">{statusMessage}</p> : null}
         </div>
 

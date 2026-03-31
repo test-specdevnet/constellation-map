@@ -429,7 +429,8 @@ h3 {
 
 .mini-map,
 .diegetic-hud,
-.achievement-toast {
+.achievement-toast,
+.flight-settings-panel {
   position: absolute;
 }
 
@@ -520,9 +521,72 @@ h3 {
   stroke-linecap: round;
 }
 
+.mini-map-cluster {
+  fill: rgba(126, 210, 255, 0.9);
+  stroke: rgba(255, 255, 255, 0.82);
+  stroke-width: 1;
+}
+
+.mini-map-pickup {
+  stroke: rgba(255, 255, 255, 0.72);
+  stroke-width: 1;
+}
+
+.mini-map-pickup--fuel {
+  fill: rgba(255, 181, 104, 0.94);
+}
+
+.mini-map-pickup--boost {
+  fill: rgba(117, 233, 255, 0.94);
+}
+
+.mini-map-enemy {
+  fill: rgba(255, 106, 106, 0.94);
+  stroke: rgba(36, 10, 14, 0.9);
+  stroke-width: 0.8;
+}
+
 .mini-map-label {
   margin: 8px 0 0;
   font-size: 0.78rem;
+}
+
+.mini-map-legend {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 8px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.mini-map-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mini-map-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.mini-map-legend-dot--enemy {
+  background: rgba(255, 106, 106, 0.94);
+}
+
+.mini-map-legend-dot--fuel {
+  background: rgba(255, 181, 104, 0.94);
+}
+
+.mini-map-legend-dot--boost {
+  background: rgba(117, 233, 255, 0.94);
+}
+
+.mini-map-legend-dot--cluster {
+  background: rgba(126, 210, 255, 0.94);
 }
 
 .diegetic-hud {
@@ -620,6 +684,18 @@ h3 {
   background: linear-gradient(90deg, #ff8a7b, #ffb176);
 }
 
+.fuel-gauge-header--sub {
+  margin-top: 8px;
+}
+
+.fuel-gauge-track--hull {
+  margin-top: 8px;
+}
+
+.fuel-gauge-fill--hull {
+  background: linear-gradient(90deg, #8ed7ff, #a8ffd7);
+}
+
 .achievement-toast {
   left: 50%;
   bottom: 18px;
@@ -671,6 +747,57 @@ h3 {
   background: rgba(8, 14, 28, 0.82);
   user-select: none;
   -webkit-user-select: none;
+}
+
+.flight-settings-panel {
+  top: 72px;
+  left: 18px;
+  z-index: 4;
+  width: min(320px, calc(100% - 36px));
+  padding: 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(184, 228, 255, 0.26);
+  background: rgba(8, 20, 42, 0.9);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.32);
+}
+
+.flight-settings-panel__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.flight-settings-panel__header strong,
+.flight-settings-panel__section strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.flight-settings-panel__header span,
+.flight-settings-panel__section p,
+.flight-settings-panel__field small,
+.flight-settings-panel__field span {
+  color: var(--muted);
+}
+
+.flight-settings-panel__section {
+  margin-bottom: 12px;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.flight-settings-panel__field {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.flight-settings-panel__field select,
+.flight-settings-panel__field input[type="range"] {
+  width: 100%;
 }
 
 .scene-flight-pad-row {
@@ -1398,9 +1525,10 @@ h1 {
 .diegetic-hud {
   top: 16px;
   left: 16px;
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  width: auto;
+  width: min(720px, calc(100% - 236px));
   max-width: calc(100% - 236px);
   pointer-events: none;
 }
@@ -1634,6 +1762,18 @@ h1 {
     top: auto;
     bottom: 128px;
     width: 166px;
+  }
+
+  .mini-map-legend {
+    grid-template-columns: 1fr;
+  }
+
+  .flight-settings-panel {
+    top: auto;
+    left: 12px;
+    right: 12px;
+    bottom: 192px;
+    width: auto;
   }
 
   .scene-flight-tip {

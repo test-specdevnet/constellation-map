@@ -9,6 +9,7 @@ import {
   type ReactNode,
   type WheelEvent,
 } from "react";
+import { FlightSettingsPanel } from "./FlightSettingsPanel";
 import {
   drawFuelCanPickup,
   drawDeploymentBuoy,
@@ -29,27 +30,53 @@ import {
   getDisclosureState,
   getLensRadius,
   scaleDensityJitter,
-  type FlightTelemetry,
   type DisclosureBand,
+  type FlightTelemetry,
 } from "../../lib/layout/focusContext";
 import type { AppSystem, Cluster, SceneBounds, Star } from "../../lib/types/star";
 import {
-  BOOST_DURATION_MS,
-  DISCOVERY_SCORE,
-  ENEMY_SCORE,
-  FUEL_MAX,
-  type EnemyPlane,
-  type FloatingPickup,
-  type GameSessionSnapshot,
-  type Projectile,
-  type RunRecord,
-  type RunState,
-  generateFloatingPickups,
-  generateRunId,
-  getWeeklyLeaderboardKey,
-  makeProjectile,
-  spawnEnemyAtEdge,
-} from "../../lib/game/arcade";
+  GAME_CONFIG,
+  clamp,
+  getEnemyCap,
+  getEnemySpawnDelayMs,
+  resolveQualityMode,
+  type FeatureFlags,
+  type FlightSettings,
+} from "../../lib/game/config";
+import { buildDeploymentVisibilityState } from "../../lib/game/deploymentVisibility";
+import { updateEffects } from "../../lib/game/effects";
+import {
+  computeCameraFollowTarget,
+  computeViewportWorldBounds,
+  createFlightState,
+  getDefaultZoom,
+  integrateFlightState,
+} from "../../lib/game/flightController";
+import {
+  createProjectile,
+  resolveEnemyPlaneCollisions,
+  scheduleNextEnemySpawn,
+  spawnEnemyPlane,
+  updateEnemies,
+  updateProjectiles,
+} from "../../lib/game/enemies";
+import { clampFuel, collectNearbyPickups, maintainCollectibles } from "../../lib/game/pickups";
+import {
+  applyDeploymentDiscoveries,
+  createGameState,
+  createSessionSnapshot,
+  toRunRecord,
+  updateRunResources,
+} from "../../lib/game/session";
+import type {
+  DeploymentVisibilityState,
+  FlightInputState,
+  FlightState,
+  GameSessionSnapshot,
+  GameState,
+  RunRecord,
+  VisualEffect,
+} from "../../lib/game/types";
 
 export type HoveredEntity =
   | {
@@ -73,6 +100,20 @@ type CameraTarget = {
   zoom: number;
 };
 
+type CameraState = {
+  x: number;
+  y: number;
+  zoom: number;
+};
+
+type Renderable = {
+  entity: HoveredEntity;
+  x: number;
+  y: number;
+  radius: number;
+  cluster?: Cluster;
+};
+
 type SceneCanvasProps = {
   stars: Star[];
   clusters: Cluster[];
@@ -84,82 +125,35 @@ type SceneCanvasProps = {
   focusTarget: CameraTarget | null;
   mapDataLoading: boolean;
   snapshotError: boolean;
+  flightSettings: FlightSettings;
+  featureFlags: FeatureFlags;
   overlay?: ReactNode;
   onSelectApp: (appName: string) => void;
   onFocusCluster: (cluster: Cluster) => void;
   onHoverEntity: (entity: HoveredEntity | null) => void;
   onTelemetry: (telemetry: FlightTelemetry) => void;
+  onUpdateFlightSettings: (settings: Partial<FlightSettings>) => void;
+  onUpdateFeatureFlags: (flags: Partial<FeatureFlags>) => void;
   onGameStateChange?: (snapshot: GameSessionSnapshot) => void;
   onRunComplete?: (record: RunRecord) => void;
 };
 
-type CameraState = {
-  x: number;
-  y: number;
-  zoom: number;
-};
-
-type FlightState = {
-  x: number;
-  y: number;
-  heading: number;
-  speed: number;
-  angVel: number;
-};
-
-type Renderable = {
-  entity: HoveredEntity;
-  x: number;
-  y: number;
-  radius: number;
-  cluster?: Cluster;
-};
-
-type GameState = {
-  runId: string;
-  fuel: number;
-  fuelMax: number;
-  boostUntilMs: number;
-  score: number;
-  kills: number;
-  discoveries: Set<string>;
-  state: RunState;
-  crashReason: string | null;
-  crashStartedAtMs: number | null;
-  runStartedAtMs: number;
-  fuelPacks: FloatingPickup[];
-  boostPacks: FloatingPickup[];
-  enemies: EnemyPlane[];
-  projectiles: Projectile[];
-  nextEnemySpawnAtMs: number;
-  playerFireCooldownMs: number;
-  runRecorded: boolean;
-};
-
-const ZOOM_DEFAULT = 0.178;
-const ZOOM_MIN = 0.07;
-const ZOOM_MAX = 0.42;
 const FLIGHT_TIP_KEY = "flux-flight-tip-dismissed";
-const PLAYER_PICKUP_RADIUS = 34;
-const PLAYER_PROJECTILE_SPEED = 780;
-const ENEMY_PROJECTILE_SPEED = 420;
-const FIXED_STEP_MS = 1000 / 60;
-const MAX_FRAME_MS = FIXED_STEP_MS * 4;
-const LOCAL_SYSTEM_RADIUS = 1_920;
-const DETAIL_SYSTEM_RADIUS = 1_260;
-const VISIBLE_SYSTEM_HOLD_MS = 900;
-const DETAIL_SYSTEM_HOLD_MS = 700;
+const EMPTY_VISIBILITY: DeploymentVisibilityState = {
+  visibleSystems: [],
+  detailSystems: [],
+  detailSystemIds: new Set<string>(),
+  visibleStarsBySystem: new Map<string, Star[]>(),
+  clusterMarkers: [],
+};
 
-const clamp = (value: number, min: number, max: number) =>
-  Math.max(min, Math.min(max, value));
+const lerp = (from: number, to: number, amount: number) => from + (to - from) * amount;
 
-const lerp = (from: number, to: number, t: number) => from + (to - from) * t;
-
-const lerpAngle = (from: number, to: number, t: number) => {
+const lerpAngle = (from: number, to: number, amount: number) => {
   let delta = to - from;
   while (delta > Math.PI) delta -= Math.PI * 2;
   while (delta < -Math.PI) delta += Math.PI * 2;
-  return from + delta * t;
+  return from + delta * amount;
 };
 
 const worldToScreen = (
@@ -212,54 +206,7 @@ const mapToControlKey = (raw: string): string | null => {
   return null;
 };
 
-const angleTo = (from: { x: number; y: number }, to: { x: number; y: number }) =>
-  Math.atan2(to.y - from.y, to.x - from.x);
-
-const angleDelta = (target: number, current: number) => {
-  let delta = target - current;
-  while (delta > Math.PI) delta -= Math.PI * 2;
-  while (delta < -Math.PI) delta += Math.PI * 2;
-  return delta;
-};
-
-const createGameState = (bounds: SceneBounds, systems: AppSystem[]): GameState => ({
-  runId: generateRunId(),
-  fuel: FUEL_MAX,
-  fuelMax: FUEL_MAX,
-  boostUntilMs: 0,
-  score: 0,
-  kills: 0,
-  discoveries: new Set<string>(),
-  state: "flying",
-  crashReason: null,
-  crashStartedAtMs: null,
-  runStartedAtMs: 0,
-  fuelPacks: generateFloatingPickups({
-    bounds,
-    systems,
-    kind: "fuel",
-    count: 12,
-    seed: `fuel:${bounds.width}:${systems.length}`,
-  }),
-  boostPacks: generateFloatingPickups({
-    bounds,
-    systems,
-    kind: "boost",
-    count: 7,
-    seed: `boost:${bounds.height}:${systems.length}`,
-  }),
-  enemies: [],
-  projectiles: [],
-  nextEnemySpawnAtMs: 4_000,
-  playerFireCooldownMs: 0,
-  runRecorded: false,
-});
-
-const centroidOfWorld = (
-  stars: Star[],
-  systems: AppSystem[],
-  bounds: SceneBounds,
-) => {
+const centroidOfWorld = (stars: Star[], systems: AppSystem[], bounds: SceneBounds) => {
   if (systems.length > 0) {
     const sum = systems.reduce(
       (acc, system) => ({
@@ -268,7 +215,6 @@ const centroidOfWorld = (
       }),
       { x: 0, y: 0 },
     );
-
     return {
       x: sum.x / systems.length,
       y: sum.y / systems.length,
@@ -283,7 +229,6 @@ const centroidOfWorld = (
       }),
       { x: 0, y: 0 },
     );
-
     return {
       x: sum.x / stars.length,
       y: sum.y / stars.length,
@@ -303,7 +248,7 @@ const zoomAtPoint = (
   screen: { x: number; y: number },
   nextZoom: number,
 ) => {
-  const z = clamp(nextZoom, ZOOM_MIN, ZOOM_MAX);
+  const z = clamp(nextZoom, GAME_CONFIG.zoomMin, GAME_CONFIG.zoomMax);
   const world = screenToWorld(screen, canvasSize, camera);
   flight.x = world.x - (screen.x - canvasSize.width / 2) / z;
   flight.y = world.y - (screen.y - canvasSize.height / 2) / z;
@@ -327,28 +272,6 @@ const titleCase = (value: string) =>
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 
-const stabilizeIds = (
-  store: Map<string, number>,
-  ids: Iterable<string>,
-  now: number,
-  holdMs: number,
-) => {
-  for (const id of ids) {
-    store.set(id, now + holdMs);
-  }
-
-  const stable = new Set<string>();
-  for (const [id, expiresAt] of store) {
-    if (expiresAt > now) {
-      stable.add(id);
-    } else {
-      store.delete(id);
-    }
-  }
-
-  return stable;
-};
-
 const getClusterBadgeRadius = ({
   radius,
   level,
@@ -371,12 +294,10 @@ const drawClusterCloud = ({
   radius,
   alpha,
   label,
-  meta: _meta,
   active,
   rare,
   level,
   band,
-  timestamp: _timestamp,
 }: {
   ctx: CanvasRenderingContext2D;
   x: number;
@@ -384,18 +305,13 @@ const drawClusterCloud = ({
   radius: number;
   alpha: number;
   label: string;
-  meta?: string;
   active: boolean;
   rare: boolean;
   level: Cluster["level"];
   band: DisclosureBand;
-  timestamp: number;
 }) => {
-  const compact = band === "detail";
-  const baseDisplayRadius = getClusterBadgeRadius({ radius, level, band });
-  const displayRadius = compact
-    ? Math.min(baseDisplayRadius, level === "runtime" ? 22 : 18)
-    : baseDisplayRadius;
+  const compact = band !== "overview";
+  const displayRadius = getClusterBadgeRadius({ radius, level, band });
   const coreColor =
     level === "region"
       ? active
@@ -427,7 +343,7 @@ const drawClusterCloud = ({
   ctx.arc(x, y, glowRadius, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.lineWidth = compact ? 1.4 : active ? 2.1 : 1.5;
+  ctx.lineWidth = active ? 2.1 : 1.5;
   ctx.strokeStyle = outline;
   ctx.beginPath();
   ctx.arc(x, y, displayRadius * 0.92, 0, Math.PI * 2);
@@ -442,7 +358,7 @@ const drawClusterCloud = ({
     ctx.setLineDash([4, 6]);
     ctx.strokeStyle = "rgba(255, 246, 196, 0.88)";
     ctx.beginPath();
-    ctx.arc(x, y, displayRadius + (compact ? 5 : 8), 0, Math.PI * 2);
+    ctx.arc(x, y, displayRadius + 8, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
   }
@@ -471,12 +387,12 @@ const drawEnemyPlaneMarker = (
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(heading);
-  ctx.scale(0.6, 0.6);
+  ctx.scale(0.58, 0.58);
   ctx.lineJoin = "round";
   ctx.lineWidth = 3;
-  ctx.strokeStyle = "#e3ebf7";
+  ctx.strokeStyle = "#dce5f6";
 
-  ctx.fillStyle = "#0b0f18";
+  ctx.fillStyle = "#070a10";
   ctx.beginPath();
   ctx.moveTo(24, 0);
   ctx.bezierCurveTo(18, 10, 4, 10, -8, 8);
@@ -496,11 +412,11 @@ const drawEnemyPlaneMarker = (
   ctx.fill();
   ctx.stroke();
 
-  ctx.fillStyle = "#dfe7f7";
+  ctx.fillStyle = "#e7efff";
   ctx.beginPath();
   ctx.arc(25, 0, 5, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = "#0b0f18";
+  ctx.strokeStyle = "#070a10";
   ctx.lineWidth = 2;
   ctx.stroke();
 
@@ -508,6 +424,78 @@ const drawEnemyPlaneMarker = (
   ctx.beginPath();
   ctx.arc(25, 0, 10, prop, prop + Math.PI * 1.15);
   ctx.stroke();
+  ctx.restore();
+};
+
+const drawDeploymentClusterMarker = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  count: number,
+) => {
+  const radius = Math.max(10, Math.min(18, 8 + Math.log2(count + 1) * 2.4));
+  ctx.save();
+  ctx.translate(x, y);
+
+  const glow = ctx.createRadialGradient(0, 0, radius * 0.2, 0, 0, radius * 1.8);
+  glow.addColorStop(0, "rgba(145, 239, 255, 0.28)");
+  glow.addColorStop(1, "rgba(126, 210, 255, 0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius * 1.8, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "rgba(111, 196, 255, 0.9)";
+  ctx.strokeStyle = "rgba(255,255,255,0.84)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(-radius, -radius, radius * 2, radius * 2, 6);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = "#07101f";
+  ctx.font = "700 11px Segoe UI, system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(`${count}`, 0, 1);
+  ctx.restore();
+};
+
+const drawVisualEffect = (
+  ctx: CanvasRenderingContext2D,
+  effect: VisualEffect,
+  x: number,
+  y: number,
+) => {
+  const progress = clamp(effect.ageMs / Math.max(effect.ttlMs, 1), 0, 1);
+  const alpha = 1 - progress;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  if (effect.kind === "tracer") {
+    ctx.strokeStyle = effect.color;
+    ctx.lineWidth = Math.max(2, effect.size * 0.18);
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x - effect.vx * 0.06, y - effect.vy * 0.06);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  const radius =
+    effect.kind === "explosion"
+      ? effect.size * (0.45 + progress * 0.7)
+      : effect.size * (0.3 + progress * 0.4);
+  const fill = ctx.createRadialGradient(x, y, radius * 0.1, x, y, radius);
+  fill.addColorStop(0, effect.color);
+  fill.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = fill;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
   ctx.restore();
 };
 
@@ -520,14 +508,16 @@ const findHoveredRenderable = (
   }
 
   let closest: { renderable: Renderable; distance: number } | null = null;
-
   for (const renderable of renderables) {
     const dx = renderable.x - pointer.x;
     const dy = renderable.y - pointer.y;
-    const distance = Math.hypot(dx, dy);
+    const distanceToRenderable = Math.hypot(dx, dy);
 
-    if (distance <= renderable.radius && (!closest || distance < closest.distance)) {
-      closest = { renderable, distance };
+    if (
+      distanceToRenderable <= renderable.radius &&
+      (!closest || distanceToRenderable < closest.distance)
+    ) {
+      closest = { renderable, distance: distanceToRenderable };
     }
   }
 
@@ -545,11 +535,15 @@ export function SceneCanvas({
   focusTarget,
   mapDataLoading,
   snapshotError,
+  flightSettings,
+  featureFlags,
   overlay,
   onSelectApp,
   onFocusCluster,
   onHoverEntity,
   onTelemetry,
+  onUpdateFlightSettings,
+  onUpdateFeatureFlags,
   onGameStateChange,
   onRunComplete,
 }: SceneCanvasProps) {
@@ -557,31 +551,33 @@ export function SceneCanvas({
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const pointerRef = useRef<{ x: number; y: number } | null>(null);
   const hoveredRenderableRef = useRef<Renderable | null>(null);
-  const currentCameraRef = useRef<CameraState>({
-    x: 0,
-    y: 0,
-    zoom: ZOOM_DEFAULT,
-  });
-  const previousCameraRef = useRef<CameraState>({
-    x: 0,
-    y: 0,
-    zoom: ZOOM_DEFAULT,
-  });
+  const currentCameraRef = useRef<CameraState>({ x: 0, y: 0, zoom: getDefaultZoom() });
+  const previousCameraRef = useRef<CameraState>({ x: 0, y: 0, zoom: getDefaultZoom() });
   const camFollowRef = useRef({ x: 0, y: 0 });
-  const flightRef = useRef<FlightState>({
-    x: 0,
-    y: 0,
-    heading: -Math.PI / 2,
-    speed: 0,
-    angVel: 0,
+  const flightRef = useRef<FlightState>(createFlightState(0, 0));
+  const previousFlightRef = useRef<FlightState>(createFlightState(0, 0));
+  const gameRef = useRef<GameState>(createGameState());
+  const visibilityRef = useRef<DeploymentVisibilityState>(EMPTY_VISIBILITY);
+  const lastVisibilityUpdateRef = useRef(0);
+  const disclosureRef = useRef<{
+    band: DisclosureBand;
+    activeRegionId: string | null;
+    activeRuntimeId: string | null;
+    nearbySystemId: string | null;
+    nearestRegionDistance: number | null;
+    nearestSystemDistance: number | null;
+  }>({
+    band: "overview",
+    activeRegionId: null,
+    activeRuntimeId: null,
+    nearbySystemId: null,
+    nearestRegionDistance: null,
+    nearestSystemDistance: null,
   });
-  const previousFlightRef = useRef<FlightState>({
-    x: 0,
-    y: 0,
-    heading: -Math.PI / 2,
-    speed: 0,
-    angVel: 0,
-  });
+  const onHoverEntityRef = useRef(onHoverEntity);
+  const onTelemetryRef = useRef(onTelemetry);
+  const onGameStateChangeRef = useRef(onGameStateChange);
+  const onRunCompleteRef = useRef(onRunComplete);
   const keysRef = useRef<Set<string>>(new Set());
   const animationFrameRef = useRef<number | null>(null);
   const backgroundCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -591,13 +587,10 @@ export function SceneCanvas({
   const telemetryEmitTsRef = useRef(0);
   const gameEmitTsRef = useRef(0);
   const flightSeededRef = useRef(false);
-  const gameRef = useRef<GameState>(createGameState(bounds, systems));
-  const enemySpawnCounterRef = useRef(0);
   const pointerInSceneRef = useRef(false);
-  const visibleSystemUntilRef = useRef(new Map<string, number>());
-  const detailSystemUntilRef = useRef(new Map<string, number>());
   const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 760 });
   const [showFlightTip, setShowFlightTip] = useState(false);
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
 
   const regionClusters = useMemo(
     () => clusters.filter((cluster) => cluster.level === "region"),
@@ -626,23 +619,8 @@ export function SceneCanvas({
 
     return map;
   }, [runtimeClusters]);
-  const systemsByRegion = useMemo(() => {
-    const map = new Map<string, AppSystem[]>();
-
-    for (const system of systems) {
-      const existing = map.get(system.regionClusterId);
-      if (existing) {
-        existing.push(system);
-      } else {
-        map.set(system.regionClusterId, [system]);
-      }
-    }
-
-    return map;
-  }, [systems]);
   const starsBySystem = useMemo(() => {
     const map = new Map<string, Star[]>();
-
     for (const star of stars) {
       const existing = map.get(star.systemId);
       if (existing) {
@@ -651,11 +629,40 @@ export function SceneCanvas({
         map.set(star.systemId, [star]);
       }
     }
-
     return map;
   }, [stars]);
   const matchSet = useMemo(() => new Set(searchMatches), [searchMatches]);
   const reducedMotion = prefersReducedMotion();
+  const qualityMode = useMemo(
+    () =>
+      resolveQualityMode({
+        settings: flightSettings,
+        reducedMotion,
+        deviceMemory:
+          typeof navigator !== "undefined" && "deviceMemory" in navigator
+            ? Number((navigator as Navigator & { deviceMemory?: number }).deviceMemory)
+            : undefined,
+        hardwareConcurrency:
+          typeof navigator !== "undefined" ? navigator.hardwareConcurrency : undefined,
+      }),
+    [flightSettings, reducedMotion],
+  );
+
+  useEffect(() => {
+    onHoverEntityRef.current = onHoverEntity;
+  }, [onHoverEntity]);
+
+  useEffect(() => {
+    onTelemetryRef.current = onTelemetry;
+  }, [onTelemetry]);
+
+  useEffect(() => {
+    onGameStateChangeRef.current = onGameStateChange;
+  }, [onGameStateChange]);
+
+  useEffect(() => {
+    onRunCompleteRef.current = onRunComplete;
+  }, [onRunComplete]);
 
   useEffect(() => {
     try {
@@ -676,21 +683,18 @@ export function SceneCanvas({
     }
 
     const center = centroidOfWorld(stars, systems, bounds);
-    flightRef.current.x = center.x;
-    flightRef.current.y = center.y;
-    flightRef.current.heading = -Math.PI / 2;
-    flightRef.current.speed = 0;
-    flightRef.current.angVel = 0;
+    flightRef.current = createFlightState(center.x, center.y);
     previousFlightRef.current = { ...flightRef.current };
-    camFollowRef.current.x = center.x;
-    camFollowRef.current.y = center.y;
-    currentCameraRef.current.x = center.x;
-    currentCameraRef.current.y = center.y;
-    currentCameraRef.current.zoom = ZOOM_DEFAULT;
-    gameRef.current = createGameState(bounds, systems);
+    camFollowRef.current = { x: center.x, y: center.y };
+    currentCameraRef.current = {
+      x: center.x,
+      y: center.y,
+      zoom: getDefaultZoom(),
+    };
     previousCameraRef.current = { ...currentCameraRef.current };
-    visibleSystemUntilRef.current.clear();
-    detailSystemUntilRef.current.clear();
+    gameRef.current = createGameState();
+    visibilityRef.current = EMPTY_VISIBILITY;
+    lastVisibilityUpdateRef.current = 0;
     accumulatorRef.current = 0;
     flightSeededRef.current = true;
   }, [bounds, stars, systems]);
@@ -722,12 +726,15 @@ export function SceneCanvas({
     flightRef.current.y = focusTarget.y;
     flightRef.current.speed *= 0.15;
     flightRef.current.angVel *= 0.25;
-    camFollowRef.current.x = focusTarget.x;
-    camFollowRef.current.y = focusTarget.y;
+    previousFlightRef.current = { ...flightRef.current };
+    camFollowRef.current = { x: focusTarget.x, y: focusTarget.y };
     currentCameraRef.current.x = focusTarget.x;
     currentCameraRef.current.y = focusTarget.y;
-    currentCameraRef.current.zoom = clamp(focusTarget.zoom, ZOOM_MIN, ZOOM_MAX);
-    previousFlightRef.current = { ...flightRef.current };
+    currentCameraRef.current.zoom = clamp(
+      focusTarget.zoom,
+      GAME_CONFIG.zoomMin,
+      GAME_CONFIG.zoomMax,
+    );
     previousCameraRef.current = { ...currentCameraRef.current };
     accumulatorRef.current = 0;
   }, [focusTarget]);
@@ -759,7 +766,6 @@ export function SceneCanvas({
 
     window.addEventListener("keydown", down, { passive: false });
     window.addEventListener("keyup", up);
-
     return () => {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
@@ -794,10 +800,10 @@ export function SceneCanvas({
       backgroundContext.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
 
       const sky = backgroundContext.createLinearGradient(0, canvasSize.height, 0, 0);
-      sky.addColorStop(0, "#d4edff");
-      sky.addColorStop(0.28, "#9cdbff");
-      sky.addColorStop(0.66, "#59bdfa");
-      sky.addColorStop(1, "#1f95ea");
+      sky.addColorStop(0, "#d5edff");
+      sky.addColorStop(0.36, "#9ddcff");
+      sky.addColorStop(0.7, "#55bbf4");
+      sky.addColorStop(1, "#1e95ea");
       backgroundContext.fillStyle = sky;
       backgroundContext.fillRect(0, 0, canvasSize.width, canvasSize.height);
 
@@ -815,22 +821,6 @@ export function SceneCanvas({
       backgroundContext.fillStyle = sunGlow;
       backgroundContext.fillRect(0, 0, canvasSize.width, canvasSize.height);
 
-      const horizonGlow = backgroundContext.createLinearGradient(
-        0,
-        canvasSize.height * 0.44,
-        0,
-        canvasSize.height * 0.74,
-      );
-      horizonGlow.addColorStop(0, "rgba(255,255,255,0)");
-      horizonGlow.addColorStop(1, "rgba(223, 243, 255, 0.2)");
-      backgroundContext.fillStyle = horizonGlow;
-      backgroundContext.fillRect(
-        0,
-        canvasSize.height * 0.42,
-        canvasSize.width,
-        canvasSize.height * 0.32,
-      );
-
       const lowerHaze = backgroundContext.createLinearGradient(
         0,
         canvasSize.height * 0.58,
@@ -838,236 +828,304 @@ export function SceneCanvas({
         canvasSize.height,
       );
       lowerHaze.addColorStop(0, "rgba(255,255,255,0)");
-      lowerHaze.addColorStop(1, "rgba(241,249,255,0.28)");
+      lowerHaze.addColorStop(1, "rgba(241,249,255,0.26)");
       backgroundContext.fillStyle = lowerHaze;
-      backgroundContext.fillRect(0, canvasSize.height * 0.52, canvasSize.width, canvasSize.height * 0.48);
+      backgroundContext.fillRect(
+        0,
+        canvasSize.height * 0.52,
+        canvasSize.width,
+        canvasSize.height * 0.48,
+      );
     }
 
     const draw = (timestamp: number) => {
-      const keys = keysRef.current;
       const flight = flightRef.current;
+      const camera = currentCameraRef.current;
       const game = gameRef.current;
+
       if (game.runStartedAtMs === 0) {
         game.runStartedAtMs = timestamp;
       }
-      const camera = currentCameraRef.current;
-      const lastTs = lastAnimTsRef.current ?? timestamp;
-      const frameMs = clamp(timestamp - lastTs, 0, MAX_FRAME_MS);
-      lastAnimTsRef.current = timestamp;
-      accumulatorRef.current = Math.min(accumulatorRef.current + frameMs, MAX_FRAME_MS);
 
-      while (accumulatorRef.current >= FIXED_STEP_MS) {
-        const dt = FIXED_STEP_MS / 1000;
-        const dtMs = FIXED_STEP_MS;
+      const lastTs = lastAnimTsRef.current ?? timestamp;
+      const frameMs = clamp(timestamp - lastTs, 0, GAME_CONFIG.maxFrameMs);
+      lastAnimTsRef.current = timestamp;
+      accumulatorRef.current = Math.min(
+        accumulatorRef.current + frameMs,
+        GAME_CONFIG.maxFrameMs,
+      );
+
+      while (accumulatorRef.current >= GAME_CONFIG.fixedStepMs) {
+        const dtMs = GAME_CONFIG.fixedStepMs;
         previousFlightRef.current = { ...flight };
         previousCameraRef.current = { ...camera };
-
-        const boostActiveStep = game.boostUntilMs > timestamp;
-        const boostFactor = boostActiveStep ? 1.22 : 1;
-        const maxTurnRate = reducedMotion ? 2.6 : 5.1;
-        const turnResponse = reducedMotion ? 12 : 24;
-        const accel = (reducedMotion ? 420 : 1_120) * boostFactor;
-        const brake = reducedMotion ? 760 : 1_760;
-        const passiveDrag = reducedMotion ? 76 : 96;
-        const maxSpeed = (reducedMotion ? 260 : 760) * (boostActiveStep ? 1.18 : 1);
-
-        let turnInput = 0;
-        if (keys.has("ArrowLeft")) turnInput -= 1;
-        if (keys.has("ArrowRight")) turnInput += 1;
-        const targetTurnRate = turnInput * maxTurnRate;
-        const turnBlend = Math.min(1, turnResponse * dt);
-        flight.angVel += (targetTurnRate - flight.angVel) * turnBlend;
-        flight.heading += flight.angVel * dt;
-
-        if (game.state === "flying") {
-          if (keys.has("ArrowUp")) {
-            flight.speed += accel * dt;
-          } else if (keys.has("ArrowDown")) {
-            flight.speed -= brake * dt;
-          } else {
-            flight.speed -= passiveDrag * dt;
-          }
-        } else {
-          flight.speed -= brake * 0.42 * dt;
-          flight.angVel += (1.4 - flight.angVel) * Math.min(1, 2.2 * dt);
-        }
-        flight.speed = clamp(flight.speed, 0, maxSpeed);
-
-        flight.x += Math.cos(flight.heading) * flight.speed * dt;
-        flight.y += Math.sin(flight.heading) * flight.speed * dt;
-        flight.x = clamp(flight.x, bounds.minX, bounds.maxX);
-        flight.y = clamp(flight.y, bounds.minY, bounds.maxY);
-
         game.playerFireCooldownMs = Math.max(0, game.playerFireCooldownMs - dtMs);
-        if (game.state === "flying" && keys.has("Fire") && game.playerFireCooldownMs <= 0) {
-          game.projectiles.push(
-            makeProjectile({
-              owner: "player",
-              x: flight.x + Math.cos(flight.heading) * 55,
-              y: flight.y + Math.sin(flight.heading) * 55,
-              heading: flight.heading,
-              speed: PLAYER_PROJECTILE_SPEED,
-            }),
-          );
-          game.playerFireCooldownMs = 240;
+
+        const input: FlightInputState = {
+          accelerate: keysRef.current.has("ArrowUp"),
+          brake: keysRef.current.has("ArrowDown"),
+          turnLeft: keysRef.current.has("ArrowLeft"),
+          turnRight: keysRef.current.has("ArrowRight"),
+          fire: keysRef.current.has("Fire"),
+          mouseTurn:
+            pointerRef.current && pointerInSceneRef.current
+              ? clamp(
+                  ((pointerRef.current.x - canvasSize.width / 2) /
+                    Math.max(canvasSize.width / 2, 1)) *
+                    flightSettings.mouseSensitivity *
+                    1.35,
+                  -1,
+                  1,
+                )
+              : 0,
+        };
+
+        const nextFlight = integrateFlightState({
+          flight,
+          input,
+          bounds,
+          dtMs,
+          qualityMode,
+          boostActive: featureFlags.speedBoosts && game.boostUntilMs > timestamp,
+        });
+        Object.assign(flight, nextFlight);
+
+        const disclosure = getDisclosureState({
+          zoom: camera.zoom,
+          plane: { x: flight.x, y: flight.y },
+          clusters,
+          systems,
+        });
+        disclosureRef.current = disclosure;
+
+        if (timestamp - lastVisibilityUpdateRef.current >= 110) {
+          visibilityRef.current = buildDeploymentVisibilityState({
+            systems,
+            starsBySystem,
+            clusters,
+            flight,
+            disclosure,
+            selectedAppName,
+            searchMatches: matchSet,
+            qualityMode,
+            densityLimitsEnabled: featureFlags.deploymentDensityLimits,
+          });
+          lastVisibilityUpdateRef.current = timestamp;
         }
 
-        if (game.state === "flying") {
-          const fuelDrainPerSecond = boostActiveStep ? 1.8 : 3.3;
-          game.fuel = clamp(game.fuel - fuelDrainPerSecond * dt, 0, game.fuelMax);
-          if (game.fuel <= 0) {
-            game.state = "crashing";
-            game.crashReason = "Out of fuel";
-            game.crashStartedAtMs = timestamp;
-          }
-        } else if (game.state === "crashing" && game.crashStartedAtMs !== null) {
-          if (timestamp - game.crashStartedAtMs > 1_600) {
-            game.state = "crashed";
-            flight.speed = 0;
-            flight.angVel = 0;
-          }
+        applyDeploymentDiscoveries({
+          game,
+          systems: visibilityRef.current.visibleSystems,
+          flight,
+        });
+
+        if (featureFlags.fuelSystem || featureFlags.speedBoosts) {
+          const maintained = maintainCollectibles({
+            collectibles: game.collectibles,
+            bounds,
+            plane: flight,
+            anchorSystems: visibilityRef.current.visibleSystems
+              .slice(0, 10)
+              .map((system) => ({ x: system.x, y: system.y })),
+            activeEnemies: game.enemies,
+            nowMs: timestamp,
+            spawnCounter: game.spawnCounter,
+            enableFuel: featureFlags.fuelSystem,
+            enableBoosts: featureFlags.speedBoosts,
+          });
+          game.collectibles = maintained.collectibles;
+          game.spawnCounter = maintained.spawnCounter;
+        } else {
+          game.collectibles = [];
         }
 
-        const look = Math.min(520, flight.speed * 0.82);
-        const desiredCamX = flight.x + Math.cos(flight.heading) * look * 0.12;
-        const desiredCamY = flight.y + Math.sin(flight.heading) * look * 0.12;
-        const camFollow = camFollowRef.current;
-        const followK = Math.min(1, (reducedMotion ? 28 : 64) * dt);
-        camFollow.x += (desiredCamX - camFollow.x) * followK;
-        camFollow.y += (desiredCamY - camFollow.y) * followK;
+        const viewportBounds = computeViewportWorldBounds({
+          camera,
+          canvasSize,
+        });
 
-        if (game.state === "flying") {
-          for (const system of systems) {
-            if (
-              !game.discoveries.has(system.systemId) &&
-              Math.hypot(system.x - flight.x, system.y - flight.y) <= 220
-            ) {
-              game.discoveries.add(system.systemId);
-              game.score += DISCOVERY_SCORE;
-            }
-          }
-
-          game.fuelPacks = game.fuelPacks.filter((pack) => {
-            if (
-              Math.hypot(pack.x - flight.x, pack.y - flight.y) <=
-              PLAYER_PICKUP_RADIUS + pack.radius
-            ) {
-              game.fuel = clamp(game.fuel + pack.value, 0, game.fuelMax);
-              return false;
-            }
-            return true;
-          });
-
-          game.boostPacks = game.boostPacks.filter((pack) => {
-            if (
-              Math.hypot(pack.x - flight.x, pack.y - flight.y) <=
-              PLAYER_PICKUP_RADIUS + pack.radius
-            ) {
-              game.boostUntilMs = timestamp + BOOST_DURATION_MS;
-              return false;
-            }
-            return true;
-          });
-
-          if (timestamp >= game.nextEnemySpawnAtMs && game.enemies.length < 4) {
-            enemySpawnCounterRef.current += 1;
-            game.enemies.push(
-              spawnEnemyAtEdge({
-                bounds,
-                plane: flight,
-                seed: `${enemySpawnCounterRef.current}:${Math.round(timestamp)}`,
-              }),
-            );
+        if (featureFlags.enemyPlanes) {
+          if (game.nextEnemySpawnAtMs === 0) {
             game.nextEnemySpawnAtMs =
-              timestamp + 4_200 + (enemySpawnCounterRef.current % 3) * 650;
-          }
-        }
-
-        const removedEnemyIds = new Set<string>();
-        for (const enemy of game.enemies) {
-          enemy.ageMs += dtMs;
-          const desiredHeading = angleTo(enemy, flight);
-          const deltaHeading = angleDelta(desiredHeading, enemy.heading);
-          const turnStep = clamp(deltaHeading, -1.5 * dt, 1.5 * dt);
-          enemy.heading += turnStep;
-          enemy.x += Math.cos(enemy.heading) * enemy.speed * dt;
-          enemy.y += Math.sin(enemy.heading) * enemy.speed * dt;
-          enemy.fireCooldown -= dtMs;
-
-          const enemyDistance = Math.hypot(enemy.x - flight.x, enemy.y - flight.y);
-          if (game.state === "flying" && enemy.fireCooldown <= 0 && enemyDistance < 1_900) {
-            game.projectiles.push(
-              makeProjectile({
-                owner: "enemy",
-                x: enemy.x + Math.cos(enemy.heading) * 40,
-                y: enemy.y + Math.sin(enemy.heading) * 40,
-                heading: desiredHeading,
-                speed: ENEMY_PROJECTILE_SPEED,
-              }),
-            );
-            enemy.fireCooldown = 1_050;
-          }
-        }
-
-        game.projectiles = game.projectiles.filter((projectile) => {
-          projectile.x += projectile.vx * dt;
-          projectile.y += projectile.vy * dt;
-          projectile.ttlMs -= dtMs;
-          if (projectile.ttlMs <= 0) {
-            return false;
-          }
-
-          if (projectile.owner === "player") {
-            const hitEnemy = game.enemies.find(
-              (enemy) =>
-                !removedEnemyIds.has(enemy.id) &&
-                Math.hypot(enemy.x - projectile.x, enemy.y - projectile.y) <=
-                  enemy.radius + projectile.radius,
-            );
-            if (hitEnemy) {
-              removedEnemyIds.add(hitEnemy.id);
-              game.kills += 1;
-              game.score += ENEMY_SCORE;
-              return false;
-            }
-            return true;
+              game.runStartedAtMs +
+              Math.min(
+                GAME_CONFIG.initialEnemySpawnMaxMs,
+                getEnemySpawnDelayMs({
+                  elapsedMs: 0,
+                  score: 0,
+                  qualityMode,
+                  seed: `initial:${systems.length}`,
+                }),
+              );
           }
 
           if (
             game.state === "flying" &&
-            Math.hypot(projectile.x - flight.x, projectile.y - flight.y) <= 28 + projectile.radius
+            timestamp >= game.nextEnemySpawnAtMs &&
+            game.enemies.length <
+              getEnemyCap({
+                elapsedMs: Math.max(0, timestamp - game.runStartedAtMs),
+                score: game.score,
+                qualityMode,
+                enemyDensity: flightSettings.enemyDensity,
+              })
           ) {
-            game.fuel = clamp(game.fuel - 18, 0, game.fuelMax);
-            if (game.fuel <= 0) {
-              game.state = "crashing";
-              game.crashReason = "Shot down";
-              game.crashStartedAtMs = timestamp;
-            }
-            return false;
-          }
+            game.spawnCounter += 1;
+            const spawnedEnemy = spawnEnemyPlane({
+              bounds,
+              plane: flight,
+              viewport: viewportBounds,
+              nowMs: timestamp,
+              seed: `enemy:${game.spawnCounter}:${Math.round(timestamp)}`,
+              elapsedMs: Math.max(0, timestamp - game.runStartedAtMs),
+              score: game.score,
+              qualityMode,
+            });
 
-          return true;
+            if (spawnedEnemy) {
+              game.enemies.push(spawnedEnemy);
+            }
+
+            game.nextEnemySpawnAtMs = scheduleNextEnemySpawn({
+              nowMs: timestamp,
+              elapsedMs: Math.max(0, timestamp - game.runStartedAtMs),
+              score: game.score,
+              qualityMode,
+              spawnCounter: game.spawnCounter,
+            });
+          }
+        } else {
+          game.enemies = [];
+          game.nextEnemySpawnAtMs = 0;
+        }
+
+        const stepEffects: VisualEffect[] = [];
+        if (featureFlags.combat && game.state === "flying" && input.fire && game.playerFireCooldownMs <= 0) {
+          game.projectiles.push(
+            createProjectile({
+              owner: "player",
+              x: flight.x + Math.cos(flight.heading) * 55,
+              y: flight.y + Math.sin(flight.heading) * 55,
+              heading: flight.heading,
+              speed: GAME_CONFIG.playerProjectileSpeed,
+            }),
+          );
+          stepEffects.push({
+            id: `muzzle:${timestamp}:${Math.random().toString(36).slice(2, 7)}`,
+            kind: "muzzle",
+            x: flight.x + Math.cos(flight.heading) * 46,
+            y: flight.y + Math.sin(flight.heading) * 46,
+            vx: 0,
+            vy: 0,
+            ttlMs: 150,
+            ageMs: 0,
+            size: 22,
+            color: "rgba(255, 222, 143, 0.95)",
+          });
+          game.playerFireCooldownMs = 240;
+        }
+
+        if (featureFlags.enemyPlanes) {
+          const enemyResult = updateEnemies({
+            enemies: game.enemies,
+            plane: flight,
+            dtMs,
+            nowMs: timestamp,
+          });
+          game.enemies = enemyResult.enemies;
+          if (featureFlags.combat) {
+            game.projectiles.push(...enemyResult.spawnedProjectiles);
+          }
+          stepEffects.push(...enemyResult.effects);
+        }
+
+        let destroyedEnemyIds = new Set<string>();
+        let playerHullDamage = 0;
+
+        if (featureFlags.combat) {
+          const projectileResult = updateProjectiles({
+            projectiles: game.projectiles,
+            enemies: game.enemies,
+            plane: flight,
+            dtMs,
+          });
+          game.projectiles = projectileResult.projectiles;
+          destroyedEnemyIds = new Set(projectileResult.destroyedEnemyIds);
+          playerHullDamage += projectileResult.playerHullDamage;
+          stepEffects.push(...projectileResult.effects);
+        } else {
+          game.projectiles = [];
+        }
+
+        const pickupResult = collectNearbyPickups({
+          collectibles: game.collectibles,
+          plane: flight,
+          nowMs: timestamp,
+        });
+        game.collectibles = pickupResult.collectibles;
+        game.fuel = clampFuel(game.fuel + pickupResult.fuelDelta, game.fuelMax);
+        if (featureFlags.speedBoosts && pickupResult.boostUntilMs > 0) {
+          game.boostUntilMs = Math.max(game.boostUntilMs, pickupResult.boostUntilMs);
+        }
+        stepEffects.push(...pickupResult.effects);
+
+        if (featureFlags.enemyPlanes) {
+          const collisionResult = resolveEnemyPlaneCollisions({
+            enemies: game.enemies,
+            plane: flight,
+          });
+          destroyedEnemyIds = new Set([
+            ...destroyedEnemyIds,
+            ...collisionResult.destroyedEnemyIds,
+          ]);
+          playerHullDamage += collisionResult.playerHullDamage;
+          stepEffects.push(...collisionResult.effects);
+        }
+
+        if (destroyedEnemyIds.size > 0) {
+          const killsThisStep = game.enemies.filter((enemy) => destroyedEnemyIds.has(enemy.id)).length;
+          game.kills += killsThisStep;
+          game.score += killsThisStep * GAME_CONFIG.enemyScore;
+          game.enemies = game.enemies.filter((enemy) => !destroyedEnemyIds.has(enemy.id));
+        }
+
+        if (playerHullDamage > 0) {
+          game.hull = clamp(game.hull - playerHullDamage, 0, game.hullMax);
+          game.lastDamageAtMs = timestamp;
+        }
+
+        updateRunResources({
+          game,
+          flight,
+          dtMs,
+          nowMs: timestamp,
+          qualityMode,
+          featureFlags,
         });
 
-        if (removedEnemyIds.size > 0) {
-          game.enemies = game.enemies.filter((enemy) => !removedEnemyIds.has(enemy.id));
+        if (!featureFlags.speedBoosts) {
+          game.boostUntilMs = 0;
         }
-        game.enemies = game.enemies.filter(
-          (enemy) =>
-            enemy.x >= bounds.minX - 320 &&
-            enemy.x <= bounds.maxX + 320 &&
-            enemy.y >= bounds.minY - 320 &&
-            enemy.y <= bounds.maxY + 320 &&
-            enemy.ageMs <= 42_000,
-        );
 
-        camera.x = camFollow.x;
-        camera.y = camFollow.y;
-        accumulatorRef.current -= FIXED_STEP_MS;
+        game.effects = updateEffects({
+          effects: [...game.effects, ...stepEffects],
+          dtMs,
+        });
+
+        const desiredCamera = computeCameraFollowTarget({
+          flight,
+          qualityMode,
+        });
+        const followK = Math.min(1, (qualityMode === "high" ? 62 : 44) * (dtMs / 1000));
+        camFollowRef.current.x += (desiredCamera.x - camFollowRef.current.x) * followK;
+        camFollowRef.current.y += (desiredCamera.y - camFollowRef.current.y) * followK;
+        camera.x = camFollowRef.current.x;
+        camera.y = camFollowRef.current.y;
+
+        accumulatorRef.current -= GAME_CONFIG.fixedStepMs;
       }
 
-      const boostActive = game.boostUntilMs > timestamp;
-      const blend = accumulatorRef.current / FIXED_STEP_MS;
+      const blend = accumulatorRef.current / GAME_CONFIG.fixedStepMs;
       const previousFlight = previousFlightRef.current;
       const previousCamera = previousCameraRef.current;
       const renderFlight: FlightState = {
@@ -1084,15 +1142,8 @@ export function SceneCanvas({
       };
 
       context.clearRect(0, 0, canvasSize.width, canvasSize.height);
-
       if (backgroundCanvasRef.current) {
-        context.drawImage(
-          backgroundCanvasRef.current,
-          0,
-          0,
-          canvasSize.width,
-          canvasSize.height,
-        );
+        context.drawImage(backgroundCanvasRef.current, 0, 0, canvasSize.width, canvasSize.height);
       } else {
         context.fillStyle = "#4C9BE9";
         context.fillRect(0, 0, canvasSize.width, canvasSize.height);
@@ -1105,7 +1156,7 @@ export function SceneCanvas({
         timestamp,
         renderCamera.x,
         renderCamera.y,
-        { layerMin: 0, layerMax: 2 },
+        { layerMin: 0, layerMax: featureFlags.advancedClouds ? 2 : 1 },
       );
 
       if (!clusters.length && !systems.length && !stars.length) {
@@ -1122,72 +1173,29 @@ export function SceneCanvas({
         context.restore();
       }
 
-      const disclosure = getDisclosureState({
-        zoom: renderCamera.zoom,
-        plane: { x: renderFlight.x, y: renderFlight.y },
-        clusters,
-        systems,
-      });
+      const disclosure = disclosureRef.current;
       const lensRadius = getLensRadius(canvasSize);
       const focusPoint = { x: canvasSize.width / 2, y: canvasSize.height / 2 };
-      const visibleCandidateIds = new Set<string>();
-      if (disclosure.activeRegionId) {
-        for (const system of systemsByRegion.get(disclosure.activeRegionId) ?? []) {
-          visibleCandidateIds.add(system.systemId);
-        }
-      }
-      for (const system of systems) {
-        if (
-          Math.hypot(system.x - renderFlight.x, system.y - renderFlight.y) <=
-            LOCAL_SYSTEM_RADIUS ||
-          system.appName === selectedAppName ||
-          matchSet.has(system.appName)
-        ) {
-          visibleCandidateIds.add(system.systemId);
-        }
-      }
-      const visibleSystemIds = stabilizeIds(
-        visibleSystemUntilRef.current,
-        visibleCandidateIds,
-        timestamp,
-        VISIBLE_SYSTEM_HOLD_MS,
-      );
-      const visibleSystems = systems.filter((system) => visibleSystemIds.has(system.systemId));
+      const visibleScene = visibilityRef.current;
       const runtimeClusterById = new Map(
         runtimeClusters.map((cluster) => [cluster.clusterId, cluster] as const),
       );
       const runtimeFocusClusterMap = new Map<string, Cluster>();
+
       if (disclosure.activeRegionId) {
         for (const cluster of runtimeClustersByRegion.get(disclosure.activeRegionId) ?? []) {
           runtimeFocusClusterMap.set(cluster.clusterId, cluster);
         }
       }
-      for (const system of visibleSystems) {
+      for (const system of visibleScene.visibleSystems) {
         const match = runtimeClusterById.get(system.runtimeClusterId);
         if (match) {
           runtimeFocusClusterMap.set(match.clusterId, match);
         }
       }
+
       const runtimeFocusClusters = Array.from(runtimeFocusClusterMap.values()).sort((left, right) =>
         left.label.localeCompare(right.label),
-      );
-      const detailSystemIds = new Set(
-        stabilizeIds(
-          detailSystemUntilRef.current,
-          visibleSystems
-            .filter(
-              (system) =>
-                Math.hypot(system.x - renderFlight.x, system.y - renderFlight.y) <=
-                  DETAIL_SYSTEM_RADIUS ||
-                system.appName === selectedAppName ||
-                matchSet.has(system.appName) ||
-                (disclosure.activeRuntimeId !== null &&
-                  system.runtimeClusterId === disclosure.activeRuntimeId),
-            )
-            .map((system) => system.systemId),
-          timestamp,
-          DETAIL_SYSTEM_HOLD_MS,
-        ),
       );
       const renderables: Renderable[] = [];
 
@@ -1230,12 +1238,10 @@ export function SceneCanvas({
           radius,
           alpha,
           label: cluster.label,
-          meta: `${cluster.counts.systems} apps · ${cluster.counts.runtimes} runtimes`,
           active,
           rare: cluster.rarityFlags.hasRareArchetype,
           level: cluster.level,
           band: disclosure.band,
-          timestamp,
         });
 
         renderables.push({
@@ -1257,7 +1263,7 @@ export function SceneCanvas({
         });
       }
 
-      if (disclosure.band !== "overview" || visibleSystems.length > 0) {
+      if (disclosure.band !== "overview" || visibleScene.visibleSystems.length > 0) {
         for (const cluster of runtimeFocusClusters) {
           const projected = projectWorld(cluster.centroid);
           const active = disclosure.activeRuntimeId === cluster.clusterId;
@@ -1284,12 +1290,10 @@ export function SceneCanvas({
             radius,
             alpha,
             label: cluster.label,
-            meta: `${cluster.counts.systems} apps · ${cluster.counts.instances} traces`,
             active,
             rare: cluster.rarityFlags.hasRareArchetype,
             level: cluster.level,
             band: disclosure.band,
-            timestamp,
           });
 
           renderables.push({
@@ -1311,24 +1315,23 @@ export function SceneCanvas({
           });
         }
 
-        for (const system of visibleSystems) {
+        for (const system of visibleScene.visibleSystems) {
           const projected = projectWorld(system);
-            const jitter = scaleDensityJitter({
-              jitterOffset: system.jitterOffset,
-              density: visibleSystems.length,
-              band: disclosure.band,
-              multiplier: renderCamera.zoom * 0.22,
-            });
+          const jitter = scaleDensityJitter({
+            jitterOffset: system.jitterOffset,
+            density: visibleScene.visibleSystems.length,
+            band: disclosure.band,
+            multiplier: renderCamera.zoom * 0.22,
+          });
           const x = projected.x + jitter.x;
           const y = projected.y + jitter.y;
           const isSelected = selectedAppName === system.appName;
           const isSearchMatch = matchSet.has(system.appName);
-          const isRare = system.rarityFlags.isRareArchetype;
           const radius =
             getAnchorRadius({
               instanceCount: system.instanceCount,
               band: disclosure.band,
-              isRare,
+              isRare: system.rarityFlags.isRareArchetype,
             }) * projected.radialScale;
 
           if (offscreen({ x, y }, radius + 80, canvasSize)) {
@@ -1341,15 +1344,15 @@ export function SceneCanvas({
             band: disclosure.band,
             emphasis: isSelected || isSearchMatch ? 0.18 : 0,
           });
-            drawDeploymentBuoy({
-              ctx: context,
-              x,
-              y,
-              colors: getBuoyColorway(system),
-              baseScale: Math.max(0.58, radius / 12.8),
-              seed: system.systemId,
-              proximity: isSelected ? 2 : 0,
-              selected: isSelected,
+          drawDeploymentBuoy({
+            ctx: context,
+            x,
+            y,
+            colors: getBuoyColorway(system),
+            baseScale: Math.max(0.58, radius / 12.8),
+            seed: system.systemId,
+            proximity: isSelected ? 2 : 0,
+            selected: isSelected,
             searchOrPointer: isSearchMatch,
             timestamp,
           });
@@ -1370,10 +1373,17 @@ export function SceneCanvas({
         }
       }
 
-      if (disclosure.band === "detail") {
-        for (const systemId of detailSystemIds) {
-          const systemStars = starsBySystem.get(systemId) ?? [];
+      for (const clusterMarker of visibleScene.clusterMarkers) {
+        const projected = projectWorld(clusterMarker);
+        if (offscreen(projected, 48, canvasSize)) {
+          continue;
+        }
+        drawDeploymentClusterMarker(context, projected.x, projected.y, clusterMarker.count);
+      }
 
+      if (disclosure.band === "detail") {
+        for (const system of visibleScene.detailSystems) {
+          const systemStars = visibilityRef.current.visibleStarsBySystem.get(system.systemId) ?? [];
           for (const star of systemStars) {
             const projected = projectWorld(star);
             const jitter = scaleDensityJitter({
@@ -1436,54 +1446,93 @@ export function SceneCanvas({
         }
       }
 
-      for (const pack of game.fuelPacks) {
-        const projected = projectWorld(pack);
-        const bob = Math.sin(timestamp / 520 + pack.bobSeed) * 10;
+      for (const collectible of game.collectibles) {
+        if (!collectible.active) {
+          continue;
+        }
+        const projected = projectWorld(collectible);
+        const bob =
+          Math.sin(timestamp / (collectible.kind === "fuel" ? 520 : 460) + collectible.bobSeed) *
+          (collectible.kind === "fuel" ? 10 : 8);
         const px = projected.x;
         const py = projected.y + bob;
         if (offscreen({ x: px, y: py }, 48, canvasSize)) {
           continue;
         }
-        drawFuelCanPickup(context, px, py, 0.7 * projected.radialScale, timestamp / 1800 + pack.spinSeed);
-      }
-
-      for (const pack of game.boostPacks) {
-        const projected = projectWorld(pack);
-        const bob = Math.sin(timestamp / 460 + pack.bobSeed) * 8;
-        const px = projected.x;
-        const py = projected.y + bob;
-        if (offscreen({ x: px, y: py }, 44, canvasSize)) {
-          continue;
+        if (collectible.kind === "fuel") {
+          drawFuelCanPickup(
+            context,
+            px,
+            py,
+            0.7 * projected.radialScale,
+            timestamp / 1800 + collectible.spinSeed,
+          );
+        } else {
+          drawSpeedBoostPickup(
+            context,
+            px,
+            py,
+            0.8 * projected.radialScale,
+            timestamp / 1600 + collectible.spinSeed,
+          );
         }
-        drawSpeedBoostPickup(context, px, py, 0.8 * projected.radialScale, timestamp / 1600 + pack.spinSeed);
       }
 
       for (const enemy of game.enemies) {
         const projected = projectWorld(enemy);
-        if (offscreen(projected, 46, canvasSize)) {
-          continue;
+        if (!offscreen(projected, 46, canvasSize)) {
+          drawEnemyPlaneMarker(context, projected.x, projected.y, enemy.heading, timestamp);
         }
-        drawEnemyPlaneMarker(context, projected.x, projected.y, enemy.heading, timestamp);
       }
 
       for (const projectile of game.projectiles) {
         const projected = projectWorld(projectile);
-        if (offscreen(projected, 24, canvasSize)) {
-          continue;
+        if (!offscreen(projected, 24, canvasSize)) {
+          drawProjectile(context, projected.x, projected.y, projectile.radius, projectile.owner);
         }
-        drawProjectile(context, projected.x, projected.y, projectile.radius, projectile.owner);
+      }
+
+      for (const effect of game.effects) {
+        const projected = projectWorld(effect);
+        if (!offscreen(projected, effect.size * 1.6, canvasSize)) {
+          drawVisualEffect(context, effect, projected.x, projected.y);
+        }
+      }
+
+      if (clusters.length || systems.length || stars.length) {
+        drawTopDownBiplane(
+          context,
+          canvasSize.width / 2,
+          canvasSize.height / 2,
+          renderFlight.heading,
+          clamp(renderFlight.angVel * 0.38, -0.42, 0.42),
+          timestamp,
+          planeSkinPalettes[selectedSkinId],
+        );
+
+        if (featureFlags.speedBoosts && game.boostUntilMs > timestamp && game.state === "flying") {
+          context.save();
+          context.strokeStyle = "rgba(111, 235, 255, 0.78)";
+          context.lineWidth = 3;
+          context.beginPath();
+          context.moveTo(canvasSize.width / 2 - 44, canvasSize.height / 2 + 10);
+          context.lineTo(canvasSize.width / 2 - 78, canvasSize.height / 2 + 18);
+          context.moveTo(canvasSize.width / 2 - 40, canvasSize.height / 2 - 12);
+          context.lineTo(canvasSize.width / 2 - 74, canvasSize.height / 2 - 18);
+          context.stroke();
+          context.restore();
+        }
       }
 
       const hovered = findHoveredRenderable(pointerRef.current, renderables);
       const hoveredEntity = hovered?.entity ?? null;
       const previousHovered = hoveredRenderableRef.current?.entity;
-
       if (
         hoveredEntity?.id !== previousHovered?.id ||
         hoveredEntity?.kind !== previousHovered?.kind
       ) {
         hoveredRenderableRef.current = hovered;
-        onHoverEntity(hoveredEntity);
+        onHoverEntityRef.current(hoveredEntity);
       } else if (hovered) {
         hoveredRenderableRef.current = hovered;
       }
@@ -1499,50 +1548,12 @@ export function SceneCanvas({
         );
       }
 
-      if (systems.length || clusters.length) {
-        if (boostActive && game.state === "flying") {
-          context.save();
-          context.strokeStyle = "rgba(111, 235, 255, 0.78)";
-          context.lineWidth = 3;
-          context.beginPath();
-          context.moveTo(canvasSize.width / 2 - 44, canvasSize.height / 2 + 10);
-          context.lineTo(canvasSize.width / 2 - 78, canvasSize.height / 2 + 18);
-          context.moveTo(canvasSize.width / 2 - 40, canvasSize.height / 2 - 12);
-          context.lineTo(canvasSize.width / 2 - 74, canvasSize.height / 2 - 18);
-          context.stroke();
-          context.restore();
-        }
-
-        drawTopDownBiplane(
-          context,
-          canvasSize.width / 2,
-          canvasSize.height / 2,
-          renderFlight.heading,
-          clamp(renderFlight.angVel * 0.38, -0.42, 0.42),
-          timestamp,
-          planeSkinPalettes[selectedSkinId],
-        );
-
-        if (game.state !== "flying") {
-          context.save();
-          context.globalAlpha = 0.9;
-          context.fillStyle = "rgba(255, 126, 79, 0.24)";
-          context.beginPath();
-          context.arc(canvasSize.width / 2, canvasSize.height / 2, 42, 0, Math.PI * 2);
-          context.fill();
-          context.strokeStyle = "rgba(255, 196, 98, 0.8)";
-          context.lineWidth = 4;
-          context.beginPath();
-          context.arc(canvasSize.width / 2, canvasSize.height / 2, 38, 0, Math.PI * 2);
-          context.stroke();
-          context.restore();
-        }
-      }
-
       if (timestamp - telemetryEmitTsRef.current > 140) {
         telemetryEmitTsRef.current = timestamp;
-        onTelemetry({
+        onTelemetryRef.current({
           ...disclosure,
+          nearestRegionDistance: disclosure.nearestRegionDistance,
+          nearestSystemDistance: disclosure.nearestSystemDistance,
           plane: {
             x: renderFlight.x,
             y: renderFlight.y,
@@ -1557,36 +1568,22 @@ export function SceneCanvas({
         });
       }
 
-      if (timestamp - gameEmitTsRef.current > 120) {
+      if (timestamp - gameEmitTsRef.current > 140) {
         gameEmitTsRef.current = timestamp;
-        onGameStateChange?.({
-          runId: game.runId,
-          fuel: game.fuel,
-          fuelMax: game.fuelMax,
-          boostRemainingMs: Math.max(0, Math.round(game.boostUntilMs - timestamp)),
-          score: game.score,
-          kills: game.kills,
-          discoveries: game.discoveries.size,
-          state: game.state,
-          crashReason: game.crashReason,
-          durationMs: Math.max(0, Math.round(timestamp - game.runStartedAtMs)),
-          enemyCount: game.enemies.length,
-          fuelPackCount: game.fuelPacks.length,
-          boostPackCount: game.boostPacks.length,
-          leaderboardWeek: getWeeklyLeaderboardKey(),
-        });
+        onGameStateChangeRef.current?.(
+          createSessionSnapshot({
+            game,
+            nowMs: timestamp,
+            qualityMode,
+            featureFlags,
+            clusterMarkers: visibilityRef.current.clusterMarkers,
+          }),
+        );
       }
 
       if (game.state === "crashed" && !game.runRecorded) {
         game.runRecorded = true;
-        onRunComplete?.({
-          score: game.score,
-          kills: game.kills,
-          discoveries: game.discoveries.size,
-          durationMs: Math.max(0, Math.round(timestamp - game.runStartedAtMs)),
-          weekKey: getWeeklyLeaderboardKey(),
-          recordedAt: new Date().toISOString(),
-        });
+        onRunCompleteRef.current?.(toRunRecord(game, timestamp));
       }
 
       animationFrameRef.current = window.requestAnimationFrame(draw);
@@ -1602,13 +1599,12 @@ export function SceneCanvas({
     bounds,
     canvasSize,
     clusters,
+    flightSettings,
+    featureFlags,
     mapDataLoading,
     matchSet,
-    onHoverEntity,
-    onGameStateChange,
-    onRunComplete,
-    onTelemetry,
-    reducedMotion,
+    qualityMode,
+    runtimeClusters,
     runtimeClustersByRegion,
     selectedAppName,
     selectedSkinId,
@@ -1616,29 +1612,22 @@ export function SceneCanvas({
     stars,
     starsBySystem,
     systems,
-    systemsByRegion,
   ]);
 
   const resetFlight = () => {
     const center = centroidOfWorld(stars, systems, bounds);
-    flightRef.current = {
+    flightRef.current = createFlightState(center.x, center.y);
+    previousFlightRef.current = { ...flightRef.current };
+    camFollowRef.current = { x: center.x, y: center.y };
+    currentCameraRef.current = {
       x: center.x,
       y: center.y,
-      heading: -Math.PI / 2,
-      speed: 0,
-      angVel: 0,
+      zoom: getDefaultZoom(),
     };
-    previousFlightRef.current = { ...flightRef.current };
-    camFollowRef.current.x = center.x;
-    camFollowRef.current.y = center.y;
-    currentCameraRef.current.x = center.x;
-    currentCameraRef.current.y = center.y;
-    currentCameraRef.current.zoom = ZOOM_DEFAULT;
-    gameRef.current = createGameState(bounds, systems);
-    keysRef.current.clear();
     previousCameraRef.current = { ...currentCameraRef.current };
-    visibleSystemUntilRef.current.clear();
-    detailSystemUntilRef.current.clear();
+    gameRef.current = createGameState();
+    visibilityRef.current = EMPTY_VISIBILITY;
+    keysRef.current.clear();
     accumulatorRef.current = 0;
   };
 
@@ -1661,7 +1650,7 @@ export function SceneCanvas({
     try {
       sessionStorage.setItem(FLIGHT_TIP_KEY, "1");
     } catch {
-      /* ignore */
+      // Ignore storage errors.
     }
     setShowFlightTip(false);
     wrapRef.current?.focus({ preventScroll: true });
@@ -1669,19 +1658,21 @@ export function SceneCanvas({
 
   const handlePointerMove = (event: PointerEvent<HTMLCanvasElement>) => {
     const boundsRect = canvasRef.current?.getBoundingClientRect();
-    if (boundsRect) {
-      pointerRef.current = {
-        x: event.clientX - boundsRect.left,
-        y: event.clientY - boundsRect.top,
-      };
+    if (!boundsRect) {
+      return;
     }
+
+    pointerRef.current = {
+      x: event.clientX - boundsRect.left,
+      y: event.clientY - boundsRect.top,
+    };
   };
 
   const handlePointerLeave = () => {
     pointerRef.current = null;
     pointerInSceneRef.current = false;
     hoveredRenderableRef.current = null;
-    onHoverEntity(null);
+    onHoverEntityRef.current(null);
   };
 
   const handleCanvasPointerDown = () => {
@@ -1707,7 +1698,10 @@ export function SceneCanvas({
   const handleWheel = (event: WheelEvent<HTMLCanvasElement>) => {
     event.preventDefault();
     const boundsRect = canvasRef.current?.getBoundingClientRect();
-    if (!boundsRect) return;
+    if (!boundsRect) {
+      return;
+    }
+
     const sx = event.clientX - boundsRect.left;
     const sy = event.clientY - boundsRect.top;
     const camera = currentCameraRef.current;
@@ -1743,12 +1737,19 @@ export function SceneCanvas({
           <button
             type="button"
             className="secondary-action"
-            onClick={() => bumpZoom(ZOOM_DEFAULT / currentCameraRef.current.zoom)}
+            onClick={() => bumpZoom(getDefaultZoom() / currentCameraRef.current.zoom)}
           >
             Reset view
           </button>
           <button type="button" className="secondary-action" onClick={resetFlight}>
             Reset flight
+          </button>
+          <button
+            type="button"
+            className="secondary-action"
+            onClick={() => setShowSettingsPanel((current) => !current)}
+          >
+            Controls / Settings
           </button>
         </div>
         <span className="scene-zoom-label scene-zoom-label--wrap">
@@ -1788,6 +1789,16 @@ export function SceneCanvas({
           </div>
         ) : null}
 
+        <FlightSettingsPanel
+          open={showSettingsPanel}
+          settings={flightSettings}
+          featureFlags={featureFlags}
+          qualityMode={qualityMode}
+          onClose={() => setShowSettingsPanel(false)}
+          onUpdateSettings={onUpdateFlightSettings}
+          onUpdateFeatureFlags={onUpdateFeatureFlags}
+        />
+
         <canvas
           ref={canvasRef}
           className="scene-canvas"
@@ -1816,7 +1827,7 @@ export function SceneCanvas({
                 try {
                   event.currentTarget.releasePointerCapture(event.pointerId);
                 } catch {
-                  /* noop */
+                  // Ignore capture errors.
                 }
               }}
               onPointerCancel={() => releasePad("ArrowUp")}
@@ -1839,7 +1850,7 @@ export function SceneCanvas({
                 try {
                   event.currentTarget.releasePointerCapture(event.pointerId);
                 } catch {
-                  /* noop */
+                  // Ignore capture errors.
                 }
               }}
               onPointerCancel={() => releasePad("ArrowLeft")}
@@ -1860,7 +1871,7 @@ export function SceneCanvas({
                 try {
                   event.currentTarget.releasePointerCapture(event.pointerId);
                 } catch {
-                  /* noop */
+                  // Ignore capture errors.
                 }
               }}
               onPointerCancel={() => releasePad("ArrowDown")}
@@ -1881,7 +1892,7 @@ export function SceneCanvas({
                 try {
                   event.currentTarget.releasePointerCapture(event.pointerId);
                 } catch {
-                  /* noop */
+                  // Ignore capture errors.
                 }
               }}
               onPointerCancel={() => releasePad("ArrowRight")}
@@ -1904,7 +1915,7 @@ export function SceneCanvas({
                 try {
                   event.currentTarget.releasePointerCapture(event.pointerId);
                 } catch {
-                  /* noop */
+                  // Ignore capture errors.
                 }
               }}
               onPointerCancel={() => releasePad("Fire")}

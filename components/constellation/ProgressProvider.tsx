@@ -12,10 +12,19 @@ import {
 } from "react";
 import type { RuntimeFamily } from "../../lib/types/app";
 import type { PlaneSkinId } from "../../lib/canvas/cartoonMarkers";
-import type { LeaderboardEntry, RunRecord } from "../../lib/game/arcade";
-import { getWeeklyLeaderboardKey } from "../../lib/game/arcade";
+import type {
+  FeatureFlags,
+  FlightSettings,
+  LeaderboardEntry,
+  RunRecord,
+} from "../../lib/game/types";
+import {
+  DEFAULT_FEATURE_FLAGS,
+  DEFAULT_FLIGHT_SETTINGS,
+  getWeeklyLeaderboardKey,
+} from "../../lib/game/config";
 
-const STORAGE_KEY = "flux-constellation-progress-v2";
+const STORAGE_KEY = "flux-constellation-progress-v3";
 
 type QuestId = "regional-surveyor" | "rare-signal" | "runtime-rambler";
 
@@ -30,6 +39,8 @@ type ProgressState = {
   selectedSkinId: PlaneSkinId;
   playerCallsign: string;
   weeklyLeaderboards: Record<string, LeaderboardEntry[]>;
+  flightSettings: FlightSettings;
+  featureFlags: FeatureFlags;
 };
 
 export type QuestView = {
@@ -80,6 +91,8 @@ type ProgressContextValue = {
     currentWeekKey: string;
     weeks: LeaderboardWeekView[];
   };
+  flightSettings: FlightSettings;
+  featureFlags: FeatureFlags;
   markRegionVisited: (regionId: string | null) => void;
   markRuntimeDiscovered: (runtimeClusterId: string | null) => void;
   markAppInspected: (
@@ -89,6 +102,8 @@ type ProgressContextValue = {
   markRareArchetypeDiscovered: (rareArchetypeId: string | null) => void;
   selectSkin: (skinId: PlaneSkinId) => void;
   setPlayerCallsign: (callsign: string) => void;
+  updateFlightSettings: (settings: Partial<FlightSettings>) => void;
+  updateFeatureFlags: (flags: Partial<FeatureFlags>) => void;
   recordRun: (record: RunRecord) => void;
   resetProgress: () => void;
   dismissToast: () => void;
@@ -105,6 +120,8 @@ const defaultProgress: ProgressState = {
   selectedSkinId: "classic",
   playerCallsign: "Pilot",
   weeklyLeaderboards: {},
+  flightSettings: DEFAULT_FLIGHT_SETTINGS,
+  featureFlags: DEFAULT_FEATURE_FLAGS,
 };
 
 const skinCatalog: Array<{
@@ -191,6 +208,55 @@ const normalizeProgress = (input: Partial<ProgressState> | null | undefined): Pr
       ? input.playerCallsign.trim().slice(0, 18)
       : "Pilot",
   weeklyLeaderboards: normalizeLeaderboards(input?.weeklyLeaderboards),
+  flightSettings: {
+    quality:
+      input?.flightSettings?.quality === "low" ||
+      input?.flightSettings?.quality === "medium" ||
+      input?.flightSettings?.quality === "high" ||
+      input?.flightSettings?.quality === "auto"
+        ? input.flightSettings.quality
+        : DEFAULT_FLIGHT_SETTINGS.quality,
+    enemyDensity:
+      input?.flightSettings?.enemyDensity === "low" ||
+      input?.flightSettings?.enemyDensity === "medium" ||
+      input?.flightSettings?.enemyDensity === "high"
+        ? input.flightSettings.enemyDensity
+        : DEFAULT_FLIGHT_SETTINGS.enemyDensity,
+    mouseSensitivity:
+      typeof input?.flightSettings?.mouseSensitivity === "number"
+        ? Math.max(0.2, Math.min(1.4, input.flightSettings.mouseSensitivity))
+        : DEFAULT_FLIGHT_SETTINGS.mouseSensitivity,
+  },
+  featureFlags: {
+    fuelSystem:
+      typeof input?.featureFlags?.fuelSystem === "boolean"
+        ? input.featureFlags.fuelSystem
+        : DEFAULT_FEATURE_FLAGS.fuelSystem,
+    speedBoosts:
+      typeof input?.featureFlags?.speedBoosts === "boolean"
+        ? input.featureFlags.speedBoosts
+        : DEFAULT_FEATURE_FLAGS.speedBoosts,
+    enemyPlanes:
+      typeof input?.featureFlags?.enemyPlanes === "boolean"
+        ? input.featureFlags.enemyPlanes
+        : DEFAULT_FEATURE_FLAGS.enemyPlanes,
+    combat:
+      typeof input?.featureFlags?.combat === "boolean"
+        ? input.featureFlags.combat
+        : DEFAULT_FEATURE_FLAGS.combat,
+    leaderboard:
+      typeof input?.featureFlags?.leaderboard === "boolean"
+        ? input.featureFlags.leaderboard
+        : DEFAULT_FEATURE_FLAGS.leaderboard,
+    advancedClouds:
+      typeof input?.featureFlags?.advancedClouds === "boolean"
+        ? input.featureFlags.advancedClouds
+        : DEFAULT_FEATURE_FLAGS.advancedClouds,
+    deploymentDensityLimits:
+      typeof input?.featureFlags?.deploymentDensityLimits === "boolean"
+        ? input.featureFlags.deploymentDensityLimits
+        : DEFAULT_FEATURE_FLAGS.deploymentDensityLimits,
+  },
 });
 
 const buildQuestViews = (progress: ProgressState) => {
@@ -476,6 +542,36 @@ export function ConstellationProgressProvider({
     [updateProgress],
   );
 
+  const updateFlightSettings = useCallback(
+    (settings: Partial<FlightSettings>) => {
+      updateProgress((current) => ({
+        ...current,
+        flightSettings: {
+          ...current.flightSettings,
+          ...settings,
+          mouseSensitivity:
+            typeof settings.mouseSensitivity === "number"
+              ? Math.max(0.2, Math.min(1.4, settings.mouseSensitivity))
+              : current.flightSettings.mouseSensitivity,
+        },
+      }));
+    },
+    [updateProgress],
+  );
+
+  const updateFeatureFlags = useCallback(
+    (flags: Partial<FeatureFlags>) => {
+      updateProgress((current) => ({
+        ...current,
+        featureFlags: {
+          ...current.featureFlags,
+          ...flags,
+        },
+      }));
+    },
+    [updateProgress],
+  );
+
   const recordRun = useCallback(
     (record: RunRecord) => {
       if (record.score <= 0) {
@@ -569,12 +665,16 @@ export function ConstellationProgressProvider({
         currentWeekKey,
         weeks: leaderboardWeeks,
       },
+      flightSettings: progress.flightSettings,
+      featureFlags: progress.featureFlags,
       markRegionVisited,
       markRuntimeDiscovered,
       markAppInspected,
       markRareArchetypeDiscovered,
       selectSkin,
       setPlayerCallsign,
+      updateFlightSettings,
+      updateFeatureFlags,
       recordRun,
       resetProgress,
       dismissToast,
@@ -594,6 +694,8 @@ export function ConstellationProgressProvider({
       resetProgress,
       selectSkin,
       setPlayerCallsign,
+      updateFlightSettings,
+      updateFeatureFlags,
       toastQueue,
     ],
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import type { GameSessionSnapshot, LeaderboardEntry } from "../../lib/game/arcade";
+import type { GameSessionSnapshot, LeaderboardEntry } from "../../lib/game/types";
 import type { LeaderboardWeekView } from "./ProgressProvider";
 
 const renderEntry = (entry: LeaderboardEntry, index: number) => (
@@ -9,9 +9,7 @@ const renderEntry = (entry: LeaderboardEntry, index: number) => (
       {index + 1}. {entry.callsign}
     </strong>
     <span>{entry.score.toLocaleString()} pts</span>
-    <small>
-      {entry.kills} takedowns · {entry.discoveries} discoveries
-    </small>
+    <small>{entry.kills} takedowns · {entry.discoveries} discoveries</small>
   </li>
 );
 
@@ -33,7 +31,9 @@ export function LeaderboardPanel({
     leaderboard.weeks.find((week) => week.weekKey === leaderboard.currentWeekKey) ??
     leaderboard.weeks[0] ??
     null;
-  const archiveWeeks = leaderboard.weeks.filter((week) => week.weekKey !== leaderboard.currentWeekKey);
+  const archiveWeeks = leaderboard.weeks.filter(
+    (week) => week.weekKey !== leaderboard.currentWeekKey,
+  );
 
   return (
     <section className="panel-card panel-card--compact leaderboard-panel">
@@ -55,9 +55,7 @@ export function LeaderboardPanel({
 
       <div className="leaderboard-live">
         <strong>{(snapshot?.score ?? 0).toLocaleString()} pts</strong>
-        <span>
-          {snapshot?.kills ?? 0} takedowns · {snapshot?.discoveries ?? 0} discoveries
-        </span>
+        <span>{snapshot?.kills ?? 0} takedowns · {snapshot?.discoveries ?? 0} discoveries</span>
       </div>
 
       {currentWeek?.entries.length ? (

@@ -1,6 +1,7 @@
 "use client";
 
 import type { FlightTelemetry } from "../../lib/layout/focusContext";
+import type { GameSessionSnapshot } from "../../lib/game/types";
 import type { Cluster, SceneBounds } from "../../lib/types/star";
 
 const clamp = (value: number, min: number, max: number) =>
@@ -10,12 +11,14 @@ export function MiniMap({
   bounds,
   regionClusters,
   telemetry,
+  snapshot,
   visitedRegionIds,
   onSelectCluster,
 }: {
   bounds: SceneBounds;
   regionClusters: Cluster[];
   telemetry: FlightTelemetry | null;
+  snapshot: GameSessionSnapshot | null;
   visitedRegionIds: string[];
   onSelectCluster: (cluster: Cluster) => void;
 }) {
@@ -39,6 +42,12 @@ export function MiniMap({
   const activeRegion = telemetry?.activeRegionId
     ? regionClusters.find((cluster) => cluster.clusterId === telemetry.activeRegionId) ?? null
     : null;
+  const headingPoint = telemetry
+    ? project(
+        telemetry.plane.x + Math.cos(telemetry.plane.heading) * 420,
+        telemetry.plane.y + Math.sin(telemetry.plane.heading) * 420,
+      )
+    : planePoint;
 
   return (
     <div className="mini-map" aria-label="Region overview map">
@@ -48,6 +57,13 @@ export function MiniMap({
       </div>
 
       <svg viewBox={`0 0 ${mapWidth} ${mapHeight}`} className="mini-map-svg" role="img">
+        <line
+          x1={planePoint.x}
+          y1={planePoint.y}
+          x2={headingPoint.x}
+          y2={headingPoint.y}
+          className="mini-map-heading"
+        />
         {regionClusters.map((cluster) => {
           const point = project(cluster.centroid.x, cluster.centroid.y);
           const radius = Math.max(7, Math.min(18, 6 + Math.sqrt(cluster.counts.systems)));
@@ -84,8 +100,58 @@ export function MiniMap({
           );
         })}
 
+        {snapshot?.miniMap.clusters.map((cluster) => {
+          const point = project(cluster.x, cluster.y);
+          const radius = Math.max(3, Math.min(7, 2 + Math.log2(cluster.count + 1)));
+          return (
+            <g key={cluster.id}>
+              <rect
+                x={point.x - radius}
+                y={point.y - radius}
+                width={radius * 2}
+                height={radius * 2}
+                rx="2"
+                className="mini-map-cluster"
+              />
+            </g>
+          );
+        })}
+
+        {snapshot?.miniMap.powerUps.map((pickup) => {
+          const point = project(pickup.x, pickup.y);
+          return (
+            <circle
+              key={pickup.id}
+              cx={point.x}
+              cy={point.y}
+              r="3"
+              className={
+                pickup.kind === "fuel" ? "mini-map-pickup mini-map-pickup--fuel" : "mini-map-pickup mini-map-pickup--boost"
+              }
+            />
+          );
+        })}
+
+        {snapshot?.miniMap.enemies.map((enemy) => {
+          const point = project(enemy.x, enemy.y);
+          return (
+            <polygon
+              key={enemy.id}
+              points={`${point.x},${point.y - 4} ${point.x + 4},${point.y} ${point.x},${point.y + 4} ${point.x - 4},${point.y}`}
+              className="mini-map-enemy"
+            />
+          );
+        })}
+
         <circle cx={planePoint.x} cy={planePoint.y} r="4" className="mini-map-plane" />
       </svg>
+
+      <div className="mini-map-legend" aria-label="Mini-map legend">
+        <span><i className="mini-map-legend-dot mini-map-legend-dot--enemy" />Enemy</span>
+        <span><i className="mini-map-legend-dot mini-map-legend-dot--fuel" />Fuel</span>
+        <span><i className="mini-map-legend-dot mini-map-legend-dot--boost" />Boost</span>
+        <span><i className="mini-map-legend-dot mini-map-legend-dot--cluster" />Cluster</span>
+      </div>
 
       <p className="mini-map-label">{activeRegion?.label ?? "Wide sky"}</p>
     </div>

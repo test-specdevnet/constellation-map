@@ -291,13 +291,117 @@ const buildCloudPuffs = (seed: string): Puff[] => {
   ];
 };
 
-function cloudBodyPath(ctx: CanvasRenderingContext2D, puffs: Puff[]) {
-  ctx.beginPath();
-  for (const puff of puffs) {
-    ctx.moveTo(puff.bx + puff.br, puff.by);
-    ctx.arc(puff.bx, puff.by, puff.br, 0, Math.PI * 2);
+const cloudAtlasCache = new Map<string, HTMLCanvasElement>();
+
+const getCloudAtlas = (
+  seed: string,
+  layer: keyof typeof CLOUD_LAYER_STYLE,
+): HTMLCanvasElement | null => {
+  if (typeof document === "undefined") {
+    return null;
   }
-}
+
+  const cacheKey = `${layer}:${seed}`;
+  const existing = cloudAtlasCache.get(cacheKey);
+  if (existing) {
+    return existing;
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = 240;
+  canvas.height = 148;
+  const atlas = canvas.getContext("2d");
+  if (!atlas) {
+    return null;
+  }
+
+  const puffs = buildCloudPuffs(seed);
+  const style = CLOUD_LAYER_STYLE[layer];
+  const noise = hashString(seed);
+
+  atlas.translate(canvas.width / 2, canvas.height / 2);
+  atlas.scale(72 * style.scale, 72 * style.scale);
+  atlas.globalAlpha = style.alpha;
+
+  atlas.save();
+  atlas.translate(0.05, 0.22);
+  atlas.scale(1.08, 0.45);
+  for (const puff of puffs) {
+    atlas.beginPath();
+    atlas.arc(puff.bx, puff.by, puff.br, 0, Math.PI * 2);
+    const shadow = atlas.createRadialGradient(
+      puff.bx,
+      puff.by - puff.br * 0.2,
+      puff.br * 0.2,
+      puff.bx,
+      puff.by,
+      puff.br * 1.1,
+    );
+    shadow.addColorStop(0, `rgba(214, 226, 240, ${style.shadowAlpha * 0.22})`);
+    shadow.addColorStop(1, `rgba(160, 181, 208, ${style.shadowAlpha})`);
+    atlas.fillStyle = shadow;
+    atlas.fill();
+  }
+  atlas.restore();
+
+  const shadow = atlas.createLinearGradient(0, -0.5, 0, 0.7);
+  shadow.addColorStop(0, `rgba(214, 226, 240, ${style.shadowAlpha * 0.45})`);
+  shadow.addColorStop(1, `rgba(166, 185, 209, ${style.shadowAlpha})`);
+  atlas.fillStyle = shadow;
+
+  for (const puff of puffs) {
+    atlas.beginPath();
+    atlas.arc(puff.bx, puff.by, puff.br, 0, Math.PI * 2);
+    const body = atlas.createRadialGradient(
+      puff.bx - puff.br * 0.1,
+      puff.by - puff.br * 0.4,
+      puff.br * 0.12,
+      puff.bx,
+      puff.by,
+      puff.br * 1.12,
+    );
+    body.addColorStop(0, "rgba(255,255,255,0.98)");
+    body.addColorStop(0.55, "rgba(247,252,255,0.96)");
+    body.addColorStop(1, "rgba(229,241,250,0.92)");
+    atlas.fillStyle = body;
+    atlas.fill();
+  }
+
+  atlas.lineWidth = 0.04;
+  atlas.strokeStyle = style.outline;
+  for (const puff of puffs) {
+    atlas.beginPath();
+    atlas.arc(puff.bx, puff.by, puff.br, 0, Math.PI * 2);
+    atlas.stroke();
+  }
+
+  atlas.save();
+  atlas.globalAlpha = 0.46;
+  for (const puff of puffs.slice(1, 4)) {
+    atlas.beginPath();
+    atlas.arc(puff.bx - 0.05, puff.by - puff.br * 0.35, puff.br * 0.48, 0, Math.PI * 2);
+    atlas.fillStyle = "rgba(255,255,255,0.92)";
+    atlas.fill();
+  }
+  atlas.restore();
+
+  atlas.save();
+  atlas.globalAlpha = 0.16;
+  atlas.fillStyle = "rgba(255,255,255,0.8)";
+  for (let index = 0; index < 18; index += 1) {
+    const angle = ((noise + index * 53) % 360) * (Math.PI / 180);
+    const radius = 0.08 + ((noise + index * 17) % 24) / 120;
+    const px = Math.cos(angle) * radius;
+    const py = Math.sin(angle) * (radius * 0.62);
+    atlas.beginPath();
+    atlas.arc(px, py, 0.02 + ((noise + index * 11) % 8) / 220, 0, Math.PI * 2);
+    atlas.fill();
+  }
+  atlas.restore();
+
+  cloudAtlasCache.set(cacheKey, canvas);
+  return canvas;
+};
 
 function drawFluffyCloud(
   ctx: CanvasRenderingContext2D,
@@ -307,47 +411,17 @@ function drawFluffyCloud(
   seed: string,
   layer: keyof typeof CLOUD_LAYER_STYLE,
 ) {
-  const puffs = buildCloudPuffs(seed);
-  const style = CLOUD_LAYER_STYLE[layer];
-
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.scale(scale * style.scale, scale * style.scale);
-  ctx.globalAlpha = style.alpha;
-
-  ctx.save();
-  ctx.translate(0.04, 0.2);
-  ctx.scale(1.05, 0.42);
-  cloudBodyPath(ctx, puffs);
-  const shadow = ctx.createLinearGradient(0, -0.5, 0, 0.7);
-  shadow.addColorStop(0, `rgba(214, 226, 240, ${style.shadowAlpha * 0.45})`);
-  shadow.addColorStop(1, `rgba(166, 185, 209, ${style.shadowAlpha})`);
-  ctx.fillStyle = shadow;
-  ctx.fill();
-  ctx.restore();
-
-  cloudBodyPath(ctx, puffs);
-  const body = ctx.createLinearGradient(0, -0.8, 0, 0.8);
-  body.addColorStop(0, "rgba(255,255,255,1)");
-  body.addColorStop(0.55, "rgba(250,253,255,0.99)");
-  body.addColorStop(1, "rgba(231,241,250,0.98)");
-  ctx.fillStyle = body;
-  ctx.fill();
-
-  ctx.lineWidth = 0.04;
-  ctx.strokeStyle = style.outline;
-  ctx.stroke();
-
-  ctx.save();
-  ctx.globalAlpha = 0.46;
-  for (const puff of puffs.slice(1, 4)) {
-    ctx.beginPath();
-    ctx.arc(puff.bx - 0.05, puff.by - puff.br * 0.35, puff.br * 0.48, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(255,255,255,0.92)";
-    ctx.fill();
+  const atlas = getCloudAtlas(seed, layer);
+  if (!atlas) {
+    return;
   }
-  ctx.restore();
 
+  const width = scale * 4.2;
+  const height = scale * 2.55;
+
+  ctx.save();
+  ctx.globalAlpha = CLOUD_LAYER_STYLE[layer].alpha;
+  ctx.drawImage(atlas, cx - width / 2, cy - height / 2, width, height);
   ctx.restore();
 }
 
