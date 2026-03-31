@@ -199,11 +199,11 @@ export const getEnemyCap = ({
   qualityMode: QualityMode;
   enemyDensity: EnemyDensitySetting;
 }) => {
-  let cap = 2;
+  let cap = 4;
   if (elapsedMs >= 180_000 || score >= 3_000) {
-    cap = 6;
+    cap = 8;
   } else if (elapsedMs >= 60_000 || score >= 1_200) {
-    cap = 4;
+    cap = 6;
   }
 
   return Math.max(
@@ -226,8 +226,8 @@ export const getEnemySpawnDelayMs = ({
   const rng = makeRng(seed);
   const intensity = clamp(elapsedMs / 180_000 + score / 4_800, 0, 1);
   const qualityBias = qualityMode === "high" ? -350 : qualityMode === "medium" ? 0 : 420;
-  const minDelay = 3_500 + qualityBias;
-  const maxDelay = 7_800 + qualityBias;
+  const minDelay = 2_400 + qualityBias;
+  const maxDelay = 5_600 + qualityBias;
   const delay = randomBetween(
     rng,
     minDelay,

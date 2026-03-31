@@ -40,8 +40,6 @@ import type { AppSystem, Cluster, SceneBounds, Star } from "../../lib/types/star
 import {
   GAME_CONFIG,
   clamp,
-  getEnemyCap,
-  getEnemySpawnDelayMs,
   resolveQualityMode,
   type FeatureFlags,
   type FlightSettings,
@@ -67,10 +65,9 @@ import {
   type ControlKey,
 } from "../../lib/game/inputController";
 import {
+  advanceEnemySpawner,
   createProjectile,
   resolveEnemyPlaneCollisions,
-  scheduleNextEnemySpawn,
-  spawnEnemyPlane,
   updateEnemies,
   updateProjectiles,
 } from "../../lib/game/enemies";
@@ -1032,55 +1029,23 @@ export function SceneCanvas({
         });
 
         if (featureFlags.enemyPlanes) {
-          if (game.nextEnemySpawnAtMs === 0) {
-            game.nextEnemySpawnAtMs =
-              game.runStartedAtMs +
-              Math.min(
-                GAME_CONFIG.initialEnemySpawnMaxMs,
-                getEnemySpawnDelayMs({
-                  elapsedMs: 0,
-                  score: 0,
-                  qualityMode,
-                  seed: `initial:${systems.length}`,
-                }),
-              );
-          }
-
-          if (
-            game.state === "flying" &&
-            timestamp >= game.nextEnemySpawnAtMs &&
-            game.enemies.length <
-              getEnemyCap({
-                elapsedMs: Math.max(0, timestamp - game.runStartedAtMs),
-                score: game.score,
-                qualityMode,
-                enemyDensity: flightSettings.enemyDensity,
-              })
-          ) {
-            game.spawnCounter += 1;
-            const spawnedEnemy = spawnEnemyPlane({
-              bounds,
-              plane: flight,
-              viewport: viewportBounds,
-              nowMs: timestamp,
-              seed: `enemy:${game.spawnCounter}:${Math.round(timestamp)}`,
-              elapsedMs: Math.max(0, timestamp - game.runStartedAtMs),
-              score: game.score,
-              qualityMode,
-            });
-
-            if (spawnedEnemy) {
-              game.enemies.push(spawnedEnemy);
-            }
-
-            game.nextEnemySpawnAtMs = scheduleNextEnemySpawn({
-              nowMs: timestamp,
-              elapsedMs: Math.max(0, timestamp - game.runStartedAtMs),
-              score: game.score,
-              qualityMode,
-              spawnCounter: game.spawnCounter,
-            });
-          }
+          const spawnerResult = advanceEnemySpawner({
+            enabled: game.state === "flying",
+            enemies: game.enemies,
+            bounds,
+            plane: flight,
+            viewport: viewportBounds,
+            nowMs: timestamp,
+            runStartedAtMs: game.runStartedAtMs,
+            nextEnemySpawnAtMs: game.nextEnemySpawnAtMs,
+            spawnCounter: game.spawnCounter,
+            score: game.score,
+            qualityMode,
+            enemyDensity: flightSettings.enemyDensity,
+          });
+          game.enemies = spawnerResult.enemies;
+          game.nextEnemySpawnAtMs = spawnerResult.nextEnemySpawnAtMs;
+          game.spawnCounter = spawnerResult.spawnCounter;
         } else {
           game.enemies = [];
           game.nextEnemySpawnAtMs = 0;

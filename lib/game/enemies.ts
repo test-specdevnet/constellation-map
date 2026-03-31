@@ -2,6 +2,7 @@ import type { SceneBounds } from "../types/star";
 import {
   GAME_CONFIG,
   clamp,
+  getEnemyCap,
   getEnemySpawnDelayMs,
   makeRng,
   randomBetween,
@@ -41,6 +42,36 @@ const polarPoint = (origin: { x: number; y: number }, angle: number, length: num
   x: origin.x + Math.cos(angle) * length,
   y: origin.y + Math.sin(angle) * length,
 });
+
+const segmentHitsCircle = ({
+  start,
+  end,
+  center,
+  radius,
+}: {
+  start: { x: number; y: number };
+  end: { x: number; y: number };
+  center: { x: number; y: number };
+  radius: number;
+}) => {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSq = dx * dx + dy * dy;
+  if (lengthSq <= 0.0001) {
+    return distance(start, center) <= radius;
+  }
+
+  const projection = clamp(
+    ((center.x - start.x) * dx + (center.y - start.y) * dy) / lengthSq,
+    0,
+    1,
+  );
+  const closest = {
+    x: start.x + dx * projection,
+    y: start.y + dy * projection,
+  };
+  return distance(closest, center) <= radius;
+};
 
 const getViewportExitDistance = ({
   origin,
@@ -91,6 +122,8 @@ export const createProjectile = ({
 }): Projectile => ({
   id: `${owner}-shot-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
   owner,
+  prevX: x,
+  prevY: y,
   x,
   y,
   vx: Math.cos(heading) * speed,
@@ -295,6 +328,8 @@ export const updateProjectiles = ({
   for (const projectile of projectiles) {
     const nextProjectile = {
       ...projectile,
+      prevX: projectile.x,
+      prevY: projectile.y,
       x: projectile.x + projectile.vx * dt,
       y: projectile.y + projectile.vy * dt,
       ttlMs: projectile.ttlMs - dtMs,
@@ -324,7 +359,12 @@ export const updateProjectiles = ({
       const hitEnemy = enemies.find(
         (enemy) =>
           !destroyedEnemyIds.has(enemy.id) &&
-          distance(enemy, nextProjectile) <= enemy.radius + nextProjectile.radius,
+          segmentHitsCircle({
+            start: { x: nextProjectile.prevX, y: nextProjectile.prevY },
+            end: { x: nextProjectile.x, y: nextProjectile.y },
+            center: enemy,
+            radius: enemy.radius + nextProjectile.radius,
+          }),
       );
 
       if (hitEnemy) {
@@ -350,8 +390,12 @@ export const updateProjectiles = ({
         continue;
       }
     } else if (
-      distance(plane, nextProjectile) <=
-      GAME_CONFIG.playerCollisionRadius + nextProjectile.radius
+      segmentHitsCircle({
+        start: { x: nextProjectile.prevX, y: nextProjectile.prevY },
+        end: { x: nextProjectile.x, y: nextProjectile.y },
+        center: plane,
+        radius: GAME_CONFIG.playerCollisionRadius + nextProjectile.radius,
+      })
     ) {
       playerHullDamage += nextProjectile.damage;
       effects.push(
@@ -436,3 +480,99 @@ export const scheduleNextEnemySpawn = ({
     qualityMode,
     seed: `enemy-delay:${spawnCounter}:${score}`,
   });
+
+export const advanceEnemySpawner = ({
+  enabled,
+  enemies,
+  bounds,
+  plane,
+  viewport,
+  nowMs,
+  runStartedAtMs,
+  nextEnemySpawnAtMs,
+  spawnCounter,
+  score,
+  qualityMode,
+  enemyDensity,
+}: {
+  enabled: boolean;
+  enemies: EnemyPlane[];
+  bounds: SceneBounds;
+  plane: FlightState;
+  viewport: SceneBounds;
+  nowMs: number;
+  runStartedAtMs: number;
+  nextEnemySpawnAtMs: number;
+  spawnCounter: number;
+  score: number;
+  qualityMode: QualityMode;
+  enemyDensity: EnemyDensitySetting;
+}) => {
+  if (!enabled) {
+    return {
+      enemies: [] as EnemyPlane[],
+      nextEnemySpawnAtMs: 0,
+      spawnCounter,
+      targetActiveEnemies: 0,
+    };
+  }
+
+  const elapsedMs = Math.max(0, nowMs - runStartedAtMs);
+  const targetActiveEnemies = getEnemyCap({
+    elapsedMs,
+    score,
+    qualityMode,
+    enemyDensity,
+  });
+
+  let nextSpawnCounter = spawnCounter;
+  let nextSpawnAtMs = nextEnemySpawnAtMs;
+  const nextEnemies = [...enemies];
+
+  if (nextSpawnAtMs === 0) {
+    nextSpawnAtMs =
+      runStartedAtMs +
+      Math.min(
+        GAME_CONFIG.initialEnemySpawnMaxMs,
+        getEnemySpawnDelayMs({
+          elapsedMs: 0,
+          score: 0,
+          qualityMode,
+          seed: `initial:${Math.round(plane.x)}:${Math.round(plane.y)}`,
+        }),
+      );
+  }
+
+  if (nowMs >= nextSpawnAtMs && nextEnemies.length < targetActiveEnemies) {
+    nextSpawnCounter += 1;
+    const spawnedEnemy = spawnEnemyPlane({
+      bounds,
+      plane,
+      viewport,
+      nowMs,
+      seed: `enemy:${nextSpawnCounter}:${Math.round(nowMs)}`,
+      elapsedMs,
+      score,
+      qualityMode,
+    });
+
+    if (spawnedEnemy) {
+      nextEnemies.push(spawnedEnemy);
+    }
+
+    nextSpawnAtMs = scheduleNextEnemySpawn({
+      nowMs,
+      elapsedMs,
+      score,
+      qualityMode,
+      spawnCounter: nextSpawnCounter,
+    });
+  }
+
+  return {
+    enemies: nextEnemies,
+    nextEnemySpawnAtMs: nextSpawnAtMs,
+    spawnCounter: nextSpawnCounter,
+    targetActiveEnemies,
+  };
+};

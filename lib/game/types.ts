@@ -63,6 +63,8 @@ export type EnemyPlane = {
 export type Projectile = {
   id: string;
   owner: ProjectileOwner;
+  prevX: number;
+  prevY: number;
   x: number;
   y: number;
   vx: number;
