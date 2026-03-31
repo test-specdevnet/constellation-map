@@ -56,6 +56,17 @@ import {
   integrateFlightState,
 } from "../../lib/game/flightController";
 import {
+  createInputController,
+  focusInputController,
+  pressControlKey,
+  releaseControlKey,
+  resetInputController,
+  sampleInputController,
+  setMouseSteerActive,
+  setPointerTurnBias,
+  type ControlKey,
+} from "../../lib/game/inputController";
+import {
   createProjectile,
   resolveEnemyPlaneCollisions,
   scheduleNextEnemySpawn,
@@ -608,7 +619,7 @@ export function SceneCanvas({
   const onTelemetryRef = useRef(onTelemetry);
   const onGameStateChangeRef = useRef(onGameStateChange);
   const onRunCompleteRef = useRef(onRunComplete);
-  const keysRef = useRef<Set<string>>(new Set());
+  const inputControllerRef = useRef(createInputController());
   const animationFrameRef = useRef<number | null>(null);
   const backgroundCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastAnimTsRef = useRef<number | null>(null);
@@ -684,7 +695,7 @@ export function SceneCanvas({
   );
   const debugHudVisible = featureFlags.debugHud || debugHudHotkey;
   const resetTransientControls = useCallback(() => {
-    keysRef.current.clear();
+    resetInputController({ controller: inputControllerRef.current });
     pointerRef.current = null;
     pointerInSceneRef.current = false;
     debugInputRef.current = {
@@ -788,10 +799,10 @@ export function SceneCanvas({
   useEffect(() => {
     const flightKeysActive = () => {
       const wrap = wrapRef.current;
-      if (!wrap) return pointerInSceneRef.current;
+      if (!wrap) return inputControllerRef.current.sceneFocused;
       const activeElement = document.activeElement;
       return (
-        pointerInSceneRef.current ||
+        inputControllerRef.current.sceneFocused ||
         activeElement === wrap ||
         (activeElement !== null && wrap.contains(activeElement))
       );
@@ -807,32 +818,43 @@ export function SceneCanvas({
       const mapped = mapToControlKey(event.key);
       if (!mapped) return;
       event.preventDefault();
-      keysRef.current.add(mapped);
+      focusInputController(inputControllerRef.current);
+      pressControlKey(inputControllerRef.current, mapped as ControlKey);
     };
 
     const up = (event: KeyboardEvent) => {
       const mapped = mapToControlKey(event.key);
-      if (mapped) keysRef.current.delete(mapped);
+      if (mapped) {
+        releaseControlKey(inputControllerRef.current, mapped as ControlKey);
+      }
     };
 
     const handleBlur = () => {
+      resetInputController({ controller: inputControllerRef.current, blur: true });
       resetTransientControls();
     };
 
     const handleVisibilityChange = () => {
       if (document.hidden) {
+        resetInputController({ controller: inputControllerRef.current, blur: true });
         resetTransientControls();
       }
+    };
+
+    const handlePointerUp = () => {
+      setMouseSteerActive(inputControllerRef.current, false);
     };
 
     window.addEventListener("keydown", down, { passive: false });
     window.addEventListener("keyup", up);
     window.addEventListener("blur", handleBlur);
+    window.addEventListener("pointerup", handlePointerUp);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
       window.removeEventListener("blur", handleBlur);
+      window.removeEventListener("pointerup", handlePointerUp);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [resetTransientControls]);
@@ -934,37 +956,15 @@ export function SceneCanvas({
         previousCameraRef.current = { ...camera };
         game.playerFireCooldownMs = Math.max(0, game.playerFireCooldownMs - dtMs);
 
-        const mouseTurn =
-          pointerRef.current && pointerInSceneRef.current
-            ? clamp(
-                ((pointerRef.current.x - canvasSize.width / 2) /
-                  Math.max(canvasSize.width / 2, 1)) *
-                  flightSettings.mouseSensitivity *
-                  1.35,
-                -1,
-                1,
-              )
-            : 0;
-        const input: FlightInputState = {
-          accelerate: keysRef.current.has("ArrowUp"),
-          brake: keysRef.current.has("ArrowDown"),
-          turnLeft: keysRef.current.has("ArrowLeft"),
-          turnRight: keysRef.current.has("ArrowRight"),
-          fire: keysRef.current.has("Fire"),
-          mouseTurn,
-        };
+        const sampledInput = sampleInputController({
+          controller: inputControllerRef.current,
+          mouseSensitivity: flightSettings.mouseSensitivity,
+        });
+        const input: FlightInputState = sampledInput.flightInput;
         debugInputRef.current = {
-          turnAxis: clamp(
-            (input.turnRight ? 1 : 0) - (input.turnLeft ? 1 : 0) + mouseTurn,
-            -1,
-            1,
-          ),
-          throttleAxis: clamp(
-            (input.accelerate ? 1 : 0) - (input.brake ? 1 : 0),
-            -1,
-            1,
-          ),
-          firePressed: input.fire,
+          turnAxis: sampledInput.turnAxis,
+          throttleAxis: sampledInput.throttleAxis,
+          firePressed: sampledInput.firePressed,
         };
 
         const nextFlight = integrateFlightState({
@@ -1795,6 +1795,7 @@ export function SceneCanvas({
     }
     setShowFlightTip(false);
     wrapRef.current?.focus({ preventScroll: true });
+    focusInputController(inputControllerRef.current);
   };
 
   const handlePointerMove = (event: PointerEvent<HTMLCanvasElement>) => {
@@ -1807,17 +1808,34 @@ export function SceneCanvas({
       x: event.clientX - boundsRect.left,
       y: event.clientY - boundsRect.top,
     };
+    if (inputControllerRef.current.mouseSteerActive) {
+      setPointerTurnBias(
+        inputControllerRef.current,
+        (pointerRef.current.x - canvasSize.width / 2) / Math.max(canvasSize.width / 2, 1),
+      );
+    }
   };
 
   const handlePointerLeave = () => {
     pointerRef.current = null;
     pointerInSceneRef.current = false;
+    setMouseSteerActive(inputControllerRef.current, false);
     hoveredRenderableRef.current = null;
     onHoverEntityRef.current(null);
   };
 
-  const handleCanvasPointerDown = () => {
+  const handleCanvasPointerDown = (event: PointerEvent<HTMLCanvasElement>) => {
     pointerInSceneRef.current = true;
+    focusInputController(inputControllerRef.current);
+    setMouseSteerActive(inputControllerRef.current, true);
+    const boundsRect = canvasRef.current?.getBoundingClientRect();
+    if (boundsRect) {
+      setPointerTurnBias(
+        inputControllerRef.current,
+        (event.clientX - boundsRect.left - canvasSize.width / 2) /
+          Math.max(canvasSize.width / 2, 1),
+      );
+    }
     wrapRef.current?.focus({ preventScroll: true });
   };
 
@@ -1854,12 +1872,13 @@ export function SceneCanvas({
     zoomAtPoint(camera, flight, canvasSize, { x: sx, y: sy }, camera.zoom * scale);
   };
 
-  const pressPad = (key: string) => {
-    keysRef.current.add(key);
+  const pressPad = (key: ControlKey) => {
+    focusInputController(inputControllerRef.current);
+    pressControlKey(inputControllerRef.current, key);
   };
 
-  const releasePad = (key: string) => {
-    keysRef.current.delete(key);
+  const releasePad = (key: ControlKey) => {
+    releaseControlKey(inputControllerRef.current, key);
   };
 
   return (
