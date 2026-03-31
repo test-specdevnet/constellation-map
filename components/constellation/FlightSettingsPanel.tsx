@@ -3,6 +3,7 @@
 import type {
   FeatureFlags,
   FlightSettings,
+  HudDensitySetting,
   QualityMode,
   QualitySetting,
   EnemyDensitySetting,
@@ -10,6 +11,7 @@ import type {
 
 const qualityOptions: QualitySetting[] = ["auto", "low", "medium", "high"];
 const densityOptions: EnemyDensitySetting[] = ["low", "medium", "high"];
+const hudDensityOptions: HudDensitySetting[] = ["compact", "detailed"];
 
 const labelize = (value: string) =>
   value.charAt(0).toUpperCase() + value.slice(1).replace(/-/g, " ");
@@ -106,6 +108,24 @@ export function FlightSettingsPanel({
           }
         />
         <small>{Math.round(settings.mouseSensitivity * 100)}%</small>
+      </label>
+
+      <label className="flight-settings-panel__field">
+        <span>HUD density</span>
+        <select
+          value={settings.hudDensity}
+          onChange={(event) =>
+            onUpdateSettings({
+              hudDensity: event.target.value as HudDensitySetting,
+            })
+          }
+        >
+          {hudDensityOptions.map((option) => (
+            <option key={option} value={option}>
+              {labelize(option)}
+            </option>
+          ))}
+        </select>
       </label>
 
       <div className="flight-settings-panel__section">

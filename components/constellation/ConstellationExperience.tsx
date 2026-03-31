@@ -194,6 +194,7 @@ function ConstellationExperienceBody({
   const [statusMessage, setStatusMessage] = useState("");
   const [telemetry, setTelemetry] = useState<FlightTelemetry | null>(null);
   const [gameSnapshot, setGameSnapshot] = useState<GameSessionSnapshot | null>(null);
+  const [panelMode, setPanelMode] = useState<"none" | "hangar" | "leaderboard">("none");
 
   const {
     progress,
@@ -229,6 +230,7 @@ function ConstellationExperienceBody({
     () => skins.find((skin) => skin.selected) ?? skins[0] ?? null,
     [skins],
   );
+  const showLowerPanels = (hasSearched && searchResults.length > 0) || panelMode !== "none";
 
   const visibleSystems = useMemo(
     () =>
@@ -550,6 +552,7 @@ function ConstellationExperienceBody({
                   telemetry={telemetry}
                   snapshot={gameSnapshot}
                   visitedRegionIds={progress.visitedRegionIds}
+                  mode={flightSettings.hudDensity}
                   onSelectCluster={handleFocusCluster}
                 />
                 <DiegeticHud
@@ -558,8 +561,11 @@ function ConstellationExperienceBody({
                   selectedSkinLabel={selectedSkin?.label ?? "Classic"}
                   unlockedSkinCount={summary.unlockedSkins}
                   totalSkinCount={skins.length}
+                  mode={flightSettings.hudDensity}
                 />
-                <FuelGauge snapshot={gameSnapshot} />
+                {flightSettings.hudDensity === "detailed" ? (
+                  <FuelGauge snapshot={gameSnapshot} />
+                ) : null}
                 <AchievementToast toast={activeToast} onDismiss={dismissToast} />
               </>
             }
@@ -573,12 +579,43 @@ function ConstellationExperienceBody({
             onRunComplete={featureFlags.leaderboard ? recordRun : undefined}
           />
 
+          <div className="atlas-panel-toggles" aria-label="Secondary panel toggles">
+            <button
+              type="button"
+              className={`secondary-action ${panelMode === "none" ? "secondary-action--active" : ""}`}
+              onClick={() => setPanelMode("none")}
+            >
+              Hide panels
+            </button>
+            <button
+              type="button"
+              className={`secondary-action ${panelMode === "hangar" ? "secondary-action--active" : ""}`}
+              onClick={() => setPanelMode((current) => (current === "hangar" ? "none" : "hangar"))}
+            >
+              Hangar
+            </button>
+            {featureFlags.leaderboard ? (
+              <button
+                type="button"
+                className={`secondary-action ${panelMode === "leaderboard" ? "secondary-action--active" : ""}`}
+                onClick={() =>
+                  setPanelMode((current) => (current === "leaderboard" ? "none" : "leaderboard"))
+                }
+              >
+                Leaderboard
+              </button>
+            ) : null}
+          </div>
+
           <div
             className={`atlas-lower-grid atlas-lower-grid--minimal atlas-lower-grid--game ${
               hasSearched && searchResults.length > 0
                 ? "atlas-lower-grid--split"
                 : "atlas-lower-grid--solo"
             }`}
+            style={{
+              display: showLowerPanels ? undefined : "none",
+            }}
           >
             {hasSearched && searchResults.length > 0 ? (
               <section className="panel-card panel-card--compact">
@@ -591,7 +628,7 @@ function ConstellationExperienceBody({
                     <li key={result.appName}>
                       <button type="button" onClick={() => handleSelectApp(result.appName)}>
                         <strong>{result.appName}</strong>
-                        <span>
+                        <span data-owner={result.owner} data-runtime={result.runtimeFamily}>
                           {result.owner} · {result.runtimeFamily}
                         </span>
                       </button>
@@ -601,19 +638,22 @@ function ConstellationExperienceBody({
               </section>
             ) : null}
 
-            <HangarPanel
-              skins={skins}
-              onSelectSkin={selectSkin}
-              onResetProgress={() => {
-                resetProgress();
-                setGameSnapshot(null);
-                setSearchResults([]);
-                setHasSearched(false);
-                setStatusMessage("");
-              }}
-            />
+            {panelMode === "hangar" ? (
+              <HangarPanel
+                skins={skins}
+                onSelectSkin={selectSkin}
+                onResetProgress={() => {
+                  resetProgress();
+                  setGameSnapshot(null);
+                  setSearchResults([]);
+                  setHasSearched(false);
+                  setStatusMessage("");
+                  setPanelMode("none");
+                }}
+              />
+            ) : null}
 
-            {featureFlags.leaderboard ? (
+            {featureFlags.leaderboard && panelMode === "leaderboard" ? (
               <LeaderboardPanel
                 callsign={playerCallsign}
                 onChangeCallsign={setPlayerCallsign}

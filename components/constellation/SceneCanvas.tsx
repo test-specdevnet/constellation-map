@@ -661,6 +661,7 @@ export function SceneCanvas({
   const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 760 });
   const [showFlightTip, setShowFlightTip] = useState(false);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  const [showTouchControls, setShowTouchControls] = useState(false);
   const [debugHudHotkey, setDebugHudHotkey] = useState(false);
   const [debugStats, setDebugStats] = useState<DebugHudSnapshot>(createInitialDebugHudSnapshot);
   const [pickupNotice, setPickupNotice] = useState<string | null>(null);
@@ -773,6 +774,31 @@ export function SceneCanvas({
     } catch {
       setShowFlightTip(true);
     }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia?.("(pointer: coarse), (hover: none)") ?? null;
+    const syncTouchControls = () => {
+      setShowTouchControls(Boolean(navigator.maxTouchPoints > 0 || mediaQuery?.matches));
+    };
+
+    syncTouchControls();
+
+    if (!mediaQuery) {
+      return;
+    }
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", syncTouchControls);
+      return () => mediaQuery.removeEventListener("change", syncTouchControls);
+    }
+
+    mediaQuery.addListener(syncTouchControls);
+    return () => mediaQuery.removeListener(syncTouchControls);
   }, []);
 
   useEffect(() => {
@@ -2081,11 +2107,13 @@ export function SceneCanvas({
         {pickupNotice ? <div className="pickup-notice">{pickupNotice}</div> : null}
         <DebugHud visible={debugHudVisible} stats={debugStats} />
 
-        <div className="scene-flight-pad" aria-label="Touch flight controls">
+        {showTouchControls ? (
+          <div className="scene-flight-pad" aria-label="Touch flight controls">
           <div className="scene-flight-pad-row scene-flight-pad-row--top">
             <button
               type="button"
               className="scene-flight-pad-btn"
+              data-label="Up"
               aria-label="Thrust"
               onPointerDown={(event) => {
                 event.preventDefault();
@@ -2109,6 +2137,7 @@ export function SceneCanvas({
             <button
               type="button"
               className="scene-flight-pad-btn"
+              data-label="Left"
               aria-label="Turn left"
               onPointerDown={(event) => {
                 event.preventDefault();
@@ -2130,6 +2159,7 @@ export function SceneCanvas({
             <button
               type="button"
               className="scene-flight-pad-btn"
+              data-label="Down"
               aria-label="Brake"
               onPointerDown={(event) => {
                 event.preventDefault();
@@ -2151,6 +2181,7 @@ export function SceneCanvas({
             <button
               type="button"
               className="scene-flight-pad-btn"
+              data-label="Right"
               aria-label="Turn right"
               onPointerDown={(event) => {
                 event.preventDefault();
@@ -2174,6 +2205,7 @@ export function SceneCanvas({
             <button
               type="button"
               className="scene-flight-pad-btn scene-flight-pad-btn--fire"
+              data-label="Fire"
               aria-label="Fire"
               onPointerDown={(event) => {
                 event.preventDefault();
@@ -2193,7 +2225,8 @@ export function SceneCanvas({
               Fire
             </button>
           </div>
-        </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

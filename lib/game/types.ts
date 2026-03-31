@@ -3,11 +3,19 @@ import type {
   EnemyDensitySetting,
   FeatureFlags,
   FlightSettings,
+  HudDensitySetting,
   QualityMode,
   QualitySetting,
 } from "./config";
 
-export type { EnemyDensitySetting, FeatureFlags, FlightSettings, QualityMode, QualitySetting };
+export type {
+  EnemyDensitySetting,
+  FeatureFlags,
+  FlightSettings,
+  HudDensitySetting,
+  QualityMode,
+  QualitySetting,
+};
 
 export type PickupKind = "fuel" | "boost";
 export type PickupSpawnSource = "flight-path" | "near-system";

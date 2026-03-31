@@ -11,12 +11,14 @@ export function DiegeticHud({
   selectedSkinLabel,
   unlockedSkinCount,
   totalSkinCount,
+  mode,
 }: {
   telemetry: FlightTelemetry | null;
   snapshot: GameSessionSnapshot | null;
   selectedSkinLabel: string;
   unlockedSkinCount: number;
   totalSkinCount: number;
+  mode: "compact" | "detailed";
 }) {
   const zoomPct = Math.round(((telemetry?.camera.zoom ?? ZOOM_BASELINE) / ZOOM_BASELINE) * 100);
   const speed = Math.round(telemetry?.plane.speed ?? 0);
@@ -32,6 +34,37 @@ export function DiegeticHud({
   );
   const boostSeconds = Math.ceil((snapshot?.boostRemainingMs ?? 0) / 1000);
   const repairSeconds = Math.ceil((snapshot?.repairCooldownMs ?? 0) / 1000);
+
+  if (mode === "compact") {
+    return (
+      <div className="diegetic-hud diegetic-hud--compact" aria-label="Flight heads-up display">
+        <div className="hud-chip">
+          <span>Speed</span>
+          <strong>{speed} kt</strong>
+          <small>Lens {zoomPct}%</small>
+        </div>
+        <div className="hud-chip">
+          <span>Run</span>
+          <strong>{score.toLocaleString()} pts</strong>
+          <small>{kills} takedowns</small>
+        </div>
+        <div className="hud-chip">
+          <span>Ship</span>
+          <strong>Hull {hullPct}%</strong>
+          <small>Fuel {fuelPct}%</small>
+        </div>
+        <div className="hud-chip">
+          <span>Status</span>
+          <strong>{snapshot?.activeBoostLabel ?? "Cruise"}</strong>
+          <small>
+            {boostSeconds > 0
+              ? `${boostSeconds}s boost | ${snapshot?.enemyCount ?? 0} hostiles`
+              : `${selectedSkinLabel} | ${snapshot?.enemyCount ?? 0} hostiles`}
+          </small>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="diegetic-hud" aria-label="Flight heads-up display">

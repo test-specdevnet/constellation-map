@@ -13,6 +13,7 @@ export function MiniMap({
   telemetry,
   snapshot,
   visitedRegionIds,
+  mode,
   onSelectCluster,
 }: {
   bounds: SceneBounds;
@@ -20,6 +21,7 @@ export function MiniMap({
   telemetry: FlightTelemetry | null;
   snapshot: GameSessionSnapshot | null;
   visitedRegionIds: string[];
+  mode: "compact" | "detailed";
   onSelectCluster: (cluster: Cluster) => void;
 }) {
   const visitedSet = new Set(visitedRegionIds);
@@ -146,12 +148,14 @@ export function MiniMap({
         <circle cx={planePoint.x} cy={planePoint.y} r="4" className="mini-map-plane" />
       </svg>
 
-      <div className="mini-map-legend" aria-label="Mini-map legend">
-        <span><i className="mini-map-legend-dot mini-map-legend-dot--enemy" />Enemy</span>
-        <span><i className="mini-map-legend-dot mini-map-legend-dot--fuel" />Fuel</span>
-        <span><i className="mini-map-legend-dot mini-map-legend-dot--boost" />Boost</span>
-        <span><i className="mini-map-legend-dot mini-map-legend-dot--cluster" />Cluster</span>
-      </div>
+      {mode === "detailed" ? (
+        <div className="mini-map-legend" aria-label="Mini-map legend">
+          <span><i className="mini-map-legend-dot mini-map-legend-dot--enemy" />Enemy</span>
+          <span><i className="mini-map-legend-dot mini-map-legend-dot--fuel" />Fuel</span>
+          <span><i className="mini-map-legend-dot mini-map-legend-dot--boost" />Boost</span>
+          <span><i className="mini-map-legend-dot mini-map-legend-dot--cluster" />Cluster</span>
+        </div>
+      ) : null}
 
       <p className="mini-map-label">{activeRegion?.label ?? "Wide sky"}</p>
     </div>

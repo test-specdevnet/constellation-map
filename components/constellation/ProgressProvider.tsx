@@ -226,6 +226,11 @@ const normalizeProgress = (input: Partial<ProgressState> | null | undefined): Pr
       typeof input?.flightSettings?.mouseSensitivity === "number"
         ? Math.max(0.2, Math.min(1.4, input.flightSettings.mouseSensitivity))
         : DEFAULT_FLIGHT_SETTINGS.mouseSensitivity,
+    hudDensity:
+      input?.flightSettings?.hudDensity === "detailed" ||
+      input?.flightSettings?.hudDensity === "compact"
+        ? input.flightSettings.hudDensity
+        : DEFAULT_FLIGHT_SETTINGS.hudDensity,
   },
   featureFlags: {
     enemyPlanes:

@@ -1,11 +1,13 @@
 export type QualityMode = "low" | "medium" | "high";
 export type QualitySetting = "auto" | QualityMode;
 export type EnemyDensitySetting = "low" | "medium" | "high";
+export type HudDensitySetting = "compact" | "detailed";
 
 export type FlightSettings = {
   quality: QualitySetting;
   enemyDensity: EnemyDensitySetting;
   mouseSensitivity: number;
+  hudDensity: HudDensitySetting;
 };
 
 export type FeatureFlags = {
@@ -23,6 +25,7 @@ export const DEFAULT_FLIGHT_SETTINGS: FlightSettings = {
   quality: "auto",
   enemyDensity: "medium",
   mouseSensitivity: 0.72,
+  hudDensity: "compact",
 };
 
 const readBooleanEnvFlag = (name: string, fallback: boolean) => {

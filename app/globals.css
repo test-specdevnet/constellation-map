@@ -325,6 +325,14 @@ h3 {
   transform: translateY(0);
 }
 
+.secondary-action--active {
+  border-color: rgba(255, 214, 120, 0.34);
+  background:
+    linear-gradient(180deg, rgba(38, 67, 116, 0.9), rgba(17, 31, 58, 0.94)),
+    rgba(9, 16, 31, 0.92);
+  box-shadow: inset 0 0 0 1px rgba(255, 241, 196, 0.18);
+}
+
 .atlas-status-row {
   display: flex;
   justify-content: space-between;
@@ -613,6 +621,11 @@ h3 {
   width: min(520px, calc(100% - 260px));
 }
 
+.diegetic-hud--compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(320px, calc(100% - 36px));
+}
+
 .hud-chip {
   padding: 12px 14px;
   border-radius: 18px;
@@ -881,9 +894,16 @@ h3 {
   border: 1px solid rgba(109, 167, 255, 0.3);
   background: rgba(43, 97, 209, 0.35);
   color: var(--text);
-  font-size: 1.25rem;
+  font-size: 0;
   line-height: 1;
   touch-action: manipulation;
+}
+
+.scene-flight-pad-btn::after {
+  content: attr(data-label);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .scene-flight-pad-btn:active {
@@ -896,12 +916,15 @@ h3 {
 
 .scene-flight-pad-btn--fire {
   min-width: 92px;
-  font-size: 0.88rem;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   background: rgba(255, 173, 71, 0.35);
   border-color: rgba(255, 214, 143, 0.34);
+}
+
+.scene-flight-pad-btn--fire::after {
+  font-size: 0.88rem;
 }
 
 .scene-flight-pad-btn--fire:active {
@@ -1670,6 +1693,17 @@ h1 {
   align-items: start;
 }
 
+.atlas-panel-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.atlas-panel-toggles .secondary-action {
+  padding: 10px 14px;
+}
+
 .atlas-lower-grid--split {
   grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
 }
@@ -1704,6 +1738,11 @@ h1 {
 }
 
 .result-list--compact li button span {
+  font-size: 0;
+}
+
+.result-list--compact li button span::after {
+  content: attr(data-owner) " | " attr(data-runtime);
   font-size: 0.85rem;
 }
 
