@@ -391,8 +391,11 @@ const drawClusterCloud = ({
   band: DisclosureBand;
   timestamp: number;
 }) => {
-  const compact = band !== "overview";
-  const displayRadius = getClusterBadgeRadius({ radius, level, band });
+  const compact = band === "detail";
+  const baseDisplayRadius = getClusterBadgeRadius({ radius, level, band });
+  const displayRadius = compact
+    ? Math.min(baseDisplayRadius, level === "runtime" ? 22 : 18)
+    : baseDisplayRadius;
   const coreColor =
     level === "region"
       ? active
@@ -424,7 +427,7 @@ const drawClusterCloud = ({
   ctx.arc(x, y, glowRadius, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.lineWidth = active ? 2.1 : 1.5;
+  ctx.lineWidth = compact ? 1.4 : active ? 2.1 : 1.5;
   ctx.strokeStyle = outline;
   ctx.beginPath();
   ctx.arc(x, y, displayRadius * 0.92, 0, Math.PI * 2);
@@ -439,7 +442,7 @@ const drawClusterCloud = ({
     ctx.setLineDash([4, 6]);
     ctx.strokeStyle = "rgba(255, 246, 196, 0.88)";
     ctx.beginPath();
-    ctx.arc(x, y, displayRadius + 8, 0, Math.PI * 2);
+    ctx.arc(x, y, displayRadius + (compact ? 5 : 8), 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
   }
@@ -861,12 +864,12 @@ export function SceneCanvas({
 
         const boostActiveStep = game.boostUntilMs > timestamp;
         const boostFactor = boostActiveStep ? 1.22 : 1;
-        const maxTurnRate = reducedMotion ? 2.3 : 4.15;
-        const turnResponse = reducedMotion ? 8.5 : 13.5;
-        const accel = (reducedMotion ? 360 : 960) * boostFactor;
-        const brake = reducedMotion ? 700 : 1_420;
-        const passiveDrag = reducedMotion ? 82 : 104;
-        const maxSpeed = (reducedMotion ? 230 : 660) * (boostActiveStep ? 1.18 : 1);
+        const maxTurnRate = reducedMotion ? 2.6 : 5.1;
+        const turnResponse = reducedMotion ? 12 : 24;
+        const accel = (reducedMotion ? 420 : 1_120) * boostFactor;
+        const brake = reducedMotion ? 760 : 1_760;
+        const passiveDrag = reducedMotion ? 76 : 96;
+        const maxSpeed = (reducedMotion ? 260 : 760) * (boostActiveStep ? 1.18 : 1);
 
         let turnInput = 0;
         if (keys.has("ArrowLeft")) turnInput -= 1;
@@ -925,11 +928,11 @@ export function SceneCanvas({
           }
         }
 
-        const look = Math.min(460, flight.speed * 0.76);
+        const look = Math.min(520, flight.speed * 0.82);
         const desiredCamX = flight.x + Math.cos(flight.heading) * look * 0.12;
         const desiredCamY = flight.y + Math.sin(flight.heading) * look * 0.12;
         const camFollow = camFollowRef.current;
-        const followK = Math.min(1, (reducedMotion ? 16 : 28) * dt);
+        const followK = Math.min(1, (reducedMotion ? 28 : 64) * dt);
         camFollow.x += (desiredCamX - camFollow.x) * followK;
         camFollow.y += (desiredCamY - camFollow.y) * followK;
 
