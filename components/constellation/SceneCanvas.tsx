@@ -20,6 +20,7 @@ import {
 import { categoryLabel, getBuoyColorway } from "../../lib/canvas/buoyCategory";
 import {
   applyFisheyeToPoint,
+  type DisclosureBand,
   getAnchorRadius,
   getClusterRenderRadius,
   getDensityAlpha,
@@ -232,6 +233,7 @@ const drawClusterCloud = ({
   active,
   rare,
   level,
+  band,
   timestamp,
 }: {
   ctx: CanvasRenderingContext2D;
@@ -244,8 +246,11 @@ const drawClusterCloud = ({
   active: boolean;
   rare: boolean;
   level: Cluster["level"];
+  band: DisclosureBand;
   timestamp: number;
 }) => {
+  const compact = band === "detail";
+  const displayRadius = compact ? Math.min(radius, level === "runtime" ? 22 : 18) : radius;
   const phase = timestamp / 3000;
   const puffColor =
     level === "region"
@@ -260,43 +265,45 @@ const drawClusterCloud = ({
   ctx.save();
   ctx.globalAlpha = alpha;
 
-  const puffs = [
-    { ox: -radius * 0.45, oy: radius * 0.04, r: radius * 0.55 },
-    { ox: radius * 0.08, oy: -radius * 0.14, r: radius * 0.62 },
-    { ox: radius * 0.45, oy: radius * 0.08, r: radius * 0.5 },
-    { ox: 0, oy: radius * 0.2, r: radius * 0.54 },
-  ];
+  if (!compact) {
+    const puffs = [
+      { ox: -displayRadius * 0.45, oy: displayRadius * 0.04, r: displayRadius * 0.55 },
+      { ox: displayRadius * 0.08, oy: -displayRadius * 0.14, r: displayRadius * 0.62 },
+      { ox: displayRadius * 0.45, oy: displayRadius * 0.08, r: displayRadius * 0.5 },
+      { ox: 0, oy: displayRadius * 0.2, r: displayRadius * 0.54 },
+    ];
 
-  for (let index = 0; index < puffs.length; index += 1) {
-    const puff = puffs[index];
-    const drift = Math.sin(phase + index * 0.8) * 4;
-    const gradient = ctx.createRadialGradient(
-      x + puff.ox,
-      y + puff.oy,
-      radius * 0.18,
-      x + puff.ox,
-      y + puff.oy,
-      puff.r,
-    );
-    gradient.addColorStop(0, puffColor);
-    gradient.addColorStop(1, "rgba(255,255,255,0.18)");
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(x + puff.ox, y + puff.oy + drift, puff.r, 0, Math.PI * 2);
-    ctx.fill();
+    for (let index = 0; index < puffs.length; index += 1) {
+      const puff = puffs[index];
+      const drift = Math.sin(phase + index * 0.8) * 4;
+      const gradient = ctx.createRadialGradient(
+        x + puff.ox,
+        y + puff.oy,
+        displayRadius * 0.18,
+        x + puff.ox,
+        y + puff.oy,
+        puff.r,
+      );
+      gradient.addColorStop(0, puffColor);
+      gradient.addColorStop(1, "rgba(255,255,255,0.18)");
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(x + puff.ox, y + puff.oy + drift, puff.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
-  ctx.lineWidth = active ? 2.2 : 1.2;
+  ctx.lineWidth = compact ? 1.4 : active ? 2.2 : 1.2;
   ctx.strokeStyle = outline;
   ctx.beginPath();
-  ctx.arc(x, y, radius * 0.88, 0, Math.PI * 2);
+  ctx.arc(x, y, displayRadius * 0.88, 0, Math.PI * 2);
   ctx.stroke();
 
   if (rare) {
     ctx.setLineDash([4, 6]);
     ctx.strokeStyle = "rgba(255, 246, 196, 0.88)";
     ctx.beginPath();
-    ctx.arc(x, y, radius + 8, 0, Math.PI * 2);
+    ctx.arc(x, y, displayRadius + (compact ? 5 : 8), 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
   }
@@ -306,7 +313,7 @@ const drawClusterCloud = ({
     ? "700 13px Segoe UI, system-ui, sans-serif"
     : "600 12px Segoe UI, system-ui, sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText(label, x, y + 4);
+  ctx.fillText(label, x, y + (compact ? 34 : 4));
   ctx.restore();
 };
 
@@ -591,12 +598,12 @@ export function SceneCanvas({
       const dt = clamp((timestamp - lastTs) / 1000, 0, 0.05);
       lastAnimTsRef.current = timestamp;
 
-      const maxTurnRate = reducedMotion ? 2.2 : 4.6;
-      const turnResponse = reducedMotion ? 9 : 20;
-      const accel = reducedMotion ? 340 : 900;
-      const brake = reducedMotion ? 680 : 1_550;
-      const passiveDrag = reducedMotion ? 90 : 130;
-      const maxSpeed = reducedMotion ? 220 : 620;
+      const maxTurnRate = reducedMotion ? 2.6 : 5.1;
+      const turnResponse = reducedMotion ? 12 : 24;
+      const accel = reducedMotion ? 420 : 1_120;
+      const brake = reducedMotion ? 760 : 1_760;
+      const passiveDrag = reducedMotion ? 76 : 96;
+      const maxSpeed = reducedMotion ? 260 : 760;
 
       let turnInput = 0;
       if (keys.has("ArrowLeft")) turnInput -= 1;
@@ -620,11 +627,11 @@ export function SceneCanvas({
       flight.x = clamp(flight.x, bounds.minX, bounds.maxX);
       flight.y = clamp(flight.y, bounds.minY, bounds.maxY);
 
-      const look = Math.min(420, flight.speed * 0.78);
+      const look = Math.min(520, flight.speed * 0.82);
       const desiredCamX = flight.x + Math.cos(flight.heading) * look * 0.12;
       const desiredCamY = flight.y + Math.sin(flight.heading) * look * 0.12;
       const camFollow = camFollowRef.current;
-      const followK = Math.min(1, (reducedMotion ? 18 : 28) * dt);
+      const followK = Math.min(1, (reducedMotion ? 28 : 64) * dt);
       camFollow.x += (desiredCamX - camFollow.x) * followK;
       camFollow.y += (desiredCamY - camFollow.y) * followK;
 
@@ -727,6 +734,10 @@ export function SceneCanvas({
           continue;
         }
 
+        if (disclosure.band === "detail" && active) {
+          continue;
+        }
+
         drawClusterCloud({
           ctx: context,
           x: projected.x,
@@ -738,6 +749,7 @@ export function SceneCanvas({
           active,
           rare: cluster.rarityFlags.hasRareArchetype,
           level: cluster.level,
+          band: disclosure.band,
           timestamp,
         });
 
@@ -780,12 +792,13 @@ export function SceneCanvas({
             x: projected.x,
             y: projected.y,
             radius,
-            alpha,
+            alpha: disclosure.band === "detail" ? alpha * 0.42 : alpha,
             label: cluster.label,
             meta: `${cluster.counts.systems} apps · ${cluster.counts.instances} traces`,
             active,
             rare: cluster.rarityFlags.hasRareArchetype,
             level: cluster.level,
+            band: disclosure.band,
             timestamp,
           });
 
