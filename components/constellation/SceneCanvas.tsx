@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -9,6 +10,7 @@ import {
   type ReactNode,
   type WheelEvent,
 } from "react";
+import { DebugHud } from "./DebugHud";
 import { FlightSettingsPanel } from "./FlightSettingsPanel";
 import {
   drawFuelCanPickup,
@@ -18,6 +20,7 @@ import {
   drawProximityHoverCard,
   drawSpeedBoostPickup,
   drawTopDownBiplane,
+  getParallaxCloudCount,
   planeSkinPalettes,
   type PlaneSkinId,
 } from "../../lib/canvas/cartoonMarkers";
@@ -70,6 +73,7 @@ import {
 } from "../../lib/game/session";
 import type {
   DeploymentVisibilityState,
+  DebugHudSnapshot,
   FlightInputState,
   FlightState,
   GameSessionSnapshot,
@@ -146,6 +150,32 @@ const EMPTY_VISIBILITY: DeploymentVisibilityState = {
   visibleStarsBySystem: new Map<string, Star[]>(),
   clusterMarkers: [],
 };
+
+const createInitialDebugHudSnapshot = (): DebugHudSnapshot => ({
+  fps: 0,
+  frameMs: 0,
+  tickRate: 0,
+  counts: {
+    deployments: 0,
+    clusters: 0,
+    enemies: 0,
+    bullets: 0,
+    pickups: 0,
+    clouds: 0,
+  },
+  input: {
+    turnAxis: 0,
+    throttleAxis: 0,
+    firePressed: false,
+  },
+  player: {
+    speed: 0,
+    hull: GAME_CONFIG.hullMax,
+    fuel: GAME_CONFIG.fuelMax,
+    boostRemainingMs: 0,
+  },
+  lastPickupEvent: null,
+});
 
 const lerp = (from: number, to: number, amount: number) => from + (to - from) * amount;
 
@@ -588,9 +618,14 @@ export function SceneCanvas({
   const gameEmitTsRef = useRef(0);
   const flightSeededRef = useRef(false);
   const pointerInSceneRef = useRef(false);
+  const debugPerfRef = useRef({ lastSampleAtMs: 0, frames: 0, ticks: 0 });
+  const debugInputRef = useRef({ turnAxis: 0, throttleAxis: 0, firePressed: false });
+  const lastPickupEventRef = useRef<string | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 760 });
   const [showFlightTip, setShowFlightTip] = useState(false);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  const [debugHudHotkey, setDebugHudHotkey] = useState(false);
+  const [debugStats, setDebugStats] = useState<DebugHudSnapshot>(createInitialDebugHudSnapshot);
 
   const regionClusters = useMemo(
     () => clusters.filter((cluster) => cluster.level === "region"),
@@ -647,6 +682,17 @@ export function SceneCanvas({
       }),
     [flightSettings, reducedMotion],
   );
+  const debugHudVisible = featureFlags.debugHud || debugHudHotkey;
+  const resetTransientControls = useCallback(() => {
+    keysRef.current.clear();
+    pointerRef.current = null;
+    pointerInSceneRef.current = false;
+    debugInputRef.current = {
+      turnAxis: 0,
+      throttleAxis: 0,
+      firePressed: false,
+    };
+  }, []);
 
   useEffect(() => {
     onHoverEntityRef.current = onHoverEntity;
@@ -752,6 +798,11 @@ export function SceneCanvas({
     };
 
     const down = (event: KeyboardEvent) => {
+      if (event.key === "F3") {
+        event.preventDefault();
+        setDebugHudHotkey((current) => !current);
+        return;
+      }
       if (!flightKeysActive()) return;
       const mapped = mapToControlKey(event.key);
       if (!mapped) return;
@@ -764,13 +815,33 @@ export function SceneCanvas({
       if (mapped) keysRef.current.delete(mapped);
     };
 
+    const handleBlur = () => {
+      resetTransientControls();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        resetTransientControls();
+      }
+    };
+
     window.addEventListener("keydown", down, { passive: false });
     window.addEventListener("keyup", up);
+    window.addEventListener("blur", handleBlur);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", handleBlur);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, []);
+  }, [resetTransientControls]);
+
+  useEffect(() => {
+    if (showSettingsPanel) {
+      resetTransientControls();
+    }
+  }, [resetTransientControls, showSettingsPanel]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -850,6 +921,7 @@ export function SceneCanvas({
       const lastTs = lastAnimTsRef.current ?? timestamp;
       const frameMs = clamp(timestamp - lastTs, 0, GAME_CONFIG.maxFrameMs);
       lastAnimTsRef.current = timestamp;
+      debugPerfRef.current.frames += 1;
       accumulatorRef.current = Math.min(
         accumulatorRef.current + frameMs,
         GAME_CONFIG.maxFrameMs,
@@ -857,27 +929,42 @@ export function SceneCanvas({
 
       while (accumulatorRef.current >= GAME_CONFIG.fixedStepMs) {
         const dtMs = GAME_CONFIG.fixedStepMs;
+        debugPerfRef.current.ticks += 1;
         previousFlightRef.current = { ...flight };
         previousCameraRef.current = { ...camera };
         game.playerFireCooldownMs = Math.max(0, game.playerFireCooldownMs - dtMs);
 
+        const mouseTurn =
+          pointerRef.current && pointerInSceneRef.current
+            ? clamp(
+                ((pointerRef.current.x - canvasSize.width / 2) /
+                  Math.max(canvasSize.width / 2, 1)) *
+                  flightSettings.mouseSensitivity *
+                  1.35,
+                -1,
+                1,
+              )
+            : 0;
         const input: FlightInputState = {
           accelerate: keysRef.current.has("ArrowUp"),
           brake: keysRef.current.has("ArrowDown"),
           turnLeft: keysRef.current.has("ArrowLeft"),
           turnRight: keysRef.current.has("ArrowRight"),
           fire: keysRef.current.has("Fire"),
-          mouseTurn:
-            pointerRef.current && pointerInSceneRef.current
-              ? clamp(
-                  ((pointerRef.current.x - canvasSize.width / 2) /
-                    Math.max(canvasSize.width / 2, 1)) *
-                    flightSettings.mouseSensitivity *
-                    1.35,
-                  -1,
-                  1,
-                )
-              : 0,
+          mouseTurn,
+        };
+        debugInputRef.current = {
+          turnAxis: clamp(
+            (input.turnRight ? 1 : 0) - (input.turnLeft ? 1 : 0) + mouseTurn,
+            -1,
+            1,
+          ),
+          throttleAxis: clamp(
+            (input.accelerate ? 1 : 0) - (input.brake ? 1 : 0),
+            -1,
+            1,
+          ),
+          firePressed: input.fire,
         };
 
         const nextFlight = integrateFlightState({
@@ -886,7 +973,7 @@ export function SceneCanvas({
           bounds,
           dtMs,
           qualityMode,
-          boostActive: featureFlags.speedBoosts && game.boostUntilMs > timestamp,
+          boostActive: featureFlags.pickups && game.boostUntilMs > timestamp,
         });
         Object.assign(flight, nextFlight);
 
@@ -908,7 +995,7 @@ export function SceneCanvas({
             selectedAppName,
             searchMatches: matchSet,
             qualityMode,
-            densityLimitsEnabled: featureFlags.deploymentDensityLimits,
+            densityLimitsEnabled: featureFlags.deploymentClustering,
           });
           lastVisibilityUpdateRef.current = timestamp;
         }
@@ -919,7 +1006,7 @@ export function SceneCanvas({
           flight,
         });
 
-        if (featureFlags.fuelSystem || featureFlags.speedBoosts) {
+        if (featureFlags.pickups) {
           const maintained = maintainCollectibles({
             collectibles: game.collectibles,
             bounds,
@@ -931,7 +1018,7 @@ export function SceneCanvas({
             nowMs: timestamp,
             spawnCounter: game.spawnCounter,
             enableFuel: featureFlags.fuelSystem,
-            enableBoosts: featureFlags.speedBoosts,
+            enableBoosts: featureFlags.pickups,
           });
           game.collectibles = maintained.collectibles;
           game.spawnCounter = maintained.spawnCounter;
@@ -1064,8 +1151,12 @@ export function SceneCanvas({
         });
         game.collectibles = pickupResult.collectibles;
         game.fuel = clampFuel(game.fuel + pickupResult.fuelDelta, game.fuelMax);
-        if (featureFlags.speedBoosts && pickupResult.boostUntilMs > 0) {
+        if (pickupResult.fuelDelta > 0) {
+          lastPickupEventRef.current = `Fuel +${Math.round(pickupResult.fuelDelta)}`;
+        }
+        if (featureFlags.pickups && pickupResult.boostUntilMs > 0) {
           game.boostUntilMs = Math.max(game.boostUntilMs, pickupResult.boostUntilMs);
+          lastPickupEventRef.current = `Boost ${(pickupResult.boostUntilMs - timestamp) / 1000}s`;
         }
         stepEffects.push(...pickupResult.effects);
 
@@ -1103,7 +1194,7 @@ export function SceneCanvas({
           featureFlags,
         });
 
-        if (!featureFlags.speedBoosts) {
+        if (!featureFlags.pickups) {
           game.boostUntilMs = 0;
         }
 
@@ -1149,15 +1240,17 @@ export function SceneCanvas({
         context.fillRect(0, 0, canvasSize.width, canvasSize.height);
       }
 
-      drawParallaxCloudLayers(
-        context,
-        canvasSize.width,
-        canvasSize.height,
-        timestamp,
-        renderCamera.x,
-        renderCamera.y,
-        { layerMin: 0, layerMax: featureFlags.advancedClouds ? 2 : 1 },
-      );
+      if (featureFlags.clouds) {
+        drawParallaxCloudLayers(
+          context,
+          canvasSize.width,
+          canvasSize.height,
+          timestamp,
+          renderCamera.x,
+          renderCamera.y,
+          { layerMin: 0, layerMax: qualityMode === "low" ? 1 : 2 },
+        );
+      }
 
       if (!clusters.length && !systems.length && !stars.length) {
         context.save();
@@ -1510,7 +1603,7 @@ export function SceneCanvas({
           planeSkinPalettes[selectedSkinId],
         );
 
-        if (featureFlags.speedBoosts && game.boostUntilMs > timestamp && game.state === "flying") {
+        if (featureFlags.pickups && game.boostUntilMs > timestamp && game.state === "flying") {
           context.save();
           context.strokeStyle = "rgba(111, 235, 255, 0.78)";
           context.lineWidth = 3;
@@ -1546,6 +1639,50 @@ export function SceneCanvas({
           hovered.entity.subtitle,
           0.96,
         );
+      }
+
+      if (
+        debugHudVisible &&
+        (debugPerfRef.current.lastSampleAtMs === 0 ||
+          timestamp - debugPerfRef.current.lastSampleAtMs >= 220)
+      ) {
+        const elapsed =
+          debugPerfRef.current.lastSampleAtMs === 0
+            ? 220
+            : timestamp - debugPerfRef.current.lastSampleAtMs;
+        const visibleDeployments =
+          [...visibilityRef.current.visibleStarsBySystem.values()].reduce(
+            (total, systemStars) => total + systemStars.length,
+            0,
+          ) + visibilityRef.current.visibleSystems.length;
+        setDebugStats({
+          fps: (debugPerfRef.current.frames * 1000) / Math.max(elapsed, 1),
+          frameMs,
+          tickRate: (debugPerfRef.current.ticks * 1000) / Math.max(elapsed, 1),
+          counts: {
+            deployments: visibleDeployments,
+            clusters: visibilityRef.current.clusterMarkers.length,
+            enemies: game.enemies.length,
+            bullets: game.projectiles.length,
+            pickups: game.collectibles.filter((collectible) => collectible.active).length,
+            clouds: featureFlags.clouds
+              ? getParallaxCloudCount({ layerMin: 0, layerMax: qualityMode === "low" ? 1 : 2 })
+              : 0,
+          },
+          input: debugInputRef.current,
+          player: {
+            speed: flight.speed,
+            hull: game.hull,
+            fuel: game.fuel,
+            boostRemainingMs: Math.max(0, game.boostUntilMs - timestamp),
+          },
+          lastPickupEvent: lastPickupEventRef.current,
+        });
+        debugPerfRef.current = {
+          lastSampleAtMs: timestamp,
+          frames: 0,
+          ticks: 0,
+        };
       }
 
       if (timestamp - telemetryEmitTsRef.current > 140) {
@@ -1599,6 +1736,7 @@ export function SceneCanvas({
     bounds,
     canvasSize,
     clusters,
+    debugHudVisible,
     flightSettings,
     featureFlags,
     mapDataLoading,
@@ -1627,7 +1765,10 @@ export function SceneCanvas({
     previousCameraRef.current = { ...currentCameraRef.current };
     gameRef.current = createGameState();
     visibilityRef.current = EMPTY_VISIBILITY;
-    keysRef.current.clear();
+    lastPickupEventRef.current = null;
+    debugPerfRef.current = { lastSampleAtMs: 0, frames: 0, ticks: 0 };
+    setDebugStats(createInitialDebugHudSnapshot());
+    resetTransientControls();
     accumulatorRef.current = 0;
   };
 
@@ -1676,6 +1817,7 @@ export function SceneCanvas({
   };
 
   const handleCanvasPointerDown = () => {
+    pointerInSceneRef.current = true;
     wrapRef.current?.focus({ preventScroll: true });
   };
 
@@ -1810,6 +1952,7 @@ export function SceneCanvas({
         />
 
         {overlay ? <div className="scene-overlay-layer">{overlay}</div> : null}
+        <DebugHud visible={debugHudVisible} stats={debugStats} />
 
         <div className="scene-flight-pad" aria-label="Touch flight controls">
           <div className="scene-flight-pad-row scene-flight-pad-row--top">

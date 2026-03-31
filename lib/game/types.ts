@@ -174,3 +174,29 @@ export type GameSessionSnapshot = {
     powerUps: Array<{ id: string; x: number; y: number; kind: PickupKind }>;
   };
 };
+
+export type DebugHudSnapshot = {
+  fps: number;
+  frameMs: number;
+  tickRate: number;
+  counts: {
+    deployments: number;
+    clusters: number;
+    enemies: number;
+    bullets: number;
+    pickups: number;
+    clouds: number;
+  };
+  input: {
+    turnAxis: number;
+    throttleAxis: number;
+    firePressed: boolean;
+  };
+  player: {
+    speed: number;
+    hull: number;
+    fuel: number;
+    boostRemainingMs: number;
+  };
+  lastPickupEvent: string | null;
+};

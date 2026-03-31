@@ -800,6 +800,54 @@ h3 {
   width: 100%;
 }
 
+.debug-hud {
+  position: absolute;
+  z-index: 4;
+  right: 18px;
+  bottom: 18px;
+  width: min(360px, calc(100% - 36px));
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(120, 189, 255, 0.28);
+  background: rgba(5, 14, 34, 0.88);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.32);
+  pointer-events: none;
+}
+
+.debug-hud__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.debug-hud__header span,
+.debug-hud__card span,
+.debug-hud__card small,
+.debug-hud__event {
+  color: var(--muted);
+}
+
+.debug-hud__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.debug-hud__card {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(20, 35, 68, 0.58);
+}
+
+.debug-hud__event {
+  margin: 10px 0 0;
+  font-size: 0.78rem;
+}
+
 .scene-flight-pad-row {
   display: flex;
   gap: 8px;
@@ -1774,6 +1822,17 @@ h1 {
     right: 12px;
     bottom: 192px;
     width: auto;
+  }
+
+  .debug-hud {
+    left: 12px;
+    right: 12px;
+    bottom: 16px;
+    width: auto;
+  }
+
+  .debug-hud__grid {
+    grid-template-columns: 1fr;
   }
 
   .scene-flight-tip {

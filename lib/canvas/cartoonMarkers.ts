@@ -247,6 +247,12 @@ const CLOUD_SEEDS: CloudSeed[] = [
   { x: 0.64, y: 0.5, s: 0.122, layer: 2, drift: 1.1 },
 ];
 
+export const getParallaxCloudCount = (opts?: { layerMin?: number; layerMax?: number }) => {
+  const lo = opts?.layerMin ?? 0;
+  const hi = opts?.layerMax ?? 2;
+  return CLOUD_SEEDS.filter((cloud) => cloud.layer >= lo && cloud.layer <= hi).length;
+};
+
 const CLOUD_LAYER_STYLE = {
   0: {
     parallax: 0.008,

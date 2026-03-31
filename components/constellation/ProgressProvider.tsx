@@ -24,7 +24,7 @@ import {
   getWeeklyLeaderboardKey,
 } from "../../lib/game/config";
 
-const STORAGE_KEY = "flux-constellation-progress-v3";
+const STORAGE_KEY = "flux-constellation-progress-v4";
 
 type QuestId = "regional-surveyor" | "rare-signal" | "runtime-rambler";
 
@@ -228,34 +228,56 @@ const normalizeProgress = (input: Partial<ProgressState> | null | undefined): Pr
         : DEFAULT_FLIGHT_SETTINGS.mouseSensitivity,
   },
   featureFlags: {
-    fuelSystem:
-      typeof input?.featureFlags?.fuelSystem === "boolean"
-        ? input.featureFlags.fuelSystem
-        : DEFAULT_FEATURE_FLAGS.fuelSystem,
-    speedBoosts:
-      typeof input?.featureFlags?.speedBoosts === "boolean"
-        ? input.featureFlags.speedBoosts
-        : DEFAULT_FEATURE_FLAGS.speedBoosts,
     enemyPlanes:
       typeof input?.featureFlags?.enemyPlanes === "boolean"
         ? input.featureFlags.enemyPlanes
         : DEFAULT_FEATURE_FLAGS.enemyPlanes,
+    fuelSystem:
+      typeof input?.featureFlags?.fuelSystem === "boolean"
+        ? input.featureFlags.fuelSystem
+        : DEFAULT_FEATURE_FLAGS.fuelSystem,
     combat:
       typeof input?.featureFlags?.combat === "boolean"
         ? input.featureFlags.combat
         : DEFAULT_FEATURE_FLAGS.combat,
+    pickups:
+      typeof input?.featureFlags?.pickups === "boolean"
+        ? input.featureFlags.pickups
+        : typeof (input?.featureFlags as { speedBoosts?: boolean } | undefined)?.speedBoosts ===
+              "boolean" || typeof input?.featureFlags?.fuelSystem === "boolean"
+          ? Boolean(
+              (input?.featureFlags as { speedBoosts?: boolean } | undefined)?.speedBoosts ??
+                input?.featureFlags?.fuelSystem,
+            )
+          : DEFAULT_FEATURE_FLAGS.pickups,
     leaderboard:
       typeof input?.featureFlags?.leaderboard === "boolean"
         ? input.featureFlags.leaderboard
         : DEFAULT_FEATURE_FLAGS.leaderboard,
-    advancedClouds:
-      typeof input?.featureFlags?.advancedClouds === "boolean"
-        ? input.featureFlags.advancedClouds
-        : DEFAULT_FEATURE_FLAGS.advancedClouds,
-    deploymentDensityLimits:
-      typeof input?.featureFlags?.deploymentDensityLimits === "boolean"
-        ? input.featureFlags.deploymentDensityLimits
-        : DEFAULT_FEATURE_FLAGS.deploymentDensityLimits,
+    clouds:
+      typeof input?.featureFlags?.clouds === "boolean"
+        ? input.featureFlags.clouds
+        : typeof (input?.featureFlags as { advancedClouds?: boolean } | undefined)
+              ?.advancedClouds === "boolean"
+          ? Boolean(
+              (input?.featureFlags as { advancedClouds?: boolean } | undefined)
+                ?.advancedClouds,
+            )
+          : DEFAULT_FEATURE_FLAGS.clouds,
+    deploymentClustering:
+      typeof input?.featureFlags?.deploymentClustering === "boolean"
+        ? input.featureFlags.deploymentClustering
+        : typeof (input?.featureFlags as { deploymentDensityLimits?: boolean } | undefined)
+              ?.deploymentDensityLimits === "boolean"
+          ? Boolean(
+              (input?.featureFlags as { deploymentDensityLimits?: boolean } | undefined)
+                ?.deploymentDensityLimits,
+            )
+          : DEFAULT_FEATURE_FLAGS.deploymentClustering,
+    debugHud:
+      typeof input?.featureFlags?.debugHud === "boolean"
+        ? input.featureFlags.debugHud
+        : DEFAULT_FEATURE_FLAGS.debugHud,
   },
 });
 

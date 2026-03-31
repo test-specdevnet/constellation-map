@@ -115,13 +115,14 @@ export function FlightSettingsPanel({
 
       {(
         [
+          ["debugHud", "Debug HUD"],
           ["fuelSystem", "Fuel system"],
-          ["speedBoosts", "Speed boosts"],
-          ["enemyPlanes", "Enemy planes"],
+          ["pickups", "Pickups"],
           ["combat", "Turrets / combat"],
+          ["enemyPlanes", "Enemy planes"],
           ["leaderboard", "Leaderboard"],
-          ["advancedClouds", "Advanced clouds"],
-          ["deploymentDensityLimits", "Deployment density limiting"],
+          ["clouds", "Clouds"],
+          ["deploymentClustering", "Deployment clustering"],
         ] as const
       ).map(([key, label]) => (
         <label key={key} className="flight-settings-panel__field flight-settings-panel__field--toggle">

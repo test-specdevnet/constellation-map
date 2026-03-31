@@ -9,13 +9,14 @@ export type FlightSettings = {
 };
 
 export type FeatureFlags = {
-  fuelSystem: boolean;
-  speedBoosts: boolean;
   enemyPlanes: boolean;
+  fuelSystem: boolean;
   combat: boolean;
+  pickups: boolean;
   leaderboard: boolean;
-  advancedClouds: boolean;
-  deploymentDensityLimits: boolean;
+  clouds: boolean;
+  deploymentClustering: boolean;
+  debugHud: boolean;
 };
 
 export const DEFAULT_FLIGHT_SETTINGS: FlightSettings = {
@@ -24,14 +25,31 @@ export const DEFAULT_FLIGHT_SETTINGS: FlightSettings = {
   mouseSensitivity: 0.72,
 };
 
+const readBooleanEnvFlag = (name: string, fallback: boolean) => {
+  const raw = process.env[name];
+  if (typeof raw !== "string") {
+    return fallback;
+  }
+
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === "1" || normalized === "true" || normalized === "on") {
+    return true;
+  }
+  if (normalized === "0" || normalized === "false" || normalized === "off") {
+    return false;
+  }
+  return fallback;
+};
+
 export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
-  fuelSystem: true,
-  speedBoosts: true,
-  enemyPlanes: true,
-  combat: true,
-  leaderboard: true,
-  advancedClouds: true,
-  deploymentDensityLimits: true,
+  enemyPlanes: readBooleanEnvFlag("NEXT_PUBLIC_FC_FLAG_ENEMIES", true),
+  fuelSystem: readBooleanEnvFlag("NEXT_PUBLIC_FC_FLAG_FUEL", true),
+  combat: readBooleanEnvFlag("NEXT_PUBLIC_FC_FLAG_COMBAT", true),
+  pickups: readBooleanEnvFlag("NEXT_PUBLIC_FC_FLAG_PICKUPS", true),
+  leaderboard: readBooleanEnvFlag("NEXT_PUBLIC_FC_FLAG_LEADERBOARD", true),
+  clouds: readBooleanEnvFlag("NEXT_PUBLIC_FC_FLAG_CLOUDS", true),
+  deploymentClustering: readBooleanEnvFlag("NEXT_PUBLIC_FC_FLAG_DEPLOYMENT_CLUSTERING", true),
+  debugHud: readBooleanEnvFlag("NEXT_PUBLIC_FC_FLAG_DEBUG_HUD", false),
 };
 
 export const GAME_CONFIG = {
