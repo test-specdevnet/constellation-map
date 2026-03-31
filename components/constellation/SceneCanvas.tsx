@@ -44,7 +44,11 @@ import {
   type FeatureFlags,
   type FlightSettings,
 } from "../../lib/game/config";
-import { buildDeploymentVisibilityState } from "../../lib/game/deploymentVisibility";
+import {
+  buildDeploymentVisibilityState,
+  resolveVisibilityZoomBucket,
+  type VisibilityZoomBucket,
+} from "../../lib/game/deploymentVisibility";
 import { updateEffects } from "../../lib/game/effects";
 import {
   computeCameraFollowTarget,
@@ -188,6 +192,12 @@ const createInitialDebugHudSnapshot = (): DebugHudSnapshot => ({
   },
   lastPickupEvent: null,
 });
+
+const clusterMarkerSignature = (markers: Array<{ id: string; count: number }>) =>
+  markers
+    .map((marker) => `${marker.id}:${marker.count}`)
+    .sort()
+    .join("|");
 
 const lerp = (from: number, to: number, amount: number) => from + (to - from) * amount;
 
@@ -474,9 +484,11 @@ const drawDeploymentClusterMarker = (
   x: number,
   y: number,
   count: number,
+  alpha = 1,
 ) => {
   const radius = Math.max(10, Math.min(18, 8 + Math.log2(count + 1) * 2.4));
   ctx.save();
+  ctx.globalAlpha = alpha;
   ctx.translate(x, y);
 
   const glow = ctx.createRadialGradient(0, 0, radius * 0.2, 0, 0, radius * 1.8);
@@ -601,6 +613,18 @@ export function SceneCanvas({
   const gameRef = useRef<GameState>(createGameState());
   const visibilityRef = useRef<DeploymentVisibilityState>(EMPTY_VISIBILITY);
   const lastVisibilityUpdateRef = useRef(0);
+  const visibilityBucketRef = useRef<VisibilityZoomBucket>("mid");
+  const visibilityAnchorRef = useRef<{
+    x: number;
+    y: number;
+    bucket: VisibilityZoomBucket;
+    selectedAppName: string | null;
+    searchSignature: string;
+  } | null>(null);
+  const clusterFadeRef = useRef<{
+    markers: Array<{ id: string; x: number; y: number; count: number }>;
+    startedAtMs: number;
+  } | null>(null);
   const disclosureRef = useRef<{
     band: DisclosureBand;
     activeRegionId: string | null;
@@ -681,6 +705,7 @@ export function SceneCanvas({
     return map;
   }, [stars]);
   const matchSet = useMemo(() => new Set(searchMatches), [searchMatches]);
+  const searchSignature = useMemo(() => searchMatches.join("|"), [searchMatches]);
   const reducedMotion = prefersReducedMotion();
   const qualityMode = useMemo(
     () =>
@@ -768,6 +793,12 @@ export function SceneCanvas({
     gameRef.current = createGameState();
     visibilityRef.current = EMPTY_VISIBILITY;
     lastVisibilityUpdateRef.current = 0;
+    visibilityBucketRef.current = resolveVisibilityZoomBucket({
+      zoom: getDefaultZoom(),
+      currentBucket: null,
+    });
+    visibilityAnchorRef.current = null;
+    clusterFadeRef.current = null;
     accumulatorRef.current = 0;
     flightSeededRef.current = true;
   }, [bounds, stars, systems]);
@@ -1008,21 +1039,67 @@ export function SceneCanvas({
           clusters,
           systems,
         });
-        disclosureRef.current = disclosure;
+        const nextVisibilityBucket = resolveVisibilityZoomBucket({
+          zoom: camera.zoom,
+          currentBucket: visibilityBucketRef.current,
+        });
+        const stabilizedDisclosure = {
+          ...disclosure,
+          band: nextVisibilityBucket as DisclosureBand,
+        };
+        disclosureRef.current = stabilizedDisclosure;
 
-        if (timestamp - lastVisibilityUpdateRef.current >= 110) {
-          visibilityRef.current = buildDeploymentVisibilityState({
+        const visibilityAnchor = visibilityAnchorRef.current;
+        const movementThreshold =
+          nextVisibilityBucket === "detail" ? 90 : nextVisibilityBucket === "mid" ? 140 : 220;
+        const movedFarEnough =
+          !visibilityAnchor ||
+          Math.hypot(flight.x - visibilityAnchor.x, flight.y - visibilityAnchor.y) >=
+            movementThreshold;
+        const selectionChanged =
+          !visibilityAnchor ||
+          visibilityAnchor.selectedAppName !== selectedAppName ||
+          visibilityAnchor.searchSignature !== searchSignature;
+        const bucketChanged =
+          !visibilityAnchor || visibilityAnchor.bucket !== nextVisibilityBucket;
+        const refreshTimedOut = timestamp - lastVisibilityUpdateRef.current >= 480;
+
+        if (bucketChanged || selectionChanged || movedFarEnough || refreshTimedOut) {
+          const nextVisibility = buildDeploymentVisibilityState({
             systems,
             starsBySystem,
             clusters,
             flight,
-            disclosure,
+            disclosure: stabilizedDisclosure,
             selectedAppName,
             searchMatches: matchSet,
             qualityMode,
             densityLimitsEnabled: featureFlags.deploymentClustering,
           });
+          if (
+            clusterMarkerSignature(visibilityRef.current.clusterMarkers) !==
+            clusterMarkerSignature(nextVisibility.clusterMarkers)
+          ) {
+            clusterFadeRef.current = {
+              markers: visibilityRef.current.clusterMarkers.map((marker) => ({
+                id: marker.id,
+                x: marker.x,
+                y: marker.y,
+                count: marker.count,
+              })),
+              startedAtMs: timestamp,
+            };
+          }
+          visibilityRef.current = nextVisibility;
           lastVisibilityUpdateRef.current = timestamp;
+          visibilityBucketRef.current = nextVisibilityBucket;
+          visibilityAnchorRef.current = {
+            x: flight.x,
+            y: flight.y,
+            bucket: nextVisibilityBucket,
+            selectedAppName,
+            searchSignature,
+          };
         }
 
         applyDeploymentDiscoveries({
@@ -1461,12 +1538,40 @@ export function SceneCanvas({
         }
       }
 
+      const clusterFadeProgress = clusterFadeRef.current
+        ? clamp((timestamp - clusterFadeRef.current.startedAtMs) / 220, 0, 1)
+        : 1;
+      if (clusterFadeRef.current && clusterFadeProgress >= 1) {
+        clusterFadeRef.current = null;
+      }
+      if (clusterFadeRef.current && clusterFadeProgress < 1) {
+        for (const previousMarker of clusterFadeRef.current.markers) {
+          const projected = projectWorld(previousMarker);
+          if (offscreen(projected, 48, canvasSize)) {
+            continue;
+          }
+          drawDeploymentClusterMarker(
+            context,
+            projected.x,
+            projected.y,
+            previousMarker.count,
+            1 - clusterFadeProgress,
+          );
+        }
+      }
+
       for (const clusterMarker of visibleScene.clusterMarkers) {
         const projected = projectWorld(clusterMarker);
         if (offscreen(projected, 48, canvasSize)) {
           continue;
         }
-        drawDeploymentClusterMarker(context, projected.x, projected.y, clusterMarker.count);
+        drawDeploymentClusterMarker(
+          context,
+          projected.x,
+          projected.y,
+          clusterMarker.count,
+          clusterFadeRef.current ? clusterFadeProgress : 1,
+        );
       }
 
       if (disclosure.band === "detail") {
@@ -1739,6 +1844,7 @@ export function SceneCanvas({
     qualityMode,
     runtimeClusters,
     runtimeClustersByRegion,
+    searchSignature,
     selectedAppName,
     selectedSkinId,
     snapshotError,
@@ -1760,6 +1866,12 @@ export function SceneCanvas({
     previousCameraRef.current = { ...currentCameraRef.current };
     gameRef.current = createGameState();
     visibilityRef.current = EMPTY_VISIBILITY;
+    visibilityBucketRef.current = resolveVisibilityZoomBucket({
+      zoom: currentCameraRef.current.zoom,
+      currentBucket: null,
+    });
+    visibilityAnchorRef.current = null;
+    clusterFadeRef.current = null;
     lastPickupEventRef.current = null;
     debugPerfRef.current = { lastSampleAtMs: 0, frames: 0, ticks: 0 };
     setDebugStats(createInitialDebugHudSnapshot());

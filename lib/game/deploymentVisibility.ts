@@ -3,6 +3,8 @@ import type { AppSystem, Cluster, Star } from "../types/star";
 import { GAME_CONFIG, type QualityMode } from "./config";
 import type { DeploymentClusterMarker, DeploymentVisibilityState, FlightState } from "./types";
 
+export type VisibilityZoomBucket = "overview" | "mid" | "detail";
+
 const distance = (left: { x: number; y: number }, right: { x: number; y: number }) =>
   Math.hypot(left.x - right.x, left.y - right.y);
 
@@ -10,6 +12,39 @@ const byPriorityThenDistance = (
   left: { priority: number; distance: number },
   right: { priority: number; distance: number },
 ) => right.priority - left.priority || left.distance - right.distance;
+
+export const resolveVisibilityZoomBucket = ({
+  zoom,
+  currentBucket,
+}: {
+  zoom: number;
+  currentBucket: VisibilityZoomBucket | null;
+}): VisibilityZoomBucket => {
+  if (currentBucket === "detail") {
+    if (zoom < 0.24) {
+      return "mid";
+    }
+    return "detail";
+  }
+
+  if (currentBucket === "mid") {
+    if (zoom >= 0.29) {
+      return "detail";
+    }
+    if (zoom < 0.13) {
+      return "overview";
+    }
+    return "mid";
+  }
+
+  if (zoom >= 0.27) {
+    return "detail";
+  }
+  if (zoom >= 0.17) {
+    return "mid";
+  }
+  return "overview";
+};
 
 export const buildDeploymentVisibilityState = ({
   systems,

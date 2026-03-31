@@ -1,4 +1,4 @@
-import { buildDeploymentVisibilityState } from "./deploymentVisibility";
+import { buildDeploymentVisibilityState, resolveVisibilityZoomBucket } from "./deploymentVisibility";
 import { GAME_CONFIG } from "./config";
 import type { AppSystem, Cluster, Star } from "../types/star";
 
@@ -59,6 +59,14 @@ const makeStar = (systemId: string, index: number): Star => ({
 });
 
 describe("buildDeploymentVisibilityState", () => {
+  it("uses hysteresis for zoom buckets so cluster bands do not flap", () => {
+    expect(resolveVisibilityZoomBucket({ zoom: 0.28, currentBucket: "mid" })).toBe("mid");
+    expect(resolveVisibilityZoomBucket({ zoom: 0.3, currentBucket: "mid" })).toBe("detail");
+    expect(resolveVisibilityZoomBucket({ zoom: 0.23, currentBucket: "detail" })).toBe("mid");
+    expect(resolveVisibilityZoomBucket({ zoom: 0.14, currentBucket: "overview" })).toBe("overview");
+    expect(resolveVisibilityZoomBucket({ zoom: 0.18, currentBucket: "overview" })).toBe("mid");
+  });
+
   it("clusters systems in overview mode instead of flooding individual stars", () => {
     const system = makeSystem("system:alpha", 0, 0);
     const starsBySystem = new Map([[system.systemId, Array.from({ length: 12 }, (_, index) => makeStar(system.systemId, index))]]);
