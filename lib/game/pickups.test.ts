@@ -1,5 +1,5 @@
 import { GAME_CONFIG } from "./config";
-import { collectNearbyPickups, maintainCollectibles } from "./pickups";
+import { applyPickupOutcome, collectNearbyPickups, maintainCollectibles } from "./pickups";
 
 describe("pickups", () => {
   it("spawns bounded fuel cans and boosts away from blocked positions", () => {
@@ -93,5 +93,22 @@ describe("pickups", () => {
     expect(result.boostUntilMs).toBe(nowMs + GAME_CONFIG.boostDurationMs);
     expect(result.collectibles.every((collectible) => !collectible.active)).toBe(true);
     expect(result.effects).toHaveLength(2);
+  });
+
+  it("applies pickup outcomes with explicit boost refresh behavior", () => {
+    const applied = applyPickupOutcome({
+      fuel: 70,
+      fuelMax: 100,
+      boostUntilMs: 5000,
+      pickupResult: {
+        fuelDelta: 35,
+        boostUntilMs: 9000,
+      },
+      pickupsEnabled: true,
+    });
+
+    expect(applied.fuel).toBe(100);
+    expect(applied.boostUntilMs).toBe(9000);
+    expect(applied.pickupLabel).toBe("Fuel +35");
   });
 });

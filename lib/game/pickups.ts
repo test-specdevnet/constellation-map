@@ -283,3 +283,39 @@ export const collectNearbyPickups = ({
 };
 
 export const clampFuel = (fuel: number, fuelMax: number) => clamp(fuel, 0, fuelMax);
+
+export const applyPickupOutcome = ({
+  fuel,
+  fuelMax,
+  boostUntilMs,
+  pickupResult,
+  pickupsEnabled,
+}: {
+  fuel: number;
+  fuelMax: number;
+  boostUntilMs: number;
+  pickupResult: {
+    fuelDelta: number;
+    boostUntilMs: number;
+  };
+  pickupsEnabled: boolean;
+}) => {
+  const nextFuel = clampFuel(fuel + pickupResult.fuelDelta, fuelMax);
+  const nextBoostUntilMs = pickupsEnabled
+    ? pickupResult.boostUntilMs > 0
+      ? pickupResult.boostUntilMs
+      : boostUntilMs
+    : 0;
+  const pickupLabel =
+    pickupResult.fuelDelta > 0
+      ? `Fuel +${Math.round(pickupResult.fuelDelta)}`
+      : pickupResult.boostUntilMs > 0 && pickupsEnabled
+        ? "Speed boost refreshed"
+        : null;
+
+  return {
+    fuel: nextFuel,
+    boostUntilMs: nextBoostUntilMs,
+    pickupLabel,
+  };
+};

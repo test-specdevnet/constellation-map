@@ -71,7 +71,11 @@ import {
   updateEnemies,
   updateProjectiles,
 } from "../../lib/game/enemies";
-import { clampFuel, collectNearbyPickups, maintainCollectibles } from "../../lib/game/pickups";
+import {
+  applyPickupOutcome,
+  collectNearbyPickups,
+  maintainCollectibles,
+} from "../../lib/game/pickups";
 import {
   applyDeploymentDiscoveries,
   createGameState,
@@ -626,6 +630,7 @@ export function SceneCanvas({
   const gameEmitTsRef = useRef(0);
   const flightSeededRef = useRef(false);
   const pointerInSceneRef = useRef(false);
+  const pickupNoticeTimeoutRef = useRef<number | null>(null);
   const debugPerfRef = useRef({ lastSampleAtMs: 0, frames: 0, ticks: 0 });
   const debugInputRef = useRef({ turnAxis: 0, throttleAxis: 0, firePressed: false });
   const lastPickupEventRef = useRef<string | null>(null);
@@ -634,6 +639,7 @@ export function SceneCanvas({
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [debugHudHotkey, setDebugHudHotkey] = useState(false);
   const [debugStats, setDebugStats] = useState<DebugHudSnapshot>(createInitialDebugHudSnapshot);
+  const [pickupNotice, setPickupNotice] = useState<string | null>(null);
 
   const regionClusters = useMemo(
     () => clusters.filter((cluster) => cluster.level === "region"),
@@ -700,6 +706,19 @@ export function SceneCanvas({
       throttleAxis: 0,
       firePressed: false,
     };
+  }, []);
+  const announcePickup = useCallback((label: string | null) => {
+    if (!label) {
+      return;
+    }
+    lastPickupEventRef.current = label;
+    setPickupNotice(label);
+    if (pickupNoticeTimeoutRef.current !== null) {
+      window.clearTimeout(pickupNoticeTimeoutRef.current);
+    }
+    pickupNoticeTimeoutRef.current = window.setTimeout(() => {
+      setPickupNotice(null);
+    }, 1500);
   }, []);
 
   useEffect(() => {
@@ -861,6 +880,15 @@ export function SceneCanvas({
       resetTransientControls();
     }
   }, [resetTransientControls, showSettingsPanel]);
+
+  useEffect(
+    () => () => {
+      if (pickupNoticeTimeoutRef.current !== null) {
+        window.clearTimeout(pickupNoticeTimeoutRef.current);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -1115,14 +1143,16 @@ export function SceneCanvas({
           nowMs: timestamp,
         });
         game.collectibles = pickupResult.collectibles;
-        game.fuel = clampFuel(game.fuel + pickupResult.fuelDelta, game.fuelMax);
-        if (pickupResult.fuelDelta > 0) {
-          lastPickupEventRef.current = `Fuel +${Math.round(pickupResult.fuelDelta)}`;
-        }
-        if (featureFlags.pickups && pickupResult.boostUntilMs > 0) {
-          game.boostUntilMs = Math.max(game.boostUntilMs, pickupResult.boostUntilMs);
-          lastPickupEventRef.current = `Boost ${(pickupResult.boostUntilMs - timestamp) / 1000}s`;
-        }
+        const pickupOutcome = applyPickupOutcome({
+          fuel: game.fuel,
+          fuelMax: game.fuelMax,
+          boostUntilMs: game.boostUntilMs,
+          pickupResult,
+          pickupsEnabled: featureFlags.pickups,
+        });
+        game.fuel = pickupOutcome.fuel;
+        game.boostUntilMs = pickupOutcome.boostUntilMs;
+        announcePickup(pickupOutcome.pickupLabel);
         stepEffects.push(...pickupResult.effects);
 
         if (featureFlags.enemyPlanes) {
@@ -1936,6 +1966,7 @@ export function SceneCanvas({
         />
 
         {overlay ? <div className="scene-overlay-layer">{overlay}</div> : null}
+        {pickupNotice ? <div className="pickup-notice">{pickupNotice}</div> : null}
         <DebugHud visible={debugHudVisible} stats={debugStats} />
 
         <div className="scene-flight-pad" aria-label="Touch flight controls">
