@@ -226,6 +226,7 @@ export const maintainCollectibles = ({
     let activeCount = refreshed.filter(
       (collectible) => collectible.kind === kind && collectible.active,
     ).length;
+    let trackedCount = refreshed.filter((collectible) => collectible.kind === kind).length;
 
     for (let index = 0; index < refreshed.length && activeCount < desiredCount; index += 1) {
       const collectible = refreshed[index];
@@ -251,7 +252,7 @@ export const maintainCollectibles = ({
       }
     }
 
-    while (activeCount < desiredCount) {
+    while (activeCount < desiredCount && trackedCount < desiredCount) {
       nextSpawnCounter += 1;
       const spawned = spawnCollectible({
         kind,
@@ -270,6 +271,7 @@ export const maintainCollectibles = ({
 
       refreshed.push(spawned);
       activeCount += 1;
+      trackedCount += 1;
     }
   };
 

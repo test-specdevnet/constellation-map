@@ -1187,15 +1187,15 @@ h3 {
 }
 
 .hangar-swatch--sunset-scout {
-  background: linear-gradient(135deg, #f06b2d, #ff9a63);
+  background: linear-gradient(135deg, #f2c431, #ffe07a);
 }
 
 .hangar-swatch--mint-radar {
-  background: linear-gradient(135deg, #3aa88e, #74d8bd);
+  background: linear-gradient(135deg, #2fa861, #6ad996);
 }
 
 .hangar-swatch--midnight-courier {
-  background: linear-gradient(135deg, #2f3c8f, #7a84f0);
+  background: linear-gradient(135deg, #2758af, #78a9ff);
 }
 
 .hangar-modal-backdrop {
@@ -1915,6 +1915,13 @@ h1 {
   padding-inline: 14px;
 }
 
+.hangar-panel-copy {
+  margin: 0 0 14px;
+  color: rgba(230, 242, 255, 0.78);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
 .hangar-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -1941,6 +1948,10 @@ h1 {
 
 .hangar-card {
   gap: 6px;
+}
+
+.hangar-card strong {
+  font-size: 1rem;
 }
 
 .hangar-modal-actions {

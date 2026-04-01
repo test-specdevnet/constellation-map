@@ -13,7 +13,6 @@ export function HangarPanel({
   onResetProgress: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const unlockedCount = skins.filter((skin) => skin.unlocked).length;
   const activeSkin = skins.find((skin) => skin.selected) ?? skins[0];
 
   return (
@@ -22,9 +21,9 @@ export function HangarPanel({
         <div className="hangar-launcher-meta">
           <div className={`hangar-swatch hangar-swatch--${activeSkin.id}`} />
           <div>
-            <span className="hangar-launcher-label">Hangar</span>
+            <span className="hangar-launcher-label">Plane</span>
             <strong>
-              {activeSkin.label} | {unlockedCount}/{skins.length}
+              {activeSkin.label} | {skins.length} colors
             </strong>
           </div>
         </div>
@@ -33,7 +32,7 @@ export function HangarPanel({
           className="secondary-action hangar-launcher-button"
           onClick={() => setOpen(true)}
         >
-          Skins
+          Customize
         </button>
       </section>
 
@@ -47,17 +46,18 @@ export function HangarPanel({
             onClick={(event) => event.stopPropagation()}
           >
             <div className="panel-card-header panel-card-header--compact">
-              <h2 id="hangar-title">Plane skins</h2>
+              <h2 id="hangar-title">Plane customization</h2>
               <button
                 type="button"
                 className="icon-button"
                 onClick={() => setOpen(false)}
-                aria-label="Close hangar"
+                aria-label="Close plane customization"
               >
                 Close
               </button>
             </div>
 
+            <p className="hangar-panel-copy">Pick your aircraft color for the next flight.</p>
             <div className="hangar-grid">
               {skins.map((skin) => (
                 <button
@@ -69,7 +69,8 @@ export function HangarPanel({
                 >
                   <div className={`hangar-swatch hangar-swatch--${skin.id}`} />
                   <strong>{skin.label}</strong>
-                  <span>{skin.unlocked ? "Ready" : skin.unlockHint}</span>
+                  <small>{skin.description}</small>
+                  <span>{skin.selected ? "Selected" : "Available"}</span>
                 </button>
               ))}
             </div>

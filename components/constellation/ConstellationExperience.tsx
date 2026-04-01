@@ -604,7 +604,7 @@ function ConstellationExperienceBody({
               className={`secondary-action ${panelMode === "hangar" ? "secondary-action--active" : ""}`}
               onClick={() => setPanelMode((current) => (current === "hangar" ? "none" : "hangar"))}
             >
-              Hangar
+              Customize
             </button>
             {featureFlags.leaderboard ? (
               <button

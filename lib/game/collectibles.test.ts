@@ -105,6 +105,65 @@ describe("collectibles", () => {
     expect(result.collectibles.every((collectible) => !collectible.active)).toBe(true);
   });
 
+  it("does not immediately backfill collected fuel before its respawn timer", () => {
+    const result = maintainCollectibles({
+      collectibles: [
+        {
+          id: "fuel:active",
+          kind: "fuel",
+          x: 120,
+          y: 60,
+          radius: 24,
+          value: GAME_CONFIG.fuelPickupAmount,
+          bobSeed: 0,
+          spinSeed: 0,
+          spawnedAtMs: 0,
+          respawnAtMs: 0,
+          ttlMs: 12_000,
+          source: "flight-path",
+          active: true,
+        },
+        {
+          id: "fuel:cooldown",
+          kind: "fuel",
+          x: 220,
+          y: 90,
+          radius: 24,
+          value: GAME_CONFIG.fuelPickupAmount,
+          bobSeed: 0,
+          spinSeed: 0,
+          spawnedAtMs: 0,
+          respawnAtMs: 10_000,
+          ttlMs: 12_000,
+          source: "flight-path",
+          active: false,
+        },
+      ],
+      bounds: {
+        minX: -2_000,
+        minY: -2_000,
+        maxX: 2_000,
+        maxY: 2_000,
+        width: 4_000,
+        height: 4_000,
+      },
+      plane: { x: 0, y: 0, heading: 0, speed: 220, angVel: 0 },
+      anchorSystems: [{ x: 180, y: 120 }, { x: -240, y: -160 }],
+      nowMs: 2_000,
+      spawnCounter: 0,
+      enableFuel: true,
+      enableBoosts: true,
+      enableParachuters: true,
+      fuelRatio: 0.18,
+      boostActive: false,
+    });
+
+    expect(
+      result.collectibles.filter((collectible) => collectible.kind === "fuel" && collectible.active),
+    ).toHaveLength(1);
+    expect(result.collectibles.filter((collectible) => collectible.kind === "fuel")).toHaveLength(2);
+  });
+
   it("applies collection outcomes with rescue and fuel-top-off feedback", () => {
     const applied = applyCollectibleOutcome({
       fuel: 96,

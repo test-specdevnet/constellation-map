@@ -25,6 +25,12 @@ import {
 } from "../../lib/game/config";
 
 const STORAGE_KEY = "flux-constellation-progress-v4";
+const ALL_PLANE_SKIN_IDS: PlaneSkinId[] = [
+  "midnight-courier",
+  "sunset-scout",
+  "classic",
+  "mint-radar",
+];
 
 type QuestId = "regional-surveyor" | "rare-signal" | "runtime-rambler";
 
@@ -116,7 +122,7 @@ const defaultProgress: ProgressState = {
   inspectedRuntimeFamilies: [],
   rareArchetypeIds: [],
   completedQuestIds: [],
-  unlockedSkinIds: ["classic"],
+  unlockedSkinIds: ALL_PLANE_SKIN_IDS,
   selectedSkinId: "classic",
   playerCallsign: "Pilot",
   weeklyLeaderboards: {},
@@ -131,28 +137,28 @@ const skinCatalog: Array<{
   unlockHint: string;
 }> = [
   {
-    id: "classic",
-    label: "Classic",
-    description: "The original candy-red patrol plane.",
+    id: "midnight-courier",
+    label: "Blue",
+    description: "A bright sky-blue biplane with cool trim.",
     unlockHint: "Available from the start.",
   },
   {
     id: "sunset-scout",
-    label: "Sunset Scout",
-    description: "A warm expedition paint job for first-quest pilots.",
-    unlockHint: "Unlock by completing any quest.",
+    label: "Yellow",
+    description: "A sunny golden finish that stays sharp in the clouds.",
+    unlockHint: "Available from the start.",
+  },
+  {
+    id: "classic",
+    label: "Red",
+    description: "The original candy-red patrol plane.",
+    unlockHint: "Available from the start.",
   },
   {
     id: "mint-radar",
-    label: "Mint Radar",
-    description: "A cool radar-sweep finish for full regional coverage.",
-    unlockHint: "Unlock by visiting every region cloud.",
-  },
-  {
-    id: "midnight-courier",
-    label: "Midnight Courier",
-    description: "A deep-space livery for rare deployment hunters.",
-    unlockHint: "Unlock by completing the rare signal quest.",
+    label: "Green",
+    description: "A playful green livery with radar-inspired trim.",
+    unlockHint: "Available from the start.",
   },
 ];
 
@@ -205,7 +211,7 @@ const normalizeProgress = (input: Partial<ProgressState> | null | undefined): Pr
   inspectedRuntimeFamilies: unique(input?.inspectedRuntimeFamilies ?? []),
   rareArchetypeIds: unique(input?.rareArchetypeIds ?? []),
   completedQuestIds: unique(input?.completedQuestIds ?? []) as QuestId[],
-  unlockedSkinIds: unique(["classic", ...(input?.unlockedSkinIds ?? [])]) as PlaneSkinId[],
+  unlockedSkinIds: unique([...ALL_PLANE_SKIN_IDS, ...(input?.unlockedSkinIds ?? [])]) as PlaneSkinId[],
   selectedSkinId:
     input?.selectedSkinId && skinCatalog.some((skin) => skin.id === input.selectedSkinId)
       ? input.selectedSkinId
@@ -291,7 +297,7 @@ const buildQuestViews = (progress: ProgressState) => {
       id: "regional-surveyor",
       title: "Regional Surveyor",
       description: "Visit three unique region clouds.",
-      reward: "Unlocks early hangar prestige.",
+      reward: "Adds a survey badge to your explorer log.",
       progressLabel: `${Math.min(3, progress.visitedRegionIds.length)}/3 regions`,
       complete: regionQuestComplete,
     },
@@ -299,7 +305,7 @@ const buildQuestViews = (progress: ProgressState) => {
       id: "rare-signal",
       title: "Rare Signal",
       description: "Discover two rare runtime-category archetypes.",
-      reward: "Unlocks the Midnight Courier skin.",
+      reward: "Marks you as a rare-signal scout.",
       progressLabel: `${Math.min(2, progress.rareArchetypeIds.length)}/2 rare finds`,
       complete: rareQuestComplete,
     },
@@ -307,23 +313,12 @@ const buildQuestViews = (progress: ProgressState) => {
       id: "runtime-rambler",
       title: "Runtime Rambler",
       description: "Inspect five apps spanning at least three runtime families.",
-      reward: "Boosts your explorer status.",
+      reward: "Adds a runtime rambler ribbon.",
       progressLabel: `${Math.min(5, progress.inspectedAppIds.length)}/5 apps · ${Math.min(3, progress.inspectedRuntimeFamilies.length)}/3 runtimes`,
       complete: runtimeQuestComplete,
     },
   ] satisfies QuestView[];
 };
-
-const createToast = (
-  title: string,
-  body: string,
-  tone: ProgressToast["tone"],
-): ProgressToast => ({
-  id: `${tone}:${title}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
-  title,
-  body,
-  tone,
-});
 
 const formatWeekLabel = (weekKey: string) => {
   const parsed = new Date(`${weekKey}T00:00:00`);
@@ -338,46 +333,17 @@ const formatWeekLabel = (weekKey: string) => {
 
 const reconcileProgress = (
   source: ProgressState,
-  totalRegionCount: number,
+  _totalRegionCount: number,
 ) => {
   const progress = normalizeProgress(source);
   const questViews = buildQuestViews(progress);
   const nextCompletedQuestIds = new Set(progress.completedQuestIds);
-  const nextUnlockedSkinIds = new Set(progress.unlockedSkinIds);
+  const nextUnlockedSkinIds = new Set<PlaneSkinId>(ALL_PLANE_SKIN_IDS);
   const toasts: ProgressToast[] = [];
 
   for (const quest of questViews) {
     if (quest.complete && !nextCompletedQuestIds.has(quest.id)) {
       nextCompletedQuestIds.add(quest.id);
-    }
-  }
-
-  if (nextCompletedQuestIds.size > 0) {
-    nextUnlockedSkinIds.add("sunset-scout");
-  }
-  if (totalRegionCount > 0 && progress.visitedRegionIds.length >= totalRegionCount) {
-    nextUnlockedSkinIds.add("mint-radar");
-  }
-  if (nextCompletedQuestIds.has("rare-signal")) {
-    nextUnlockedSkinIds.add("midnight-courier");
-  }
-
-  for (const skin of skinCatalog) {
-    if (skin.id === "classic") {
-      continue;
-    }
-
-    if (
-      nextUnlockedSkinIds.has(skin.id) &&
-      !progress.unlockedSkinIds.includes(skin.id)
-    ) {
-      toasts.push(
-        createToast(
-          `${skin.label} ready`,
-          "Unlocked in the hangar.",
-          "unlock",
-        ),
-      );
     }
   }
 
