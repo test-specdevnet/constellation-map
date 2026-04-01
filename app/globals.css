@@ -563,10 +563,8 @@ h3 {
   fill: rgba(117, 233, 255, 0.94);
 }
 
-.mini-map-enemy {
-  fill: rgba(255, 106, 106, 0.94);
-  stroke: rgba(36, 10, 14, 0.9);
-  stroke-width: 0.8;
+.mini-map-pickup--parachuter {
+  fill: rgba(255, 248, 182, 0.96);
 }
 
 .mini-map-label {
@@ -596,8 +594,8 @@ h3 {
   display: inline-block;
 }
 
-.mini-map-legend-dot--enemy {
-  background: rgba(255, 106, 106, 0.94);
+.mini-map-legend-dot--parachuter {
+  background: rgba(255, 248, 182, 0.96);
 }
 
 .mini-map-legend-dot--fuel {
@@ -710,18 +708,6 @@ h3 {
 
 .fuel-gauge-fill.danger {
   background: linear-gradient(90deg, #ff8a7b, #ffb176);
-}
-
-.fuel-gauge-header--sub {
-  margin-top: 8px;
-}
-
-.fuel-gauge-track--hull {
-  margin-top: 8px;
-}
-
-.fuel-gauge-fill--hull {
-  background: linear-gradient(90deg, #8ed7ff, #a8ffd7);
 }
 
 .achievement-toast {
@@ -908,27 +894,6 @@ h3 {
 
 .scene-flight-pad-btn:active {
   background: rgba(43, 97, 209, 0.55);
-}
-
-.scene-flight-pad-row--fire {
-  margin-top: 2px;
-}
-
-.scene-flight-pad-btn--fire {
-  min-width: 92px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  background: rgba(255, 173, 71, 0.35);
-  border-color: rgba(255, 214, 143, 0.34);
-}
-
-.scene-flight-pad-btn--fire::after {
-  font-size: 0.88rem;
-}
-
-.scene-flight-pad-btn--fire:active {
-  background: rgba(255, 173, 71, 0.56);
 }
 
 @media (min-width: 900px) {
