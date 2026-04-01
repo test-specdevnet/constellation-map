@@ -30,10 +30,10 @@ export const integrateFlightState = ({
   const lowQuality = qualityMode === "low";
   const baseTurnRate = lowQuality ? 2.7 : highQuality ? 5.2 : 4.2;
   const turnResponse = lowQuality ? 12 : highQuality ? 24 : 18;
-  const accel = (lowQuality ? 430 : highQuality ? 1_120 : 860) * (boostActive ? 1.35 : 1);
+  const accel = (lowQuality ? 430 : highQuality ? 1_120 : 860) * (boostActive ? 1.7 : 1);
   const brake = lowQuality ? 780 : highQuality ? 1_760 : 1_340;
   const passiveDrag = lowQuality ? 82 : highQuality ? 98 : 90;
-  const maxSpeed = (lowQuality ? 260 : highQuality ? 760 : 620) * (boostActive ? 1.28 : 1);
+  const maxSpeed = (lowQuality ? 260 : highQuality ? 760 : 620) * (boostActive ? 1.45 : 1);
   const turnInput = clamp(
     (input.turnLeft ? -1 : 0) + (input.turnRight ? 1 : 0) + input.mouseTurn,
     -1,
