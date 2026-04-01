@@ -35,7 +35,7 @@ export function DebugHud({
           <strong>{stats.counts.deployments} deployments</strong>
           <small>{stats.counts.clusters} clusters</small>
           <small>
-            {stats.counts.enemies} enemies · {stats.counts.bullets} bullets · {stats.counts.pickups} pickups
+            {stats.counts.parachuters} parachuters · {stats.counts.powerUps} power-ups
           </small>
           <small>{stats.counts.clouds} clouds</small>
         </div>
@@ -44,13 +44,13 @@ export function DebugHud({
           <span>Input</span>
           <strong>Turn {formatSigned(stats.input.turnAxis)}</strong>
           <small>Throttle {formatSigned(stats.input.throttleAxis)}</small>
-          <small>Fire {stats.input.firePressed ? "pressed" : "idle"}</small>
+          <small>Mouse-steer smoothing active</small>
         </div>
 
         <div className="debug-hud__card">
           <span>Player</span>
           <strong>{Math.round(stats.player.speed)} kt</strong>
-          <small>Hull {Math.round(stats.player.hull)} · Fuel {Math.round(stats.player.fuel)}</small>
+          <small>Fuel {Math.round(stats.player.fuel)} · Route {stats.player.distanceUnits}</small>
           <small>
             {stats.player.boostRemainingMs > 0
               ? `Boost ${(stats.player.boostRemainingMs / 1000).toFixed(1)}s`
@@ -60,7 +60,7 @@ export function DebugHud({
       </div>
 
       <p className="debug-hud__event">
-        Last pickup: {stats.lastPickupEvent ?? "none"}
+        Last collection: {stats.lastPickupEvent ?? "none"}
       </p>
     </div>
   );

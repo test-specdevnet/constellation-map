@@ -169,8 +169,9 @@ const normalizeLeaderboardEntry = (entry: Partial<LeaderboardEntry>): Leaderboar
     id: entry.id,
     callsign: typeof entry.callsign === "string" && entry.callsign.trim() ? entry.callsign.trim() : "Pilot",
     score: entry.score,
-    kills: typeof entry.kills === "number" ? entry.kills : 0,
+    rescues: typeof entry.rescues === "number" ? entry.rescues : 0,
     discoveries: typeof entry.discoveries === "number" ? entry.discoveries : 0,
+    distance: typeof entry.distance === "number" ? entry.distance : 0,
     durationMs: typeof entry.durationMs === "number" ? entry.durationMs : 0,
     weekKey: entry.weekKey,
     recordedAt: entry.recordedAt,
@@ -186,7 +187,13 @@ const normalizeLeaderboards = (
       (entries ?? [])
         .map((entry) => normalizeLeaderboardEntry(entry))
         .filter((entry): entry is LeaderboardEntry => Boolean(entry))
-        .sort((left, right) => right.score - left.score || right.kills - left.kills)
+        .sort(
+          (left, right) =>
+            right.score - left.score ||
+            right.distance - left.distance ||
+            right.discoveries - left.discoveries ||
+            right.rescues - left.rescues,
+        )
         .slice(0, 10),
     ]),
   ) as Record<string, LeaderboardEntry[]>;
@@ -216,12 +223,6 @@ const normalizeProgress = (input: Partial<ProgressState> | null | undefined): Pr
       input?.flightSettings?.quality === "auto"
         ? input.flightSettings.quality
         : DEFAULT_FLIGHT_SETTINGS.quality,
-    enemyDensity:
-      input?.flightSettings?.enemyDensity === "low" ||
-      input?.flightSettings?.enemyDensity === "medium" ||
-      input?.flightSettings?.enemyDensity === "high"
-        ? input.flightSettings.enemyDensity
-        : DEFAULT_FLIGHT_SETTINGS.enemyDensity,
     mouseSensitivity:
       typeof input?.flightSettings?.mouseSensitivity === "number"
         ? Math.max(0.2, Math.min(1.4, input.flightSettings.mouseSensitivity))
@@ -233,18 +234,10 @@ const normalizeProgress = (input: Partial<ProgressState> | null | undefined): Pr
         : DEFAULT_FLIGHT_SETTINGS.hudDensity,
   },
   featureFlags: {
-    enemyPlanes:
-      typeof input?.featureFlags?.enemyPlanes === "boolean"
-        ? input.featureFlags.enemyPlanes
-        : DEFAULT_FEATURE_FLAGS.enemyPlanes,
     fuelSystem:
       typeof input?.featureFlags?.fuelSystem === "boolean"
         ? input.featureFlags.fuelSystem
         : DEFAULT_FEATURE_FLAGS.fuelSystem,
-    combat:
-      typeof input?.featureFlags?.combat === "boolean"
-        ? input.featureFlags.combat
-        : DEFAULT_FEATURE_FLAGS.combat,
     pickups:
       typeof input?.featureFlags?.pickups === "boolean"
         ? input.featureFlags.pickups
@@ -611,8 +604,9 @@ export function ConstellationProgressProvider({
           id: `leader:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
           callsign: current.playerCallsign || "Pilot",
           score: record.score,
-          kills: record.kills,
+          rescues: record.rescues,
           discoveries: record.discoveries,
+          distance: record.distance,
           durationMs: record.durationMs,
           weekKey,
           recordedAt: record.recordedAt,
@@ -622,8 +616,9 @@ export function ConstellationProgressProvider({
           .sort(
             (left, right) =>
               right.score - left.score ||
-              right.kills - left.kills ||
-              right.discoveries - left.discoveries,
+              right.distance - left.distance ||
+              right.discoveries - left.discoveries ||
+              right.rescues - left.rescues,
           )
           .slice(0, 10);
 

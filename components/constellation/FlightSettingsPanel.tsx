@@ -6,11 +6,9 @@ import type {
   HudDensitySetting,
   QualityMode,
   QualitySetting,
-  EnemyDensitySetting,
 } from "../../lib/game/types";
 
 const qualityOptions: QualitySetting[] = ["auto", "low", "medium", "high"];
-const densityOptions: EnemyDensitySetting[] = ["low", "medium", "high"];
 const hudDensityOptions: HudDensitySetting[] = ["compact", "detailed"];
 
 const labelize = (value: string) =>
@@ -52,8 +50,8 @@ export function FlightSettingsPanel({
       <div className="flight-settings-panel__section">
         <strong>Controls</strong>
         <p>
-          Click the sky to focus flight controls. WASD or arrows steer, Space fires, scroll
-          zooms, and mouse movement softly biases turning on desktop.
+          Click the sky to focus flight controls. WASD or arrows steer, scroll zooms,
+          and mouse movement softly biases turning on desktop.
         </p>
       </div>
 
@@ -68,24 +66,6 @@ export function FlightSettingsPanel({
           }
         >
           {qualityOptions.map((option) => (
-            <option key={option} value={option}>
-              {labelize(option)}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="flight-settings-panel__field">
-        <span>Enemy density</span>
-        <select
-          value={settings.enemyDensity}
-          onChange={(event) =>
-            onUpdateSettings({
-              enemyDensity: event.target.value as EnemyDensitySetting,
-            })
-          }
-        >
-          {densityOptions.map((option) => (
             <option key={option} value={option}>
               {labelize(option)}
             </option>
@@ -130,16 +110,14 @@ export function FlightSettingsPanel({
 
       <div className="flight-settings-panel__section">
         <strong>Feature flags</strong>
-        <p>Toggle subsystems individually when isolating bugs or perf issues.</p>
+        <p>Toggle exploration systems individually when isolating bugs or perf issues.</p>
       </div>
 
       {(
         [
           ["debugHud", "Debug HUD"],
           ["fuelSystem", "Fuel system"],
-          ["pickups", "Pickups"],
-          ["combat", "Turrets / combat"],
-          ["enemyPlanes", "Enemy planes"],
+          ["pickups", "Rescue pickups"],
           ["leaderboard", "Leaderboard"],
           ["clouds", "Clouds"],
           ["deploymentClustering", "Deployment clustering"],

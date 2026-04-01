@@ -119,28 +119,15 @@ export function MiniMap({
           );
         })}
 
-        {snapshot?.miniMap.powerUps.map((pickup) => {
-          const point = project(pickup.x, pickup.y);
+        {snapshot?.miniMap.collectibles.map((collectible) => {
+          const point = project(collectible.x, collectible.y);
           return (
             <circle
-              key={pickup.id}
+              key={collectible.id}
               cx={point.x}
               cy={point.y}
-              r="3"
-              className={
-                pickup.kind === "fuel" ? "mini-map-pickup mini-map-pickup--fuel" : "mini-map-pickup mini-map-pickup--boost"
-              }
-            />
-          );
-        })}
-
-        {snapshot?.miniMap.enemies.map((enemy) => {
-          const point = project(enemy.x, enemy.y);
-          return (
-            <polygon
-              key={enemy.id}
-              points={`${point.x},${point.y - 4} ${point.x + 4},${point.y} ${point.x},${point.y + 4} ${point.x - 4},${point.y}`}
-              className="mini-map-enemy"
+              r={collectible.kind === "parachuter" ? 4 : 3}
+              className={`mini-map-pickup mini-map-pickup--${collectible.kind}`}
             />
           );
         })}
@@ -150,7 +137,7 @@ export function MiniMap({
 
       {mode === "detailed" ? (
         <div className="mini-map-legend" aria-label="Mini-map legend">
-          <span><i className="mini-map-legend-dot mini-map-legend-dot--enemy" />Enemy</span>
+          <span><i className="mini-map-legend-dot mini-map-legend-dot--parachuter" />Rescue</span>
           <span><i className="mini-map-legend-dot mini-map-legend-dot--fuel" />Fuel</span>
           <span><i className="mini-map-legend-dot mini-map-legend-dot--boost" />Boost</span>
           <span><i className="mini-map-legend-dot mini-map-legend-dot--cluster" />Cluster</span>

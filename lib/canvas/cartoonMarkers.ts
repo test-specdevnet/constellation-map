@@ -237,14 +237,20 @@ type CloudSeed = {
 
 const CLOUD_SEEDS: CloudSeed[] = [
   { x: 0.08, y: 0.12, s: 0.07, layer: 0, drift: 0.78 },
+  { x: 0.18, y: 0.08, s: 0.054, layer: 0, drift: 0.72 },
   { x: 0.28, y: 0.18, s: 0.082, layer: 0, drift: 0.84 },
+  { x: 0.42, y: 0.15, s: 0.064, layer: 0, drift: 0.76 },
   { x: 0.58, y: 0.1, s: 0.076, layer: 0, drift: 0.74 },
   { x: 0.84, y: 0.16, s: 0.068, layer: 0, drift: 0.8 },
   { x: 0.14, y: 0.34, s: 0.104, layer: 1, drift: 1 },
+  { x: 0.36, y: 0.28, s: 0.094, layer: 1, drift: 0.92 },
   { x: 0.48, y: 0.3, s: 0.118, layer: 1, drift: 1.06 },
   { x: 0.76, y: 0.38, s: 0.1, layer: 1, drift: 0.96 },
+  { x: 0.9, y: 0.32, s: 0.088, layer: 1, drift: 1.02 },
   { x: 0.24, y: 0.54, s: 0.132, layer: 2, drift: 1.18 },
+  { x: 0.46, y: 0.58, s: 0.118, layer: 2, drift: 1.08 },
   { x: 0.64, y: 0.5, s: 0.122, layer: 2, drift: 1.1 },
+  { x: 0.82, y: 0.62, s: 0.116, layer: 2, drift: 1.16 },
 ];
 
 export const getParallaxCloudCount = (opts?: { layerMin?: number; layerMax?: number }) => {
@@ -259,27 +265,27 @@ const CLOUD_LAYER_STYLE = {
     bobAmount: 2.8,
     speed: 0.008,
     alpha: 0.72,
-    shadowAlpha: 0.09,
+    shadowAlpha: 0.08,
     scale: 0.86,
-    outline: "rgba(224, 238, 250, 0.92)",
+    outline: "rgba(236, 244, 252, 0.52)",
   },
   1: {
     parallax: 0.014,
     bobAmount: 3.6,
     speed: 0.011,
     alpha: 0.84,
-    shadowAlpha: 0.12,
+    shadowAlpha: 0.1,
     scale: 1,
-    outline: "rgba(214, 232, 248, 0.94)",
+    outline: "rgba(228, 239, 250, 0.56)",
   },
   2: {
     parallax: 0.022,
     bobAmount: 4.6,
     speed: 0.014,
     alpha: 0.92,
-    shadowAlpha: 0.14,
+    shadowAlpha: 0.12,
     scale: 1.12,
-    outline: "rgba(208, 228, 247, 0.96)",
+    outline: "rgba(225, 238, 250, 0.58)",
   },
 } as const;
 
@@ -287,13 +293,17 @@ const buildCloudPuffs = (seed: string): Puff[] => {
   const hash = hashString(seed);
   const spread = 0.04 + (hash % 7) * 0.01;
   const dome = 0.02 + ((hash >>> 3) % 5) * 0.015;
+  const loft = 0.018 + ((hash >>> 6) % 6) * 0.012;
+  const tail = 0.03 + ((hash >>> 9) % 5) * 0.015;
   return [
-    { bx: -0.6 - spread, by: 0.07, br: 0.28 },
-    { bx: -0.26, by: -0.14 - dome, br: 0.34 },
-    { bx: 0.04, by: -0.19 - dome * 0.6, br: 0.39 },
-    { bx: 0.34 + spread * 0.5, by: -0.06, br: 0.29 },
-    { bx: 0.62 + spread, by: 0.08, br: 0.23 },
-    { bx: 0.06, by: 0.16, br: 0.28 },
+    { bx: -0.72 - spread, by: 0.09 + tail * 0.3, br: 0.22 },
+    { bx: -0.48 - spread * 0.45, by: -0.02, br: 0.3 },
+    { bx: -0.22, by: -0.15 - dome, br: 0.36 },
+    { bx: 0.06, by: -0.24 - loft, br: 0.42 },
+    { bx: 0.34 + spread * 0.35, by: -0.1 - dome * 0.3, br: 0.34 },
+    { bx: 0.6 + spread * 0.8, by: 0.05, br: 0.24 },
+    { bx: 0.18, by: 0.14 + tail * 0.2, br: 0.26 },
+    { bx: -0.08, by: 0.18 + tail * 0.1, br: 0.24 },
   ];
 };
 
@@ -314,8 +324,8 @@ const getCloudAtlas = (
   }
 
   const canvas = document.createElement("canvas");
-  canvas.width = 240;
-  canvas.height = 148;
+  canvas.width = 280;
+  canvas.height = 172;
   const atlas = canvas.getContext("2d");
   if (!atlas) {
     return null;
@@ -326,12 +336,12 @@ const getCloudAtlas = (
   const noise = hashString(seed);
 
   atlas.translate(canvas.width / 2, canvas.height / 2);
-  atlas.scale(72 * style.scale, 72 * style.scale);
+  atlas.scale(74 * style.scale, 74 * style.scale);
   atlas.globalAlpha = style.alpha;
 
   atlas.save();
-  atlas.translate(0.05, 0.22);
-  atlas.scale(1.08, 0.45);
+  atlas.translate(0.04, 0.24);
+  atlas.scale(1.14, 0.42);
   for (const puff of puffs) {
     atlas.beginPath();
     atlas.arc(puff.bx, puff.by, puff.br, 0, Math.PI * 2);
@@ -383,10 +393,20 @@ const getCloudAtlas = (
 
   atlas.save();
   atlas.globalAlpha = 0.46;
-  for (const puff of puffs.slice(1, 4)) {
+  for (const puff of puffs.slice(1, 6)) {
     atlas.beginPath();
     atlas.arc(puff.bx - 0.05, puff.by - puff.br * 0.35, puff.br * 0.48, 0, Math.PI * 2);
     atlas.fillStyle = "rgba(255,255,255,0.92)";
+    atlas.fill();
+  }
+  atlas.restore();
+
+  atlas.save();
+  atlas.globalAlpha = 0.12;
+  for (const puff of puffs.slice(0, 5)) {
+    atlas.beginPath();
+    atlas.arc(puff.bx + 0.08, puff.by + puff.br * 0.22, puff.br * 0.62, 0, Math.PI * 2);
+    atlas.fillStyle = "rgba(180, 202, 224, 0.7)";
     atlas.fill();
   }
   atlas.restore();
@@ -504,6 +524,7 @@ export function drawTopDownBiplane(
   bankRad: number,
   timestamp: number,
   skin: PlaneSkinPalette = planeSkinPalettes.classic,
+  scale = 1,
 ) {
   const prop = (timestamp / 32) % (Math.PI * 2);
   const bob = Math.sin(timestamp / 520) * 0.45;
@@ -512,6 +533,7 @@ export function drawTopDownBiplane(
   ctx.translate(snapPixel(cx), snapPixel(cy + bob));
   ctx.rotate(headingRad);
   ctx.rotate(clamp(bankRad, -0.45, 0.45));
+  ctx.scale(scale, scale);
 
   const { body, bodyHi, wing, wingHi, trim, cockpit, prop: propColor, propGlow } = skin;
   const outline = "#0a0810";
@@ -678,17 +700,25 @@ export function drawFuelCanPickup(
   ctx.lineWidth = 2.2;
   ctx.strokeStyle = "#11203a";
 
+  const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, 28);
+  glow.addColorStop(0, "rgba(255, 107, 99, 0.34)");
+  glow.addColorStop(1, "rgba(255, 107, 99, 0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(0, 0, 28, 0, Math.PI * 2);
+  ctx.fill();
+
   const body = ctx.createLinearGradient(-12, -10, 14, 16);
-  body.addColorStop(0, "#ffb259");
-  body.addColorStop(0.55, "#f17a2b");
-  body.addColorStop(1, "#ca4c12");
+  body.addColorStop(0, "#ff7e75");
+  body.addColorStop(0.55, "#ee433a");
+  body.addColorStop(1, "#b5201c");
   ctx.fillStyle = body;
   ctx.beginPath();
   ctx.roundRect(-11, -14, 22, 28, 6);
   ctx.fill();
   ctx.stroke();
 
-  ctx.fillStyle = "rgba(255, 236, 203, 0.86)";
+  ctx.fillStyle = "rgba(255, 233, 223, 0.86)";
   ctx.beginPath();
   ctx.roundRect(-5, -6, 10, 11, 4);
   ctx.fill();
@@ -699,7 +729,7 @@ export function drawFuelCanPickup(
   ctx.lineTo(8, -21);
   ctx.lineTo(10, -14);
   ctx.closePath();
-  ctx.fillStyle = "#f8ca64";
+  ctx.fillStyle = "#ffd867";
   ctx.fill();
   ctx.stroke();
 
@@ -728,6 +758,14 @@ export function drawSpeedBoostPickup(
   ctx.lineWidth = 2.2;
   ctx.strokeStyle = "#11203a";
 
+  const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, 30);
+  glow.addColorStop(0, "rgba(255, 226, 110, 0.4)");
+  glow.addColorStop(1, "rgba(255, 226, 110, 0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(0, 0, 30, 0, Math.PI * 2);
+  ctx.fill();
+
   ctx.fillStyle = "#ffe36e";
   ctx.beginPath();
   ctx.moveTo(-3, -17);
@@ -750,21 +788,81 @@ export function drawSpeedBoostPickup(
   ctx.restore();
 }
 
-export function drawProjectile(
+export function drawParachuterPickup(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
-  radius: number,
-  owner: "player" | "enemy",
+  scale: number,
+  sway: number,
 ) {
   ctx.save();
   ctx.translate(snapPixel(x), snapPixel(y));
-  ctx.fillStyle = owner === "player" ? "#fff3ae" : "#ff7a7a";
-  ctx.strokeStyle = owner === "player" ? "#11203a" : "#2f0910";
-  ctx.lineWidth = 1.8;
+  ctx.rotate(sway * 0.16);
+  ctx.scale(scale, scale);
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+
+  const glow = ctx.createRadialGradient(0, -4, 2, 0, -4, 34);
+  glow.addColorStop(0, "rgba(135, 228, 255, 0.34)");
+  glow.addColorStop(1, "rgba(135, 228, 255, 0)");
+  ctx.fillStyle = glow;
   ctx.beginPath();
-  ctx.arc(0, 0, radius, 0, Math.PI * 2);
+  ctx.arc(0, -4, 34, 0, Math.PI * 2);
   ctx.fill();
+
+  ctx.strokeStyle = "#10203d";
+  ctx.lineWidth = 2;
+
+  const canopy = ctx.createLinearGradient(-14, -24, 14, -8);
+  canopy.addColorStop(0, "#6ee7ff");
+  canopy.addColorStop(0.5, "#87c6ff");
+  canopy.addColorStop(1, "#5a8ef3");
+  ctx.fillStyle = canopy;
+  ctx.beginPath();
+  ctx.moveTo(-16, -8);
+  ctx.quadraticCurveTo(0, -30, 16, -8);
+  ctx.lineTo(11, -4);
+  ctx.quadraticCurveTo(0, -15, -11, -4);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.strokeStyle = "rgba(232, 246, 255, 0.96)";
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(-10, -6);
+  ctx.lineTo(-5, 8);
+  ctx.moveTo(-4, -8);
+  ctx.lineTo(-2, 8);
+  ctx.moveTo(4, -8);
+  ctx.lineTo(2, 8);
+  ctx.moveTo(10, -6);
+  ctx.lineTo(5, 8);
+  ctx.stroke();
+
+  ctx.fillStyle = "#203968";
+  ctx.beginPath();
+  ctx.arc(0, 11, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#ffd9b2";
+  ctx.beginPath();
+  ctx.arc(0, 3, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#10203d";
+  ctx.lineWidth = 1.6;
+  ctx.stroke();
+
+  ctx.strokeStyle = "#10203d";
+  ctx.beginPath();
+  ctx.moveTo(-4, 16);
+  ctx.lineTo(-7, 24);
+  ctx.moveTo(4, 16);
+  ctx.lineTo(7, 24);
+  ctx.moveTo(-5, 11);
+  ctx.lineTo(-10, 16);
+  ctx.moveTo(5, 11);
+  ctx.lineTo(10, 16);
   ctx.stroke();
   ctx.restore();
 }
