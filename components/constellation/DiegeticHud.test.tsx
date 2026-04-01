@@ -27,27 +27,24 @@ describe("DiegeticHud", () => {
       runId: "run-1",
       fuel: 78,
       fuelMax: 100,
-      hull: 66,
-      hullMax: 100,
       boostRemainingMs: 4000,
-      repairCooldownMs: 0,
-      activeBoostLabel: "Speed Boost!",
-      score: 900,
-      kills: 3,
+      activeBoostLabel: "Tailwind boost",
+      score: 36,
       discoveries: 8,
+      rescues: 3,
+      distance: 1800,
+      distanceUnits: 25,
       state: "flying" as const,
-      crashReason: null,
+      endReason: null,
       durationMs: 12_000,
-      enemyCount: 2,
       fuelPackCount: 1,
       boostPackCount: 1,
-      leaderboardWeek: "2026-03-30",
+      parachuterCount: 2,
       qualityMode: "high" as const,
       flags: DEFAULT_FEATURE_FLAGS,
       miniMap: {
         clusters: [],
-        enemies: [],
-        powerUps: [],
+        collectibles: [],
       },
     },
     selectedSkinLabel: "Classic",
@@ -55,7 +52,7 @@ describe("DiegeticHud", () => {
     totalSkinCount: 4,
   };
 
-  it("renders the extended gameplay stats in detailed mode", () => {
+  it("renders the exploration stats in detailed mode", () => {
     render(
       <DiegeticHud
         {...baseProps}
@@ -63,18 +60,18 @@ describe("DiegeticHud", () => {
       />,
     );
 
-    expect(screen.getByText("Hull")).toBeInTheDocument();
-    expect(screen.getByText("Fuel")).toBeInTheDocument();
-    expect(screen.getByText("Enemies")).toBeInTheDocument();
-    expect(screen.getByText("Speed Boost!")).toBeInTheDocument();
+    expect(screen.getByText("Route")).toBeInTheDocument();
+    expect(screen.getByText("Deployments")).toBeInTheDocument();
+    expect(screen.getByText("Rescues")).toBeInTheDocument();
+    expect(screen.getByText("Tailwind boost")).toBeInTheDocument();
   });
 
   it("collapses the HUD in compact mode", () => {
     render(<DiegeticHud {...baseProps} mode="compact" />);
 
-    expect(screen.getByText("Ship")).toBeInTheDocument();
+    expect(screen.getByText("Finds")).toBeInTheDocument();
     expect(screen.getByText("Status")).toBeInTheDocument();
-    expect(screen.queryByText("Enemies")).not.toBeInTheDocument();
-    expect(screen.getByText("4s boost | 2 hostiles")).toBeInTheDocument();
+    expect(screen.queryByText("Deployments")).not.toBeInTheDocument();
+    expect(screen.getByText("4s boost")).toBeInTheDocument();
   });
 });
