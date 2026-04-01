@@ -23,17 +23,10 @@ export function DiegeticHud({
   const zoomPct = Math.round(((telemetry?.camera.zoom ?? ZOOM_BASELINE) / ZOOM_BASELINE) * 100);
   const speed = Math.round(telemetry?.plane.speed ?? 0);
   const score = snapshot?.score ?? 0;
-  const kills = snapshot?.kills ?? 0;
-  const hullPct = Math.round(
-    ((snapshot?.hull ?? snapshot?.hullMax ?? 100) / Math.max(snapshot?.hullMax ?? 100, 1)) *
-      100,
-  );
-  const fuelPct = Math.round(
-    ((snapshot?.fuel ?? snapshot?.fuelMax ?? 100) / Math.max(snapshot?.fuelMax ?? 100, 1)) *
-      100,
-  );
+  const distance = snapshot?.distanceUnits ?? 0;
+  const discoveries = snapshot?.discoveries ?? 0;
+  const rescues = snapshot?.rescues ?? 0;
   const boostSeconds = Math.ceil((snapshot?.boostRemainingMs ?? 0) / 1000);
-  const repairSeconds = Math.ceil((snapshot?.repairCooldownMs ?? 0) / 1000);
 
   if (mode === "compact") {
     return (
@@ -44,22 +37,22 @@ export function DiegeticHud({
           <small>Lens {zoomPct}%</small>
         </div>
         <div className="hud-chip">
-          <span>Run</span>
-          <strong>{score.toLocaleString()} pts</strong>
-          <small>{kills} takedowns</small>
+          <span>Route</span>
+          <strong>{distance}</strong>
+          <small>{score.toLocaleString()} expedition score</small>
         </div>
         <div className="hud-chip">
-          <span>Ship</span>
-          <strong>Hull {hullPct}%</strong>
-          <small>Fuel {fuelPct}%</small>
+          <span>Finds</span>
+          <strong>{discoveries} deployments</strong>
+          <small>{rescues} rescues</small>
         </div>
         <div className="hud-chip">
           <span>Status</span>
           <strong>{snapshot?.activeBoostLabel ?? "Cruise"}</strong>
           <small>
             {boostSeconds > 0
-              ? `${boostSeconds}s boost | ${snapshot?.enemyCount ?? 0} hostiles`
-              : `${selectedSkinLabel} | ${snapshot?.enemyCount ?? 0} hostiles`}
+              ? `${boostSeconds}s boost`
+              : `${selectedSkinLabel} | ${unlockedSkinCount}/${totalSkinCount}`}
           </small>
         </div>
       </div>
@@ -74,19 +67,24 @@ export function DiegeticHud({
         <small>Lens {zoomPct}%</small>
       </div>
       <div className="hud-chip">
-        <span>Run</span>
-        <strong>{score.toLocaleString()} pts</strong>
-        <small>{kills} takedowns</small>
+        <span>Route</span>
+        <strong>{distance}</strong>
+        <small>Distance flown</small>
       </div>
       <div className="hud-chip">
-        <span>Hull</span>
-        <strong>{hullPct}%</strong>
-        <small>{repairSeconds > 0 ? `Repair in ${repairSeconds}s` : "Repair active"}</small>
+        <span>Score</span>
+        <strong>{score.toLocaleString()}</strong>
+        <small>Distance + discoveries + rescues</small>
       </div>
       <div className="hud-chip">
-        <span>Fuel</span>
-        <strong>{fuelPct}%</strong>
-        <small>{Math.round(snapshot?.fuel ?? 0)} units</small>
+        <span>Deployments</span>
+        <strong>{discoveries}</strong>
+        <small>Buoys discovered</small>
+      </div>
+      <div className="hud-chip">
+        <span>Rescues</span>
+        <strong>{rescues}</strong>
+        <small>Parachuters collected</small>
       </div>
       <div className="hud-chip">
         <span>Boost</span>
@@ -96,11 +94,6 @@ export function DiegeticHud({
             ? `${boostSeconds}s remaining`
             : `${selectedSkinLabel} | ${unlockedSkinCount}/${totalSkinCount}`}
         </small>
-      </div>
-      <div className="hud-chip">
-        <span>Enemies</span>
-        <strong>{snapshot?.enemyCount ?? 0}</strong>
-        <small>{snapshot?.qualityMode ?? "high"} quality</small>
       </div>
     </div>
   );

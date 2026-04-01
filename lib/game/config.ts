@@ -1,19 +1,15 @@
 export type QualityMode = "low" | "medium" | "high";
 export type QualitySetting = "auto" | QualityMode;
-export type EnemyDensitySetting = "low" | "medium" | "high";
 export type HudDensitySetting = "compact" | "detailed";
 
 export type FlightSettings = {
   quality: QualitySetting;
-  enemyDensity: EnemyDensitySetting;
   mouseSensitivity: number;
   hudDensity: HudDensitySetting;
 };
 
 export type FeatureFlags = {
-  enemyPlanes: boolean;
   fuelSystem: boolean;
-  combat: boolean;
   pickups: boolean;
   leaderboard: boolean;
   clouds: boolean;
@@ -23,7 +19,6 @@ export type FeatureFlags = {
 
 export const DEFAULT_FLIGHT_SETTINGS: FlightSettings = {
   quality: "auto",
-  enemyDensity: "medium",
   mouseSensitivity: 0.72,
   hudDensity: "compact",
 };
@@ -45,9 +40,7 @@ const readBooleanEnvFlag = (name: string, fallback: boolean) => {
 };
 
 export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
-  enemyPlanes: readBooleanEnvFlag("NEXT_PUBLIC_FC_FLAG_ENEMIES", true),
   fuelSystem: readBooleanEnvFlag("NEXT_PUBLIC_FC_FLAG_FUEL", true),
-  combat: readBooleanEnvFlag("NEXT_PUBLIC_FC_FLAG_COMBAT", true),
   pickups: readBooleanEnvFlag("NEXT_PUBLIC_FC_FLAG_PICKUPS", true),
   leaderboard: readBooleanEnvFlag("NEXT_PUBLIC_FC_FLAG_LEADERBOARD", true),
   clouds: readBooleanEnvFlag("NEXT_PUBLIC_FC_FLAG_CLOUDS", true),
@@ -62,38 +55,24 @@ export const GAME_CONFIG = {
   zoomMin: 0.08,
   zoomMax: 0.46,
   fuelMax: 100,
-  hullMax: 100,
   fuelPickupAmount: 35,
-  boostDurationMs: 7_000,
-  discoveryScore: 45,
-  enemyScore: 180,
-  enemyProjectileDamage: 18,
-  collisionDamage: 35,
-  hullRepairDelayMs: 4_000,
-  hullRepairPerSecond: 8,
+  boostDurationMs: 8_000,
+  distanceUnitScale: 180,
+  discoveryRadius: 220,
+  runCompleteDelayMs: 1_600,
   speedThresholdForFuelDrain: 40,
   baseFuelDrainPerSecond: 1.05,
   maxFuelDrainPerSecond: 3.1,
-  enemySpawnDistanceMin: 1_400,
-  enemySpawnDistanceMax: 2_200,
-  enemySpawnConeDegrees: 140,
-  enemyFireRange: 1_300,
-  enemyAimWindowDegrees: 18,
-  enemyDespawnDistance: 2_500,
-  enemyMaxAgeMs: 45_000,
-  playerProjectileSpeed: 780,
-  enemyProjectileSpeed: 460,
-  playerProjectileTtlMs: 1_150,
-  enemyProjectileTtlMs: 1_600,
   maxFuelPickups: 3,
   maxBoostPickups: 2,
+  maxParachuters: 4,
   fuelPickupRespawnMs: 12_000,
   boostPickupRespawnMs: 16_000,
+  parachuterRespawnMs: 10_500,
   fuelPickupTtlMs: 34_000,
   boostPickupTtlMs: 28_000,
-  playerPickupRadius: 34,
-  playerCollisionRadius: 28,
-  initialEnemySpawnMaxMs: 8_000,
+  parachuterTtlMs: 32_000,
+  playerPickupRadius: 46,
   localSystemRadius: 1_720,
   detailSystemRadius: 1_050,
   maxVisibleSystems: {
@@ -153,6 +132,9 @@ export const getWeeklyLeaderboardKey = (date = new Date()) => {
   return copy.toISOString().slice(0, 10);
 };
 
+export const toDistanceUnits = (worldDistance: number) =>
+  Math.max(0, Math.round(worldDistance / GAME_CONFIG.distanceUnitScale));
+
 export const resolveQualityMode = ({
   settings,
   reducedMotion = false,
@@ -177,64 +159,4 @@ export const resolveQualityMode = ({
   }
 
   return "high";
-};
-
-const enemyDensityMultiplier: Record<EnemyDensitySetting, number> = {
-  low: 0.7,
-  medium: 1,
-  high: 1.2,
-};
-
-const qualityEnemyMultiplier: Record<QualityMode, number> = {
-  low: 0.66,
-  medium: 0.86,
-  high: 1,
-};
-
-export const getEnemyCap = ({
-  elapsedMs,
-  score,
-  qualityMode,
-  enemyDensity,
-}: {
-  elapsedMs: number;
-  score: number;
-  qualityMode: QualityMode;
-  enemyDensity: EnemyDensitySetting;
-}) => {
-  let cap = 4;
-  if (elapsedMs >= 180_000 || score >= 3_000) {
-    cap = 8;
-  } else if (elapsedMs >= 60_000 || score >= 1_200) {
-    cap = 6;
-  }
-
-  return Math.max(
-    1,
-    Math.round(cap * qualityEnemyMultiplier[qualityMode] * enemyDensityMultiplier[enemyDensity]),
-  );
-};
-
-export const getEnemySpawnDelayMs = ({
-  elapsedMs,
-  score,
-  qualityMode,
-  seed,
-}: {
-  elapsedMs: number;
-  score: number;
-  qualityMode: QualityMode;
-  seed: string;
-}) => {
-  const rng = makeRng(seed);
-  const intensity = clamp(elapsedMs / 180_000 + score / 4_800, 0, 1);
-  const qualityBias = qualityMode === "high" ? -350 : qualityMode === "medium" ? 0 : 420;
-  const minDelay = 2_400 + qualityBias;
-  const maxDelay = 5_600 + qualityBias;
-  const delay = randomBetween(
-    rng,
-    minDelay,
-    maxDelay - (maxDelay - minDelay) * intensity,
-  );
-  return Math.max(2_600, Math.round(delay));
 };

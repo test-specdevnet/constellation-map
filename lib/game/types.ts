@@ -1,6 +1,5 @@
 import type { AppSystem, Star } from "../types/star";
 import type {
-  EnemyDensitySetting,
   FeatureFlags,
   FlightSettings,
   HudDensitySetting,
@@ -9,7 +8,6 @@ import type {
 } from "./config";
 
 export type {
-  EnemyDensitySetting,
   FeatureFlags,
   FlightSettings,
   HudDensitySetting,
@@ -17,11 +15,10 @@ export type {
   QualitySetting,
 };
 
-export type PickupKind = "fuel" | "boost";
-export type PickupSpawnSource = "flight-path" | "near-system";
-export type ProjectileOwner = "player" | "enemy";
-export type RunState = "flying" | "crashing" | "crashed";
-export type EffectKind = "tracer" | "muzzle" | "impact" | "explosion";
+export type CollectibleKind = "fuel" | "boost" | "parachuter";
+export type CollectibleSpawnSource = "flight-path" | "near-system" | "rescue-lane";
+export type RunState = "flying" | "landing" | "landed";
+export type EffectKind = "trail" | "pulse" | "sparkle";
 
 export type FlightState = {
   x: number;
@@ -36,13 +33,12 @@ export type FlightInputState = {
   brake: boolean;
   turnLeft: boolean;
   turnRight: boolean;
-  fire: boolean;
   mouseTurn: number;
 };
 
 export type Collectible = {
   id: string;
-  kind: PickupKind;
+  kind: CollectibleKind;
   x: number;
   y: number;
   radius: number;
@@ -52,35 +48,8 @@ export type Collectible = {
   spawnedAtMs: number;
   respawnAtMs: number;
   ttlMs: number;
-  source: PickupSpawnSource;
+  source: CollectibleSpawnSource;
   active: boolean;
-};
-
-export type EnemyPlane = {
-  id: string;
-  x: number;
-  y: number;
-  heading: number;
-  speed: number;
-  fireCooldownMs: number;
-  ageMs: number;
-  radius: number;
-  turnRate: number;
-};
-
-export type Projectile = {
-  id: string;
-  owner: ProjectileOwner;
-  prevX: number;
-  prevY: number;
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  ttlMs: number;
-  radius: number;
-  damage: number;
-  heading: number;
 };
 
 export type VisualEffect = {
@@ -116,8 +85,9 @@ export type LeaderboardEntry = {
   id: string;
   callsign: string;
   score: number;
-  kills: number;
+  rescues: number;
   discoveries: number;
+  distance: number;
   durationMs: number;
   weekKey: string;
   recordedAt: string;
@@ -125,8 +95,9 @@ export type LeaderboardEntry = {
 
 export type RunRecord = {
   score: number;
-  kills: number;
+  rescues: number;
   discoveries: number;
+  distance: number;
   durationMs: number;
   weekKey: string;
   recordedAt: string;
@@ -137,23 +108,18 @@ export type GameState = {
   state: RunState;
   fuel: number;
   fuelMax: number;
-  hull: number;
-  hullMax: number;
   boostUntilMs: number;
   score: number;
-  kills: number;
+  distance: number;
+  distanceUnits: number;
+  rescues: number;
   discoveries: Set<string>;
-  crashReason: string | null;
-  crashStartedAtMs: number | null;
-  lastDamageAtMs: number;
+  endReason: string | null;
+  landingStartedAtMs: number | null;
   runStartedAtMs: number;
   collectibles: Collectible[];
-  enemies: EnemyPlane[];
-  projectiles: Projectile[];
   effects: VisualEffect[];
-  nextEnemySpawnAtMs: number;
   spawnCounter: number;
-  playerFireCooldownMs: number;
   runRecorded: boolean;
 };
 
@@ -161,27 +127,24 @@ export type GameSessionSnapshot = {
   runId: string;
   fuel: number;
   fuelMax: number;
-  hull: number;
-  hullMax: number;
   boostRemainingMs: number;
-  repairCooldownMs: number;
   activeBoostLabel: string | null;
   score: number;
-  kills: number;
   discoveries: number;
+  rescues: number;
+  distance: number;
+  distanceUnits: number;
   state: RunState;
-  crashReason: string | null;
+  endReason: string | null;
   durationMs: number;
-  enemyCount: number;
   fuelPackCount: number;
   boostPackCount: number;
-  leaderboardWeek: string;
+  parachuterCount: number;
   qualityMode: QualityMode;
   flags: FeatureFlags;
   miniMap: {
     clusters: Array<{ id: string; x: number; y: number; count: number }>;
-    enemies: Array<{ id: string; x: number; y: number }>;
-    powerUps: Array<{ id: string; x: number; y: number; kind: PickupKind }>;
+    collectibles: Array<{ id: string; x: number; y: number; kind: CollectibleKind }>;
   };
 };
 
@@ -192,21 +155,19 @@ export type DebugHudSnapshot = {
   counts: {
     deployments: number;
     clusters: number;
-    enemies: number;
-    bullets: number;
-    pickups: number;
+    parachuters: number;
+    powerUps: number;
     clouds: number;
   };
   input: {
     turnAxis: number;
     throttleAxis: number;
-    firePressed: boolean;
   };
   player: {
     speed: number;
-    hull: number;
     fuel: number;
     boostRemainingMs: number;
+    distanceUnits: number;
   };
   lastPickupEvent: string | null;
 };
