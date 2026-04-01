@@ -17,10 +17,12 @@ export function FuelGauge({
   const isCritical = pct <= CRITICAL_FUEL_THRESHOLD;
   const isWarning = !isCritical && pct <= WARNING_FUEL_THRESHOLD;
   const fuelState = isCritical ? "critical" : isWarning ? "warning" : "safe";
-  const statusLabel = isCritical ? "LOW FUEL" : isWarning ? "Fuel dropping" : "Fuel stable";
+  const statusLabel = isCritical ? "LOW FUEL" : isWarning ? "Fuel dropping" : "Reserve healthy";
   const supportLabel =
-    snapshot?.state === "landing"
-      ? "Engine out glide"
+    snapshot?.state === "landed"
+      ? "Restart from hub"
+      : snapshot?.state === "landing"
+        ? "Engine out glide"
       : boostSeconds > 0
         ? `Boost ${boostSeconds}s`
         : "Collect red fuel cans";
@@ -43,7 +45,13 @@ export function FuelGauge({
       </div>
       <div className="fuel-gauge-meta">
         <span>{supportLabel}</span>
-        <span>{snapshot?.state === "landing" ? "Crash imminent" : "Updates live"}</span>
+        <span>
+          {snapshot?.state === "landed"
+            ? "Run ended"
+            : snapshot?.state === "landing"
+              ? "Crash imminent"
+              : "Updates live"}
+        </span>
       </div>
       {isCritical ? <div className="fuel-gauge-alert">LOW FUEL</div> : null}
     </div>

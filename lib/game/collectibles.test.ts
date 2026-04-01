@@ -5,8 +5,63 @@ import {
 } from "./collectibles";
 import { GAME_CONFIG } from "./config";
 
+const normalizeAngle = (value: number) => {
+  let angle = value;
+  while (angle > Math.PI) angle -= Math.PI * 2;
+  while (angle < -Math.PI) angle += Math.PI * 2;
+  return angle;
+};
+
 describe("collectibles", () => {
-  it("maintains a lighter mix of parachuters and supplies", () => {
+  it("spawns a single fair fuel pickup when reserves dip", () => {
+    const plane = { x: 0, y: 0, heading: 0, speed: 220, angVel: 0 };
+    const result = maintainCollectibles({
+      collectibles: [],
+      bounds: {
+        minX: -2_000,
+        minY: -2_000,
+        maxX: 2_000,
+        maxY: 2_000,
+        width: 4_000,
+        height: 4_000,
+      },
+      plane,
+      anchorSystems: [{ x: 180, y: 120 }, { x: -240, y: -160 }],
+      nowMs: 2_000,
+      spawnCounter: 0,
+      enableFuel: true,
+      enableBoosts: true,
+      enableParachuters: true,
+      fuelRatio: 0.24,
+      boostActive: false,
+    });
+    const activeFuel = result.collectibles.find(
+      (collectible) => collectible.active && collectible.kind === "fuel",
+    );
+
+    expect(activeFuel).toBeDefined();
+    expect(activeFuel?.source).toBe("near-system");
+    expect(
+      Math.abs(
+        normalizeAngle(
+          Math.atan2((activeFuel?.y ?? 0) - plane.y, (activeFuel?.x ?? 0) - plane.x) -
+            plane.heading,
+        ),
+      ),
+    ).toBeGreaterThanOrEqual(GAME_CONFIG.fuelPickupSpawnAvoidanceRadians);
+    expect(
+      result.collectibles.filter(
+        (collectible) => collectible.active && collectible.kind === "boost",
+      ),
+    ).toHaveLength(GAME_CONFIG.boostPickupActiveCap);
+    expect(
+      result.collectibles.filter(
+        (collectible) => collectible.active && collectible.kind === "parachuter",
+      ),
+    ).toHaveLength(GAME_CONFIG.maxParachuters);
+  });
+
+  it("waits to surface fuel until the reserve actually drops", () => {
     const result = maintainCollectibles({
       collectibles: [],
       bounds: {
@@ -24,23 +79,13 @@ describe("collectibles", () => {
       enableFuel: true,
       enableBoosts: true,
       enableParachuters: true,
-      fuelRatio: 0.24,
+      fuelRatio: 0.92,
       boostActive: false,
     });
 
     expect(
       result.collectibles.filter((collectible) => collectible.active && collectible.kind === "fuel"),
-    ).toHaveLength(GAME_CONFIG.fuelPickupActiveCap);
-    expect(
-      result.collectibles.filter(
-        (collectible) => collectible.active && collectible.kind === "boost",
-      ),
-    ).toHaveLength(GAME_CONFIG.boostPickupActiveCap);
-    expect(
-      result.collectibles.filter(
-        (collectible) => collectible.active && collectible.kind === "parachuter",
-      ),
-    ).toHaveLength(GAME_CONFIG.maxParachuters);
+    ).toHaveLength(0);
   });
 
   it("collects nearby parachuters, fuel, and boosts in one pass", () => {
@@ -94,6 +139,7 @@ describe("collectibles", () => {
       ],
       plane: { x: 0, y: 0, heading: 0, speed: 280, angVel: 0 },
       nowMs: 5_000,
+      fuelRatio: 0.24,
     });
 
     expect(result.fuelDelta).toBe(GAME_CONFIG.fuelPickupAmount);
@@ -105,7 +151,7 @@ describe("collectibles", () => {
     expect(result.collectibles.every((collectible) => !collectible.active)).toBe(true);
   });
 
-  it("does not immediately backfill collected fuel before its respawn timer", () => {
+  it("does not queue extra hidden fuel cans while one is already cooling down", () => {
     const result = maintainCollectibles({
       collectibles: [
         {
@@ -161,7 +207,7 @@ describe("collectibles", () => {
     expect(
       result.collectibles.filter((collectible) => collectible.kind === "fuel" && collectible.active),
     ).toHaveLength(1);
-    expect(result.collectibles.filter((collectible) => collectible.kind === "fuel")).toHaveLength(2);
+    expect(result.collectibles.filter((collectible) => collectible.kind === "fuel")).toHaveLength(1);
   });
 
   it("applies collection outcomes with rescue and fuel-top-off feedback", () => {

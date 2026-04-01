@@ -9,15 +9,19 @@ import type {
 } from "./types";
 
 const TWO_PI = Math.PI * 2;
+const FUEL_WAYPOINT_OFFSETS = [
+  { x: -1, y: 0 },
+  { x: -0.72, y: -0.72 },
+  { x: -0.72, y: 0.72 },
+  { x: 0, y: -1 },
+  { x: 0, y: 1 },
+  { x: 0.72, y: -0.72 },
+  { x: 0.72, y: 0.72 },
+  { x: 1, y: 0 },
+] as const;
 
 const distance = (left: { x: number; y: number }, right: { x: number; y: number }) =>
   Math.hypot(left.x - right.x, left.y - right.y);
-
-const respawnMsByKind: Record<CollectibleKind, number> = {
-  fuel: GAME_CONFIG.fuelPickupRespawnMs,
-  boost: GAME_CONFIG.boostPickupRespawnMs,
-  parachuter: GAME_CONFIG.parachuterRespawnMs,
-};
 
 const ttlMsByKind: Record<CollectibleKind, number> = {
   fuel: GAME_CONFIG.fuelPickupTtlMs,
@@ -37,6 +41,63 @@ const valueByKind: Record<CollectibleKind, number> = {
   parachuter: 1,
 };
 
+const getRespawnMs = ({
+  kind,
+  fuelRatio,
+}: {
+  kind: CollectibleKind;
+  fuelRatio: number;
+}) => {
+  if (kind === "fuel") {
+    return fuelRatio <= GAME_CONFIG.fuelPickupCriticalThreshold
+      ? GAME_CONFIG.fuelPickupCriticalRespawnMs
+      : GAME_CONFIG.fuelPickupCruiseRespawnMs;
+  }
+
+  return kind === "boost"
+    ? GAME_CONFIG.boostPickupRespawnMs
+    : GAME_CONFIG.parachuterRespawnMs;
+};
+
+const normalizeAngle = (value: number) => {
+  let angle = value;
+  while (angle > Math.PI) angle -= TWO_PI;
+  while (angle < -Math.PI) angle += TWO_PI;
+  return angle;
+};
+
+const isInsideSpawnBounds = (bounds: SceneBounds, point: { x: number; y: number }) =>
+  point.x >= bounds.minX + 180 &&
+  point.x <= bounds.maxX - 180 &&
+  point.y >= bounds.minY + 180 &&
+  point.y <= bounds.maxY - 180;
+
+const overlapsActiveCollectible = ({
+  candidate,
+  radius,
+  collectibles,
+}: {
+  candidate: { x: number; y: number };
+  radius: number;
+  collectibles: Collectible[];
+}) =>
+  collectibles.some(
+    (collectible) =>
+      collectible.active &&
+      distance(collectible, candidate) < collectible.radius + radius + 135,
+  );
+
+const isOutsideFlightLane = ({
+  plane,
+  candidate,
+}: {
+  plane: FlightState;
+  candidate: { x: number; y: number };
+}) =>
+  Math.abs(
+    normalizeAngle(Math.atan2(candidate.y - plane.y, candidate.x - plane.x) - plane.heading),
+  ) >= GAME_CONFIG.fuelPickupSpawnAvoidanceRadians;
+
 const getDesiredCountByKind = ({
   kind,
   fuelRatio,
@@ -48,9 +109,7 @@ const getDesiredCountByKind = ({
 }) => {
   switch (kind) {
     case "fuel":
-      return fuelRatio < GAME_CONFIG.fuelPickupLowFuelThreshold
-        ? GAME_CONFIG.fuelPickupActiveCap
-        : GAME_CONFIG.fuelPickupCruiseCap;
+      return fuelRatio <= GAME_CONFIG.fuelPickupVisibleThreshold ? 1 : 0;
     case "boost":
       return boostActive ? 0 : GAME_CONFIG.boostPickupActiveCap;
     case "parachuter":
@@ -81,6 +140,111 @@ const spawnCollectible = ({
 }): Collectible | null => {
   const rng = makeRng(seed);
   const radius = radiusByKind[kind];
+  const nextRespawnAtMs = nowMs + getRespawnMs({ kind, fuelRatio });
+
+  if (kind === "fuel") {
+    const ringDistances =
+      fuelRatio <= GAME_CONFIG.fuelPickupCriticalThreshold
+        ? [220, 280, 340]
+        : [280, 360, 440];
+    const waypointCandidates: Array<{
+      x: number;
+      y: number;
+      source: Collectible["source"];
+    }> = [];
+    const anchors = anchorSystems.length > 0 ? anchorSystems : [{ x: plane.x, y: plane.y }];
+
+    anchors.forEach((anchor, anchorIndex) => {
+      FUEL_WAYPOINT_OFFSETS.forEach((offset, offsetIndex) => {
+        const ring = ringDistances[(anchorIndex + offsetIndex) % ringDistances.length];
+        const jitter = randomBetween(rng, -28, 28);
+        const candidate = {
+          x: anchor.x + offset.x * (ring + jitter),
+          y: anchor.y + offset.y * (ring - jitter),
+        };
+        const planeDistance = distance(plane, candidate);
+        if (
+          !isInsideSpawnBounds(bounds, candidate) ||
+          planeDistance < GAME_CONFIG.fuelPickupSpawnMinDistance ||
+          planeDistance > GAME_CONFIG.fuelPickupSpawnMaxDistance ||
+          !isOutsideFlightLane({ plane, candidate }) ||
+          overlapsActiveCollectible({
+            candidate,
+            radius,
+            collectibles: existingCollectibles,
+          })
+        ) {
+          return;
+        }
+
+        waypointCandidates.push({
+          ...candidate,
+          source: anchorSystems.length > 0 ? "near-system" : "rescue-lane",
+        });
+      });
+    });
+
+    if (waypointCandidates.length === 0) {
+      const fallbackAngles = [
+        plane.heading + Math.PI,
+        plane.heading + Math.PI * 0.72,
+        plane.heading - Math.PI * 0.72,
+        plane.heading + Math.PI * 0.52,
+        plane.heading - Math.PI * 0.52,
+      ];
+
+      for (const fallbackAngle of fallbackAngles) {
+        const fallbackDistance = randomBetween(
+          rng,
+          GAME_CONFIG.fuelPickupSpawnMinDistance,
+          GAME_CONFIG.fuelPickupSpawnMaxDistance,
+        );
+        const candidate = {
+          x: plane.x + Math.cos(fallbackAngle) * fallbackDistance,
+          y: plane.y + Math.sin(fallbackAngle) * fallbackDistance,
+        };
+
+        if (
+          !isInsideSpawnBounds(bounds, candidate) ||
+          overlapsActiveCollectible({
+            candidate,
+            radius,
+            collectibles: existingCollectibles,
+          })
+        ) {
+          continue;
+        }
+
+        waypointCandidates.push({
+          ...candidate,
+          source: "flight-path",
+        });
+      }
+    }
+
+    const fuelWaypoint =
+      waypointCandidates[Math.floor(rng() * Math.max(waypointCandidates.length, 1))];
+
+    if (!fuelWaypoint) {
+      return null;
+    }
+
+    return {
+      id: `${kind}:${seed}`,
+      kind,
+      x: fuelWaypoint.x,
+      y: fuelWaypoint.y,
+      radius,
+      value: valueByKind[kind],
+      bobSeed: rng() * TWO_PI,
+      spinSeed: rng() * TWO_PI,
+      spawnedAtMs: nowMs,
+      respawnAtMs: nextRespawnAtMs,
+      ttlMs: ttlMsByKind[kind],
+      source: fuelWaypoint.source,
+      active: true,
+    };
+  }
 
   for (let attempt = 0; attempt < 48; attempt += 1) {
     const preferAnchor = anchorSystems.length > 0 && (kind === "parachuter" || rng() < 0.42);
@@ -96,9 +260,7 @@ const spawnCollectible = ({
       const offset =
         kind === "parachuter"
           ? randomBetween(rng, 140, 260)
-          : kind === "fuel"
-            ? randomBetween(rng, 180, 300)
-            : randomBetween(rng, 210, 340);
+          : randomBetween(rng, 210, 340);
       x = anchor.x + Math.cos(angle) * offset;
       y = anchor.y + Math.sin(angle) * offset;
     } else {
@@ -106,34 +268,23 @@ const spawnCollectible = ({
       const angle = plane.heading + randomBetween(rng, -arc, arc);
       const lateral = randomBetween(rng, -170, 170);
       const distanceAhead =
-        kind === "fuel"
-          ? fuelRatio < 0.35
-            ? randomBetween(rng, 320, 700)
-            : randomBetween(rng, 560, 1_020)
-          : kind === "boost"
-            ? randomBetween(rng, 540, 980)
-            : randomBetween(rng, 360, 820);
+        kind === "boost" ? randomBetween(rng, 540, 980) : randomBetween(rng, 360, 820);
 
       x += Math.cos(angle) * distanceAhead + Math.cos(angle + Math.PI / 2) * lateral;
       y += Math.sin(angle) * distanceAhead + Math.sin(angle + Math.PI / 2) * lateral;
     }
 
-    if (
-      x < bounds.minX + 180 ||
-      x > bounds.maxX - 180 ||
-      y < bounds.minY + 180 ||
-      y > bounds.maxY - 180
-    ) {
+    const candidate = { x, y };
+    if (!isInsideSpawnBounds(bounds, candidate)) {
       continue;
     }
 
-    const candidate = { x, y };
     if (
-      existingCollectibles.some(
-        (collectible) =>
-          collectible.active &&
-          distance(collectible, candidate) < collectible.radius + radius + 135,
-      )
+      overlapsActiveCollectible({
+        candidate,
+        radius,
+        collectibles: existingCollectibles,
+      })
     ) {
       continue;
     }
@@ -155,7 +306,7 @@ const spawnCollectible = ({
       bobSeed: rng() * TWO_PI,
       spinSeed: rng() * TWO_PI,
       spawnedAtMs: nowMs,
-      respawnAtMs: nowMs + respawnMsByKind[kind],
+      respawnAtMs: nextRespawnAtMs,
       ttlMs: ttlMsByKind[kind],
       source,
       active: true,
@@ -191,7 +342,7 @@ export const maintainCollectibles = ({
   boostActive: boolean;
 }) => {
   let nextSpawnCounter = spawnCounter;
-  const refreshed = collectibles.map((collectible) => {
+  let refreshed = collectibles.map((collectible) => {
     const kindEnabled =
       collectible.kind === "fuel"
         ? enableFuel
@@ -207,10 +358,34 @@ export const maintainCollectibles = ({
       ? {
           ...collectible,
           active: false,
-          respawnAtMs: nowMs + respawnMsByKind[collectible.kind],
+          respawnAtMs:
+            nowMs +
+            getRespawnMs({
+              kind: collectible.kind,
+              fuelRatio,
+            }),
         }
       : collectible;
   });
+
+  const fuelCollectibles = refreshed.filter((collectible) => collectible.kind === "fuel");
+  if (fuelCollectibles.length > 1) {
+    const keepFuelIds = new Set(
+      fuelCollectibles
+        .slice()
+        .sort(
+          (left, right) =>
+            Number(right.active) - Number(left.active) ||
+            left.respawnAtMs - right.respawnAtMs ||
+            left.spawnedAtMs - right.spawnedAtMs,
+        )
+        .slice(0, 1)
+        .map((collectible) => collectible.id),
+    );
+    refreshed = refreshed.filter(
+      (collectible) => collectible.kind !== "fuel" || keepFuelIds.has(collectible.id),
+    );
+  }
 
   const ensureKind = (kind: CollectibleKind, enabled: boolean) => {
     if (!enabled) {
@@ -289,10 +464,12 @@ export const collectNearbyCollectibles = ({
   collectibles,
   plane,
   nowMs,
+  fuelRatio,
 }: {
   collectibles: Collectible[];
   plane: FlightState;
   nowMs: number;
+  fuelRatio: number;
 }) => {
   let fuelDelta = 0;
   let fuelCollectedCount = 0;
@@ -372,7 +549,12 @@ export const collectNearbyCollectibles = ({
     return {
       ...collectible,
       active: false,
-      respawnAtMs: nowMs + respawnMsByKind[collectible.kind],
+      respawnAtMs:
+        nowMs +
+        getRespawnMs({
+          kind: collectible.kind,
+          fuelRatio,
+        }),
     };
   });
 
@@ -447,6 +629,6 @@ export const applyCollectibleOutcome = ({
     rescues: nextRescues,
     fuelTanksCollected: nextFuelTanksCollected,
     speedBoostsCollected: nextSpeedBoostsCollected,
-    pickupLabel: notices.join(" · ") || null,
+    pickupLabel: notices.join(" | ") || null,
   };
 };

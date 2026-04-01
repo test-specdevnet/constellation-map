@@ -187,6 +187,14 @@ const createInitialDebugHudSnapshot = (): DebugHudSnapshot => ({
   lastPickupEvent: null,
 });
 
+const IDLE_FLIGHT_INPUT: FlightInputState = {
+  accelerate: false,
+  brake: false,
+  turnLeft: false,
+  turnRight: false,
+  mouseTurn: 0,
+};
+
 const clusterMarkerSignature = (markers: Array<{ id: string; count: number }>) =>
   markers
     .map((marker) => `${marker.id}:${marker.count}`)
@@ -602,6 +610,7 @@ export function SceneCanvas({
   const focusKeyAppliedRef = useRef<string | null>(null);
   const telemetryEmitTsRef = useRef(0);
   const gameEmitTsRef = useRef(0);
+  const runStateRef = useRef<GameState["state"]>("flying");
   const flightSeededRef = useRef(false);
   const pointerInSceneRef = useRef(false);
   const pickupNoticeTimeoutRef = useRef<number | null>(null);
@@ -615,6 +624,7 @@ export function SceneCanvas({
   const [debugHudHotkey, setDebugHudHotkey] = useState(false);
   const [debugStats, setDebugStats] = useState<DebugHudSnapshot>(createInitialDebugHudSnapshot);
   const [pickupNotice, setPickupNotice] = useState<string | null>(null);
+  const [runEndSnapshot, setRunEndSnapshot] = useState<GameSessionSnapshot | null>(null);
 
   const regionClusters = useMemo(
     () => clusters.filter((cluster) => cluster.level === "region"),
@@ -1006,11 +1016,18 @@ export function SceneCanvas({
           controller: inputControllerRef.current,
           mouseSensitivity: flightSettings.mouseSensitivity,
         });
-        const input: FlightInputState = sampledInput.flightInput;
-        debugInputRef.current = {
-          turnAxis: sampledInput.turnAxis,
-          throttleAxis: sampledInput.throttleAxis,
-        };
+        const input: FlightInputState =
+          game.state === "flying" ? sampledInput.flightInput : IDLE_FLIGHT_INPUT;
+        debugInputRef.current =
+          game.state === "flying"
+            ? {
+                turnAxis: sampledInput.turnAxis,
+                throttleAxis: sampledInput.throttleAxis,
+              }
+            : {
+                turnAxis: 0,
+                throttleAxis: 0,
+              };
 
         const nextFlight = integrateFlightState({
           flight,
@@ -1096,7 +1113,7 @@ export function SceneCanvas({
           };
         }
 
-        if (featureFlags.pickups) {
+        if (featureFlags.pickups && game.state === "flying") {
           const maintained = maintainCollectibles({
             collectibles: game.collectibles,
             bounds,
@@ -1116,40 +1133,45 @@ export function SceneCanvas({
           game.spawnCounter = maintained.spawnCounter;
         } else {
           game.collectibles = [];
-          game.boostUntilMs = 0;
+          if (game.state !== "flying" || !featureFlags.pickups) {
+            game.boostUntilMs = 0;
+          }
         }
 
         const stepEffects: VisualEffect[] = [];
-        const pickupResult = collectNearbyCollectibles({
-          collectibles: game.collectibles,
-          plane: flight,
-          nowMs: timestamp,
-        });
-        game.collectibles = pickupResult.collectibles;
-        const pickupOutcome = applyCollectibleOutcome({
-          fuel: game.fuel,
-          fuelMax: game.fuelMax,
-          boostUntilMs: game.boostUntilMs,
-          rescues: game.rescues,
-          fuelTanksCollected: game.fuelTanksCollected,
-          speedBoostsCollected: game.speedBoostsCollected,
-          collectibleResult: pickupResult,
-          pickupsEnabled: featureFlags.pickups,
-        });
-        game.fuel = pickupOutcome.fuel;
-        game.boostUntilMs = pickupOutcome.boostUntilMs;
-        game.rescues = pickupOutcome.rescues;
-        game.fuelTanksCollected = pickupOutcome.fuelTanksCollected;
-        game.speedBoostsCollected = pickupOutcome.speedBoostsCollected;
-        announcePickup(pickupOutcome.pickupLabel);
-        stepEffects.push(...pickupResult.effects);
-        syncGameScore(game);
-        if (
-          pickupResult.fuelCollectedCount > 0 ||
-          pickupResult.boostCollectedCount > 0 ||
-          pickupResult.rescuedCount > 0
-        ) {
-          emitGameStateSnapshot(timestamp);
+        if (game.state === "flying") {
+          const pickupResult = collectNearbyCollectibles({
+            collectibles: game.collectibles,
+            plane: flight,
+            nowMs: timestamp,
+            fuelRatio: game.fuel / Math.max(game.fuelMax, 1),
+          });
+          game.collectibles = pickupResult.collectibles;
+          const pickupOutcome = applyCollectibleOutcome({
+            fuel: game.fuel,
+            fuelMax: game.fuelMax,
+            boostUntilMs: game.boostUntilMs,
+            rescues: game.rescues,
+            fuelTanksCollected: game.fuelTanksCollected,
+            speedBoostsCollected: game.speedBoostsCollected,
+            collectibleResult: pickupResult,
+            pickupsEnabled: featureFlags.pickups,
+          });
+          game.fuel = pickupOutcome.fuel;
+          game.boostUntilMs = pickupOutcome.boostUntilMs;
+          game.rescues = pickupOutcome.rescues;
+          game.fuelTanksCollected = pickupOutcome.fuelTanksCollected;
+          game.speedBoostsCollected = pickupOutcome.speedBoostsCollected;
+          announcePickup(pickupOutcome.pickupLabel);
+          stepEffects.push(...pickupResult.effects);
+          syncGameScore(game);
+          if (
+            pickupResult.fuelCollectedCount > 0 ||
+            pickupResult.boostCollectedCount > 0 ||
+            pickupResult.rescuedCount > 0
+          ) {
+            emitGameStateSnapshot(timestamp);
+          }
         }
 
         updateRunResources({
@@ -1160,6 +1182,28 @@ export function SceneCanvas({
           qualityMode,
           featureFlags,
         });
+
+        if (game.state !== runStateRef.current) {
+          runStateRef.current = game.state;
+          if (game.state !== "flying") {
+            resetTransientControls();
+            setPickupNotice(null);
+          }
+          if (game.state === "landed") {
+            const landedSnapshot = createSessionSnapshot({
+              game,
+              nowMs: timestamp,
+              qualityMode,
+              featureFlags,
+              clusterMarkers: visibilityRef.current.clusterMarkers,
+            });
+            gameEmitTsRef.current = timestamp;
+            setRunEndSnapshot(landedSnapshot);
+            onGameStateChangeRef.current?.(landedSnapshot);
+          } else if (game.state === "flying") {
+            setRunEndSnapshot(null);
+          }
+        }
 
         game.effects = updateEffects({
           effects: [...game.effects, ...stepEffects],
@@ -1745,6 +1789,7 @@ export function SceneCanvas({
       }
     };
   }, [
+    announcePickup,
     bounds,
     canvasSize,
     clusters,
@@ -1756,6 +1801,7 @@ export function SceneCanvas({
     qualityMode,
     runtimeClusters,
     runtimeClustersByRegion,
+    resetTransientControls,
     searchSignature,
     selectedAppName,
     selectedSkinId,
@@ -1777,6 +1823,7 @@ export function SceneCanvas({
     };
     previousCameraRef.current = { ...currentCameraRef.current };
     gameRef.current = createGameState();
+    runStateRef.current = "flying";
     visibilityRef.current = EMPTY_VISIBILITY;
     visibilityBucketRef.current = resolveVisibilityZoomBucket({
       zoom: currentCameraRef.current.zoom,
@@ -1784,11 +1831,17 @@ export function SceneCanvas({
     });
     visibilityAnchorRef.current = null;
     clusterFadeRef.current = null;
+    lastAnimTsRef.current = null;
+    telemetryEmitTsRef.current = 0;
+    gameEmitTsRef.current = 0;
     lastPickupEventRef.current = null;
     debugPerfRef.current = { lastSampleAtMs: 0, frames: 0, ticks: 0 };
+    setRunEndSnapshot(null);
+    setPickupNotice(null);
     setDebugStats(createInitialDebugHudSnapshot());
     resetTransientControls();
     accumulatorRef.current = 0;
+    emitGameStateSnapshot(performance.now());
   };
 
   const bumpZoom = (factor: number) => {
@@ -1973,6 +2026,25 @@ export function SceneCanvas({
               onClick={dismissTip}
             >
               Start flying
+            </button>
+          </div>
+        ) : null}
+
+        {runEndSnapshot ? (
+          <div className="scene-run-end" role="dialog" aria-labelledby="scene-run-end-title">
+            <h2 id="scene-run-end-title" className="scene-run-end__title">
+              {runEndSnapshot.endReason ?? "Flight ended"}
+            </h2>
+            <p className="scene-run-end__copy">
+              Your reserve ran dry. Restart from the cluster hub to launch a fresh route.
+            </p>
+            <div className="scene-run-end__stats" aria-label="Last run summary">
+              <span>{runEndSnapshot.distanceUnits} route</span>
+              <span>{runEndSnapshot.discoveries} deployments</span>
+              <span>{runEndSnapshot.rescues} rescues</span>
+            </div>
+            <button type="button" className="primary-action scene-run-end__action" onClick={resetFlight}>
+              Restart from hub
             </button>
           </div>
         ) : null}

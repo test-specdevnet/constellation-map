@@ -22,9 +22,7 @@ export function HangarPanel({
           <div className={`hangar-swatch hangar-swatch--${activeSkin.id}`} />
           <div>
             <span className="hangar-launcher-label">Plane</span>
-            <strong>
-              {activeSkin.label} | {skins.length} colors
-            </strong>
+            <strong>{skins.length} paint options</strong>
           </div>
         </div>
         <button
@@ -63,14 +61,16 @@ export function HangarPanel({
                 <button
                   key={skin.id}
                   type="button"
-                  className={`hangar-card ${skin.selected ? "hangar-card--selected" : ""}`}
+                  className={`hangar-card hangar-card--swatch-only ${
+                    skin.selected ? "hangar-card--selected" : ""
+                  }`}
                   disabled={!skin.unlocked}
                   onClick={() => onSelectSkin(skin.id)}
+                  aria-label={`Choose ${skin.label} plane paint`}
+                  aria-pressed={skin.selected}
+                  title={skin.label}
                 >
                   <div className={`hangar-swatch hangar-swatch--${skin.id}`} />
-                  <strong>{skin.label}</strong>
-                  <small>{skin.description}</small>
-                  <span>{skin.selected ? "Selected" : "Available"}</span>
                 </button>
               ))}
             </div>

@@ -94,20 +94,13 @@ export const updateRunResources = ({
   const dt = dtMs / 1000;
 
   if (game.state === "flying" && featureFlags.fuelSystem) {
-    if (flight.speed > GAME_CONFIG.speedThresholdForFuelDrain) {
-      const normalizedSpeed = clamp(
-        (flight.speed - GAME_CONFIG.speedThresholdForFuelDrain) / 760,
-        0,
-        1,
-      );
+    const distanceTravelled = Math.max(0, flight.speed * dt);
+    if (distanceTravelled > 0.5) {
       const qualityMultiplier =
         qualityMode === "low" ? 0.92 : qualityMode === "medium" ? 1 : 1.05;
       const drain =
-        (GAME_CONFIG.baseFuelDrainPerSecond +
-          (GAME_CONFIG.maxFuelDrainPerSecond - GAME_CONFIG.baseFuelDrainPerSecond) *
-            normalizedSpeed) *
-        qualityMultiplier;
-      game.fuel = clamp(game.fuel - drain * dt, 0, game.fuelMax);
+        (distanceTravelled / GAME_CONFIG.worldUnitsPerFuelUnit) * qualityMultiplier;
+      game.fuel = clamp(game.fuel - drain, 0, game.fuelMax);
     }
 
     if (game.fuel <= 0) {

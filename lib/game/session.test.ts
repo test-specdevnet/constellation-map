@@ -33,6 +33,22 @@ describe("session", () => {
     expect(game.discoveries.size).toBe(1);
   });
 
+  it("keeps draining fuel while the plane is still moving", () => {
+    const game = createGameState();
+
+    updateRunResources({
+      game,
+      flight: { x: 0, y: 0, heading: 0, speed: 24, angVel: 0 },
+      dtMs: 3_000,
+      nowMs: 3_000,
+      qualityMode: "medium",
+      featureFlags: DEFAULT_FEATURE_FLAGS,
+    });
+
+    expect(game.fuel).toBeLessThan(game.fuelMax);
+    expect(game.state).toBe("flying");
+  });
+
   it("lands the run after fuel exhaustion", () => {
     const game = createGameState();
     game.runStartedAtMs = 0;

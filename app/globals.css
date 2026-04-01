@@ -413,6 +413,51 @@ h3 {
   box-shadow: 0 28px 80px rgba(0, 0, 0, 0.55);
 }
 
+.scene-run-end {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(420px, calc(100% - 32px));
+  padding: 22px 24px 20px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 168, 132, 0.38);
+  background: rgba(10, 18, 36, 0.96);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.55);
+}
+
+.scene-run-end__title {
+  margin: 0 0 10px;
+  font-size: 1.18rem;
+  font-weight: 700;
+}
+
+.scene-run-end__copy {
+  margin: 0;
+  color: rgba(235, 244, 255, 0.84);
+  line-height: 1.5;
+}
+
+.scene-run-end__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0 18px;
+}
+
+.scene-run-end__stats span {
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(235, 244, 255, 0.84);
+  font-size: 0.82rem;
+}
+
+.scene-run-end__action {
+  width: 100%;
+}
+
 .scene-flight-tip-title {
   margin: 0 0 14px;
   font-size: 1.15rem;
@@ -1943,11 +1988,26 @@ h1 {
 }
 
 .hangar-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .hangar-card {
   gap: 6px;
+}
+
+.hangar-card--swatch-only {
+  min-height: 112px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hangar-card--swatch-only .hangar-swatch {
+  width: 100%;
+  height: 88px;
+  border-radius: 18px;
 }
 
 .hangar-card strong {
@@ -2068,6 +2128,15 @@ h1 {
     max-width: none;
   }
 
+  .scene-run-end {
+    left: 16px;
+    right: 16px;
+    width: auto;
+    top: auto;
+    bottom: 88px;
+    transform: none;
+  }
+
   .atlas-lower-grid--split,
   .atlas-lower-grid--solo {
     grid-template-columns: 1fr;
@@ -2078,7 +2147,7 @@ h1 {
   }
 
   .hangar-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .hangar-modal-actions {
