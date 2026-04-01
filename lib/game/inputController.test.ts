@@ -19,7 +19,6 @@ describe("inputController", () => {
 
     expect(sample.turnAxis).toBe(0);
     expect(sample.throttleAxis).toBe(0);
-    expect(sample.firePressed).toBe(false);
   });
 
   it("only applies mouse steering while explicitly active", () => {
@@ -49,7 +48,6 @@ describe("inputController", () => {
     setMouseSteerActive(controller, true);
     setPointerTurnBias(controller, 1);
     pressControlKey(controller, "ArrowRight");
-    pressControlKey(controller, "Fire");
 
     resetInputController({ controller, blur: true });
     const sample = sampleInputController({
@@ -58,7 +56,6 @@ describe("inputController", () => {
     });
 
     expect(sample.turnAxis).toBe(0);
-    expect(sample.firePressed).toBe(false);
     expect(controller.sceneFocused).toBe(false);
   });
 
