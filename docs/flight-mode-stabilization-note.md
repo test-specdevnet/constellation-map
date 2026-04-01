@@ -1,42 +1,37 @@
 # Flight Mode Stabilization Note
 
-This repo now ships the rebuilt flight loop in bounded subsystems instead of one giant scene blob. The goal of the pass was to make flight mode measurable, toggleable, and easier to debug when combat, pickups, clustering, or clouds regress.
+This repo now ships an exploration-first flight loop instead of a combat minigame. The goal of the pass was to keep the FluxCloud deployment visualization primary while making the flight layer measurable, toggleable, and stable.
 
 ## What Changed
 
-- Added a semi-fixed simulation loop with centralized input handling in `lib/game/inputController.ts` and `components/constellation/SceneCanvas.tsx`.
-- Rebuilt combat flow around explicit projectile and enemy updates in `lib/game/enemies.ts`.
-- Rebuilt pickup effects and feedback in `lib/game/pickups.ts`.
-- Stabilized deployment visibility with caps, zoom buckets, hysteresis, and cluster fades in `lib/game/deploymentVisibility.ts`.
-- Split the default flight UI into compact and detailed modes, moved secondary panels behind toggles, and limited touch controls to coarse-pointer devices.
-- Added a runtime debug HUD plus feature flags so subsystems can be isolated without ripping code out.
+- Removed enemy spawning, projectiles, collision damage, and combat-only feature flags.
+- Rebuilt the collectible loop around `lib/game/collectibles.ts` for parachuters, fuel, and speed boosts.
+- Kept deployment visibility logic bounded with caps, zoom buckets, hysteresis, and cluster fades in `lib/game/deploymentVisibility.ts`.
+- Simplified run state and scoring in `lib/game/session.ts` so leaderboard writes are based on route distance, deployments discovered, and rescues completed.
+- Kept the default HUD compact, with detailed mode available from Controls / Settings.
 
 ## Main Tuning Points
 
 - `lib/game/config.ts`
-  Enemy caps, spawn cadence, fuel drain, boost duration, pickup limits, feature-flag defaults, and flight settings defaults.
-- `lib/game/enemies.ts`
-  Enemy steering feel, projectile cadence, hit damage, spawn cleanup, and active-enemy pressure.
-- `lib/game/pickups.ts`
-  Fuel gain, boost refresh behavior, pickup collision radius, and respawn timing.
+  Fuel drain, boost duration, collectible counts, distance scaling, and feature-flag defaults.
+- `lib/game/collectibles.ts`
+  Spawn pacing, rescue density, supply placement, pickup feedback, and respawn timing.
+- `lib/game/flightController.ts`
+  Turn response, acceleration, drag, and max-speed feel.
 - `lib/game/deploymentVisibility.ts`
   Marker budgets, near-field reveal rules, zoom buckets, and hysteresis thresholds.
-- `lib/game/inputController.ts`
-  Keyboard normalization, mouse-turn bias, idle decay, and blur/reset behavior.
 - `lib/canvas/cartoonMarkers.ts`
-  Cloud layer counts, drift speeds, puff styling, and parallax depth.
+  Pickup silhouettes, cloud styling, biplane scale, and parallax depth.
 
 ## Debug / Rollout Switches
 
 Feature flags live in `lib/game/config.ts`, persist through `components/constellation/ProgressProvider.tsx`, and are exposed in `components/constellation/FlightSettingsPanel.tsx`.
 
-- `combat`
 - `pickups`
 - `fuelSystem`
-- `enemyPlanes`
 - `leaderboard`
 - `clouds`
 - `deploymentClustering`
 - `debugHud`
 
-Use `F3` in flight mode to toggle the debug HUD. The default user-facing HUD is now compact; switch to detailed mode from Controls / Settings when tuning gameplay.
+Use `F3` in flight mode to toggle the debug HUD.
