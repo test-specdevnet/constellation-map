@@ -1,23 +1,36 @@
 # FluxCloud Constellation Map
 
-Interactive star-atlas style discovery surface for public FluxCloud deployment data.
+Interactive star-atlas style discovery surface for public FluxCloud deployment data, now framed as a non-combat exploration flight.
 
-## MVP features
+## Exploration loop
+
+- Fly smoothly through the FluxCloud deployment map with keyboard or touch controls.
+- Discover deployment buoys tied to real FluxCloud snapshot data.
+- Rescue parachuters, collect fuel jerry cans, and grab speed boosts while exploring.
+- Track weekly leaderboard runs scored from the sum of route distance, deployments discovered, and parachuters rescued.
+
+## Core features
 
 - Canvas-rendered constellation scene with pan, zoom, hover, and selection
-- Cartoon-style sky layer with parallax clouds and aviation-style deployment markers
-- Guided tour mode over the map (waypoints and camera flow)
-- Internal API layer for render-ready stars, detail hydration, filters, search, and refresh
+- Cartoon-style sky layer with parallax clouds and buoy markers
 - Deterministic constellation and system layout
 - Runtime, status, category, and resource-tier filtering
-- Search-to-focus camera flow; wheel zoom, keyboard (WASD), and touch-friendly controls
-- Responsive detail drawer and mobile bottom sheet behavior
-- Static deployment notes for FluxCloud Deploy with Git
+- Search-to-focus camera flow with smooth flight follow
+- Compact or detailed HUD modes, minimap, hangar, and leaderboard panels
+- Internal API layer for render-ready stars, detail hydration, filters, search, and refresh
 
-## Deploy verification
+## Gameplay architecture
 
-- `GET /api/version` returns JSON including `buildStamp` (mirrors `lib/buildStamp.ts`).
-- Bump `BUILD_STAMP` in `lib/buildStamp.ts` when you need to confirm Flux served a fresh build.
+- `lib/game/flightController.ts`
+  Pure flight motion integration and follow-camera behavior.
+- `lib/game/deploymentVisibility.ts`
+  Progressive datapoint culling, density limits, and cluster summaries.
+- `lib/game/collectibles.ts`
+  Parachuter, fuel, and speed-boost spawning, collection, feedback, and respawn rules.
+- `lib/game/session.ts`
+  Fuel drain, exploration scoring, run lifecycle, and HUD snapshot creation.
+- `components/constellation/SceneCanvas.tsx`
+  Main render/simulation loop that orchestrates the exploration experience.
 
 ## Local development
 
@@ -26,15 +39,18 @@ npm install
 npm run dev
 ```
 
-## Production build
+## Verification
 
 ```bash
-npm install
+npm run typecheck
+npm test
 npm run build
-npm run start
 ```
 
-Scripts: `dev`, `build`, `start`, `typecheck` (`tsc --noEmit`). Next.js also runs lint/type checks during `next build`.
+## Deploy verification
+
+- `GET /api/version` returns JSON including `buildStamp` (mirrors `lib/buildStamp.ts`).
+- Bump `BUILD_STAMP` in `lib/buildStamp.ts` when you need to confirm Flux served a fresh build.
 
 ## FluxCloud deployment baseline
 
@@ -56,4 +72,4 @@ POLLING_INTERVAL=300
 
 - The map is a discovery and recommendation surface, not a single-node pinning UI.
 - Public Flux endpoints are normalized server-side before the client scene renders them.
-- This repository has a single Next.js app at the repo root (no nested duplicate app tree).
+- The exploration layer is intentionally lightweight so the deployment visualization remains the main focus.

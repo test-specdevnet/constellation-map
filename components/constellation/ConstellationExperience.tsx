@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { startTransition, useEffect, useMemo, useState } from "react";
 import type { FilterState } from "./FilterBar";
 import { FilterBar } from "./FilterBar";
 import { SearchBox } from "./SearchBox";
@@ -280,6 +280,10 @@ function ConstellationExperienceBody({
       ),
     [visibleSystems],
   );
+  const searchMatchAppNames = useMemo(
+    () => searchResults.map((item) => item.appName),
+    [searchResults],
+  );
 
   const visibleClusters = useMemo(
     () =>
@@ -499,8 +503,9 @@ function ConstellationExperienceBody({
           </div>
           <h1>FluxCloud Explore</h1>
           <p className="hero-text">
-            Fly through FluxCloud deployments, discover the busiest sectors, and layer in
-            gameplay systems only when they are stable enough to earn their place.
+            Fly through FluxCloud deployments, chart the busiest sectors, refuel in the
+            cloud lanes, and rescue stranded pilots without letting the exploration layer
+            overpower the live deployment map.
           </p>
 
           <div className="hero-metrics hero-metrics--compact" aria-label="Atlas totals">
@@ -534,7 +539,7 @@ function ConstellationExperienceBody({
             bounds={activeScene.bounds}
             selectedAppName={selectedAppName}
             selectedSkinId={progress.selectedSkinId}
-            searchMatches={searchResults.map((item) => item.appName)}
+            searchMatches={searchMatchAppNames}
             focusTarget={focusTarget}
             mapDataLoading={sceneLoading}
             snapshotError={!!sceneError}
@@ -574,8 +579,16 @@ function ConstellationExperienceBody({
             onHoverEntity={() => {
               // Hover copy stays inside the canvas tooltip.
             }}
-            onTelemetry={setTelemetry}
-            onGameStateChange={setGameSnapshot}
+            onTelemetry={(nextTelemetry) => {
+              startTransition(() => {
+                setTelemetry(nextTelemetry);
+              });
+            }}
+            onGameStateChange={(nextSnapshot) => {
+              startTransition(() => {
+                setGameSnapshot(nextSnapshot);
+              });
+            }}
             onRunComplete={featureFlags.leaderboard ? recordRun : undefined}
           />
 
