@@ -1,9 +1,9 @@
 import { DEFAULT_FEATURE_FLAGS } from "./config";
 import {
   accumulateDistanceFlown,
-  applyDeploymentDiscoveries,
   createGameState,
   createSessionSnapshot,
+  discoverDeployment,
   updateRunResources,
 } from "./session";
 
@@ -16,16 +16,21 @@ describe("session", () => {
       from: { x: 0, y: 0, heading: 0, speed: 200, angVel: 0 },
       to: { x: 360, y: 0, heading: 0, speed: 200, angVel: 0 },
     });
-    applyDeploymentDiscoveries({
-      game,
-      systems: [{ systemId: "system:alpha", x: 60, y: 0 }],
-      flight: { x: 40, y: 0, heading: 0, speed: 220, angVel: 0 },
-    });
+    const discovered = discoverDeployment(game, "system:alpha");
 
+    expect(discovered).toBe(true);
     expect(game.distance).toBeGreaterThan(0);
     expect(game.distanceUnits).toBeGreaterThan(0);
     expect(game.discoveries.size).toBe(1);
     expect(game.score).toBe(game.distanceUnits + 1);
+  });
+
+  it("only discovers a deployment once per click target", () => {
+    const game = createGameState();
+
+    expect(discoverDeployment(game, "system:alpha")).toBe(true);
+    expect(discoverDeployment(game, "system:alpha")).toBe(false);
+    expect(game.discoveries.size).toBe(1);
   });
 
   it("lands the run after fuel exhaustion", () => {
@@ -64,6 +69,8 @@ describe("session", () => {
     game.distance = 720;
     game.distanceUnits = 4;
     game.rescues = 2;
+    game.fuelTanksCollected = 3;
+    game.speedBoostsCollected = 1;
     game.collectibles = [
       {
         id: "fuel:1",
@@ -107,6 +114,8 @@ describe("session", () => {
 
     expect(snapshot.activeBoostLabel).toBe("Tailwind boost");
     expect(snapshot.parachuterCount).toBe(1);
+    expect(snapshot.fuelTanksCollected).toBe(3);
+    expect(snapshot.speedBoostsCollected).toBe(1);
     expect(snapshot.flags.pickups).toBe(true);
     expect(snapshot.miniMap.clusters).toHaveLength(1);
     expect(snapshot.miniMap.collectibles).toHaveLength(2);

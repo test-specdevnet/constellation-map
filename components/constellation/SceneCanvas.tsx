@@ -74,9 +74,9 @@ import {
 } from "../../lib/game/collectibles";
 import {
   accumulateDistanceFlown,
-  applyDeploymentDiscoveries,
   createGameState,
   createSessionSnapshot,
+  discoverDeployment,
   syncGameScore,
   toRunRecord,
   updateRunResources,
@@ -102,6 +102,7 @@ export type HoveredEntity =
   | {
       kind: "system" | "star";
       id: string;
+      discoveryId: string;
       label: string;
       subtitle: string;
       appName: string;
@@ -153,6 +154,7 @@ type SceneCanvasProps = {
 };
 
 const FLIGHT_TIP_KEY = "flux-flight-tip-dismissed";
+const GAME_STATE_EMIT_INTERVAL_MS = 80;
 const EMPTY_VISIBILITY: DeploymentVisibilityState = {
   visibleSystems: [],
   detailSystems: [],
@@ -693,6 +695,21 @@ export function SceneCanvas({
       setPickupNotice(null);
     }, 1500);
   }, []);
+  const emitGameStateSnapshot = useCallback(
+    (nowMs: number) => {
+      gameEmitTsRef.current = nowMs;
+      onGameStateChangeRef.current?.(
+        createSessionSnapshot({
+          game: gameRef.current,
+          nowMs,
+          qualityMode,
+          featureFlags,
+          clusterMarkers: visibilityRef.current.clusterMarkers,
+        }),
+      );
+    },
+    [featureFlags, qualityMode],
+  );
 
   useEffect(() => {
     onHoverEntityRef.current = onHoverEntity;
@@ -1079,12 +1096,6 @@ export function SceneCanvas({
           };
         }
 
-        applyDeploymentDiscoveries({
-          game,
-          systems: visibilityRef.current.visibleSystems,
-          flight,
-        });
-
         if (featureFlags.pickups) {
           const maintained = maintainCollectibles({
             collectibles: game.collectibles,
@@ -1120,15 +1131,26 @@ export function SceneCanvas({
           fuelMax: game.fuelMax,
           boostUntilMs: game.boostUntilMs,
           rescues: game.rescues,
+          fuelTanksCollected: game.fuelTanksCollected,
+          speedBoostsCollected: game.speedBoostsCollected,
           collectibleResult: pickupResult,
           pickupsEnabled: featureFlags.pickups,
         });
         game.fuel = pickupOutcome.fuel;
         game.boostUntilMs = pickupOutcome.boostUntilMs;
         game.rescues = pickupOutcome.rescues;
+        game.fuelTanksCollected = pickupOutcome.fuelTanksCollected;
+        game.speedBoostsCollected = pickupOutcome.speedBoostsCollected;
         announcePickup(pickupOutcome.pickupLabel);
         stepEffects.push(...pickupResult.effects);
         syncGameScore(game);
+        if (
+          pickupResult.fuelCollectedCount > 0 ||
+          pickupResult.boostCollectedCount > 0 ||
+          pickupResult.rescuedCount > 0
+        ) {
+          emitGameStateSnapshot(timestamp);
+        }
 
         updateRunResources({
           game,
@@ -1232,6 +1254,7 @@ export function SceneCanvas({
         left.label.localeCompare(right.label),
       );
       const renderables: Renderable[] = [];
+      const hoveredRenderable = hoveredRenderableRef.current;
 
       const projectWorld = (world: { x: number; y: number }) => {
         const point = worldToScreen(world, canvasSize, renderCamera);
@@ -1363,6 +1386,9 @@ export function SceneCanvas({
           const y = projected.y + jitter.y;
           const isSelected = selectedAppName === system.appName;
           const isSearchMatch = matchSet.has(system.appName);
+          const isHovered =
+            hoveredRenderable?.entity.kind === "system" &&
+            hoveredRenderable.entity.id === system.systemId;
           const radius =
             getAnchorRadius({
               instanceCount: system.instanceCount,
@@ -1378,7 +1404,7 @@ export function SceneCanvas({
           context.globalAlpha = getDensityAlpha({
             density: system.instanceCount,
             band: disclosure.band,
-            emphasis: isSelected || isSearchMatch ? 0.18 : 0,
+            emphasis: isSelected || isSearchMatch || isHovered ? 0.18 : 0,
           });
           drawDeploymentBuoy({
             ctx: context,
@@ -1387,9 +1413,9 @@ export function SceneCanvas({
             colors: getBuoyColorway(system),
             baseScale: Math.max(0.58, radius / 12.8),
             seed: system.systemId,
-            proximity: isSelected ? 2 : 0,
-            selected: isSelected,
-            searchOrPointer: isSearchMatch,
+            proximity: isSelected || isHovered ? 2 : 0,
+            selected: isSelected || isHovered,
+            searchOrPointer: isSearchMatch || isHovered,
             timestamp,
           });
           context.restore();
@@ -1398,6 +1424,7 @@ export function SceneCanvas({
             entity: {
               kind: "system",
               id: system.systemId,
+              discoveryId: system.systemId,
               label: system.appName,
               subtitle: `${categoryLabel(system)} · ${titleCase(system.runtimeFamily)}`,
               appName: system.appName,
@@ -1460,6 +1487,9 @@ export function SceneCanvas({
             const y = projected.y + jitter.y;
             const isSelected = selectedAppName === star.appName;
             const isSearchMatch = matchSet.has(star.appName);
+            const isHovered =
+              hoveredRenderable?.entity.kind === "star" &&
+              hoveredRenderable.entity.id === star.id;
             const baseScale = Math.max(
               0.5,
               Math.min(2.3, star.size * renderCamera.zoom * 0.11 + 0.24),
@@ -1474,7 +1504,7 @@ export function SceneCanvas({
               density: systemStars.length,
               band: disclosure.band,
               emphasis:
-                isSelected || isSearchMatch
+                isSelected || isSearchMatch || isHovered
                   ? 0.18
                   : star.rarityFlags.isRareArchetype
                     ? 0.08
@@ -1487,9 +1517,9 @@ export function SceneCanvas({
               colors: getBuoyColorway(star),
               baseScale: baseScale * projected.radialScale,
               seed: star.id,
-              proximity: isSelected ? 2 : 1,
-              selected: isSelected,
-              searchOrPointer: isSearchMatch,
+              proximity: isSelected || isHovered ? 2 : 1,
+              selected: isSelected || isHovered,
+              searchOrPointer: isSearchMatch || isHovered,
               timestamp,
             });
             context.restore();
@@ -1498,6 +1528,7 @@ export function SceneCanvas({
               entity: {
                 kind: "star",
                 id: star.id,
+                discoveryId: star.systemId,
                 label: star.appName,
                 subtitle: `${categoryLabel(star)} · ${star.region || "Unknown sector"}`,
                 appName: star.appName,
@@ -1602,6 +1633,9 @@ export function SceneCanvas({
       } else if (hovered) {
         hoveredRenderableRef.current = hovered;
       }
+      if (canvasRef.current) {
+        canvasRef.current.style.cursor = hovered ? "pointer" : "default";
+      }
 
       if (hovered) {
         drawProximityHoverCard(
@@ -1683,7 +1717,7 @@ export function SceneCanvas({
         });
       }
 
-      if (timestamp - gameEmitTsRef.current > 140) {
+      if (timestamp - gameEmitTsRef.current > GAME_STATE_EMIT_INTERVAL_MS) {
         gameEmitTsRef.current = timestamp;
         onGameStateChangeRef.current?.(
           createSessionSnapshot({
@@ -1715,6 +1749,7 @@ export function SceneCanvas({
     canvasSize,
     clusters,
     debugHudVisible,
+    emitGameStateSnapshot,
     flightSettings,
     featureFlags,
     mapDataLoading,
@@ -1805,6 +1840,9 @@ export function SceneCanvas({
     pointerInSceneRef.current = false;
     setMouseSteerActive(inputControllerRef.current, false);
     hoveredRenderableRef.current = null;
+    if (canvasRef.current) {
+      canvasRef.current.style.cursor = "default";
+    }
     onHoverEntityRef.current(null);
   };
 
@@ -1835,6 +1873,11 @@ export function SceneCanvas({
     }
 
     if (hovered.entity.kind === "system" || hovered.entity.kind === "star") {
+      const discovered = discoverDeployment(gameRef.current, hovered.entity.discoveryId);
+      if (discovered) {
+        announcePickup("Deployment discovered");
+        emitGameStateSnapshot(performance.now());
+      }
       onSelectApp(hovered.entity.appName);
     }
   };

@@ -568,9 +568,8 @@ function ConstellationExperienceBody({
                   totalSkinCount={skins.length}
                   mode={flightSettings.hudDensity}
                 />
-                {flightSettings.hudDensity === "detailed" ? (
-                  <FuelGauge snapshot={gameSnapshot} />
-                ) : null}
+                <FuelGauge snapshot={gameSnapshot} />
+                <div className="flight-disclaimer">Tip: Click deployments to discover them.</div>
                 <AchievementToast toast={activeToast} onDismiss={dismissToast} />
               </>
             }

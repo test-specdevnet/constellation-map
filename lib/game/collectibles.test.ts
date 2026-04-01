@@ -6,7 +6,7 @@ import {
 import { GAME_CONFIG } from "./config";
 
 describe("collectibles", () => {
-  it("maintains a healthy exploration mix of parachuters and supplies", () => {
+  it("maintains a lighter mix of parachuters and supplies", () => {
     const result = maintainCollectibles({
       collectibles: [],
       bounds: {
@@ -28,15 +28,19 @@ describe("collectibles", () => {
       boostActive: false,
     });
 
-    expect(result.collectibles.filter((collectible) => collectible.active && collectible.kind === "fuel")).toHaveLength(
-      GAME_CONFIG.maxFuelPickups,
-    );
-    expect(result.collectibles.filter((collectible) => collectible.active && collectible.kind === "boost")).toHaveLength(
-      GAME_CONFIG.maxBoostPickups,
-    );
-    expect(result.collectibles.filter((collectible) => collectible.active && collectible.kind === "parachuter")).toHaveLength(
-      GAME_CONFIG.maxParachuters,
-    );
+    expect(
+      result.collectibles.filter((collectible) => collectible.active && collectible.kind === "fuel"),
+    ).toHaveLength(GAME_CONFIG.fuelPickupActiveCap);
+    expect(
+      result.collectibles.filter(
+        (collectible) => collectible.active && collectible.kind === "boost",
+      ),
+    ).toHaveLength(GAME_CONFIG.boostPickupActiveCap);
+    expect(
+      result.collectibles.filter(
+        (collectible) => collectible.active && collectible.kind === "parachuter",
+      ),
+    ).toHaveLength(GAME_CONFIG.maxParachuters);
   });
 
   it("collects nearby parachuters, fuel, and boosts in one pass", () => {
@@ -93,7 +97,9 @@ describe("collectibles", () => {
     });
 
     expect(result.fuelDelta).toBe(GAME_CONFIG.fuelPickupAmount);
+    expect(result.fuelCollectedCount).toBe(1);
     expect(result.boostUntilMs).toBe(5_000 + GAME_CONFIG.boostDurationMs);
+    expect(result.boostCollectedCount).toBe(1);
     expect(result.rescuedCount).toBe(1);
     expect(result.effects.length).toBeGreaterThanOrEqual(4);
     expect(result.collectibles.every((collectible) => !collectible.active)).toBe(true);
@@ -105,9 +111,13 @@ describe("collectibles", () => {
       fuelMax: 100,
       boostUntilMs: 0,
       rescues: 2,
+      fuelTanksCollected: 1,
+      speedBoostsCollected: 0,
       collectibleResult: {
         fuelDelta: 35,
+        fuelCollectedCount: 1,
         boostUntilMs: 0,
+        boostCollectedCount: 1,
         rescuedCount: 1,
       },
       pickupsEnabled: true,
@@ -115,6 +125,9 @@ describe("collectibles", () => {
 
     expect(applied.fuel).toBe(100);
     expect(applied.rescues).toBe(3);
-    expect(applied.pickupLabel).toBe("Pilot rescued! · Fuel +4");
+    expect(applied.fuelTanksCollected).toBe(2);
+    expect(applied.speedBoostsCollected).toBe(1);
+    expect(applied.pickupLabel).toContain("Pilot rescued!");
+    expect(applied.pickupLabel).toContain("Fuel +4");
   });
 });

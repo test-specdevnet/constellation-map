@@ -32,6 +32,8 @@ describe("DiegeticHud", () => {
       score: 36,
       discoveries: 8,
       rescues: 3,
+      fuelTanksCollected: 2,
+      speedBoostsCollected: 1,
       distance: 1800,
       distanceUnits: 25,
       state: "flying" as const,
@@ -52,26 +54,25 @@ describe("DiegeticHud", () => {
     totalSkinCount: 4,
   };
 
-  it("renders the exploration stats in detailed mode", () => {
-    render(
-      <DiegeticHud
-        {...baseProps}
-        mode="detailed"
-      />,
-    );
+  it("renders the four requested run stats in detailed mode", () => {
+    render(<DiegeticHud {...baseProps} mode="detailed" />);
 
-    expect(screen.getByText("Route")).toBeInTheDocument();
-    expect(screen.getByText("Deployments")).toBeInTheDocument();
-    expect(screen.getByText("Rescues")).toBeInTheDocument();
-    expect(screen.getByText("Tailwind boost")).toBeInTheDocument();
+    expect(screen.getByText("Deployments Found")).toBeInTheDocument();
+    expect(screen.getByText("Speed Boosts")).toBeInTheDocument();
+    expect(screen.getByText("Fuel Tanks Collected")).toBeInTheDocument();
+    expect(screen.getByText("Rescues Made")).toBeInTheDocument();
+    expect(screen.getByText("8")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.getByText("1")).toBeInTheDocument();
+    expect(screen.getByText("3")).toBeInTheDocument();
   });
 
-  it("collapses the HUD in compact mode", () => {
+  it("keeps the same four stats in compact mode", () => {
     render(<DiegeticHud {...baseProps} mode="compact" />);
 
-    expect(screen.getByText("Finds")).toBeInTheDocument();
-    expect(screen.getByText("Status")).toBeInTheDocument();
-    expect(screen.queryByText("Deployments")).not.toBeInTheDocument();
-    expect(screen.getByText("4s boost")).toBeInTheDocument();
+    expect(screen.getByText("Deployments Found")).toBeInTheDocument();
+    expect(screen.getByText("Speed Boosts")).toBeInTheDocument();
+    expect(screen.queryByText("Route")).not.toBeInTheDocument();
+    expect(screen.queryByText("Status")).not.toBeInTheDocument();
   });
 });

@@ -3,14 +3,17 @@
 import type { FlightTelemetry } from "../../lib/layout/focusContext";
 import type { GameSessionSnapshot } from "../../lib/game/types";
 
-const ZOOM_BASELINE = 0.22;
+type HudStat = {
+  label: string;
+  value: number;
+};
 
 export function DiegeticHud({
-  telemetry,
+  telemetry: _telemetry,
   snapshot,
-  selectedSkinLabel,
-  unlockedSkinCount,
-  totalSkinCount,
+  selectedSkinLabel: _selectedSkinLabel,
+  unlockedSkinCount: _unlockedSkinCount,
+  totalSkinCount: _totalSkinCount,
   mode,
 }: {
   telemetry: FlightTelemetry | null;
@@ -20,81 +23,38 @@ export function DiegeticHud({
   totalSkinCount: number;
   mode: "compact" | "detailed";
 }) {
-  const zoomPct = Math.round(((telemetry?.camera.zoom ?? ZOOM_BASELINE) / ZOOM_BASELINE) * 100);
-  const speed = Math.round(telemetry?.plane.speed ?? 0);
-  const score = snapshot?.score ?? 0;
-  const distance = snapshot?.distanceUnits ?? 0;
-  const discoveries = snapshot?.discoveries ?? 0;
-  const rescues = snapshot?.rescues ?? 0;
-  const boostSeconds = Math.ceil((snapshot?.boostRemainingMs ?? 0) / 1000);
-
-  if (mode === "compact") {
-    return (
-      <div className="diegetic-hud diegetic-hud--compact" aria-label="Flight heads-up display">
-        <div className="hud-chip">
-          <span>Speed</span>
-          <strong>{speed} kt</strong>
-          <small>Lens {zoomPct}%</small>
-        </div>
-        <div className="hud-chip">
-          <span>Route</span>
-          <strong>{distance}</strong>
-          <small>{score.toLocaleString()} expedition score</small>
-        </div>
-        <div className="hud-chip">
-          <span>Finds</span>
-          <strong>{discoveries} deployments</strong>
-          <small>{rescues} rescues</small>
-        </div>
-        <div className="hud-chip">
-          <span>Status</span>
-          <strong>{snapshot?.activeBoostLabel ?? "Cruise"}</strong>
-          <small>
-            {boostSeconds > 0
-              ? `${boostSeconds}s boost`
-              : `${selectedSkinLabel} | ${unlockedSkinCount}/${totalSkinCount}`}
-          </small>
-        </div>
-      </div>
-    );
-  }
+  const stats: HudStat[] = [
+    {
+      label: "Deployments Found",
+      value: snapshot?.discoveries ?? 0,
+    },
+    {
+      label: "Speed Boosts",
+      value: snapshot?.speedBoostsCollected ?? 0,
+    },
+    {
+      label: "Fuel Tanks Collected",
+      value: snapshot?.fuelTanksCollected ?? 0,
+    },
+    {
+      label: "Rescues Made",
+      value: snapshot?.rescues ?? 0,
+    },
+  ];
 
   return (
-    <div className="diegetic-hud" aria-label="Flight heads-up display">
-      <div className="hud-chip">
-        <span>Speed</span>
-        <strong>{speed} kt</strong>
-        <small>Lens {zoomPct}%</small>
-      </div>
-      <div className="hud-chip">
-        <span>Route</span>
-        <strong>{distance}</strong>
-        <small>Distance flown</small>
-      </div>
-      <div className="hud-chip">
-        <span>Score</span>
-        <strong>{score.toLocaleString()}</strong>
-        <small>Distance + discoveries + rescues</small>
-      </div>
-      <div className="hud-chip">
-        <span>Deployments</span>
-        <strong>{discoveries}</strong>
-        <small>Buoys discovered</small>
-      </div>
-      <div className="hud-chip">
-        <span>Rescues</span>
-        <strong>{rescues}</strong>
-        <small>Parachuters collected</small>
-      </div>
-      <div className="hud-chip">
-        <span>Boost</span>
-        <strong>{snapshot?.activeBoostLabel ?? "Cruise"}</strong>
-        <small>
-          {boostSeconds > 0
-            ? `${boostSeconds}s remaining`
-            : `${selectedSkinLabel} | ${unlockedSkinCount}/${totalSkinCount}`}
-        </small>
-      </div>
+    <div
+      className={`diegetic-hud ${
+        mode === "compact" ? "diegetic-hud--compact" : "diegetic-hud--detailed"
+      }`}
+      aria-label="Flight heads-up display"
+    >
+      {stats.map((stat) => (
+        <div key={stat.label} className="hud-chip hud-chip--stat">
+          <span>{stat.label}</span>
+          <strong>{stat.value}</strong>
+        </div>
+      ))}
     </div>
   );
 }

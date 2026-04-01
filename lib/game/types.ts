@@ -113,6 +113,8 @@ export type GameState = {
   distance: number;
   distanceUnits: number;
   rescues: number;
+  fuelTanksCollected: number;
+  speedBoostsCollected: number;
   discoveries: Set<string>;
   endReason: string | null;
   landingStartedAtMs: number | null;
@@ -132,6 +134,8 @@ export type GameSessionSnapshot = {
   score: number;
   discoveries: number;
   rescues: number;
+  fuelTanksCollected: number;
+  speedBoostsCollected: number;
   distance: number;
   distanceUnits: number;
   state: RunState;

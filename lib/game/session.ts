@@ -32,6 +32,8 @@ export const createGameState = (): GameState => ({
   distance: 0,
   distanceUnits: 0,
   rescues: 0,
+  fuelTanksCollected: 0,
+  speedBoostsCollected: 0,
   discoveries: new Set<string>(),
   endReason: null,
   landingStartedAtMs: null,
@@ -64,30 +66,14 @@ export const accumulateDistanceFlown = ({
   syncGameScore(game);
 };
 
-export const applyDeploymentDiscoveries = ({
-  game,
-  systems,
-  flight,
-}: {
-  game: GameState;
-  systems: Array<{ systemId: string; x: number; y: number }>;
-  flight: FlightState;
-}) => {
-  let discovered = false;
-
-  for (const system of systems) {
-    if (
-      !game.discoveries.has(system.systemId) &&
-      distanceBetween(system, flight) <= GAME_CONFIG.discoveryRadius
-    ) {
-      game.discoveries.add(system.systemId);
-      discovered = true;
-    }
+export const discoverDeployment = (game: GameState, deploymentId: string) => {
+  if (game.discoveries.has(deploymentId)) {
+    return false;
   }
 
-  if (discovered) {
-    syncGameScore(game);
-  }
+  game.discoveries.add(deploymentId);
+  syncGameScore(game);
+  return true;
 };
 
 export const updateRunResources = ({
@@ -165,6 +151,8 @@ export const createSessionSnapshot = ({
   score: game.score,
   discoveries: game.discoveries.size,
   rescues: game.rescues,
+  fuelTanksCollected: game.fuelTanksCollected,
+  speedBoostsCollected: game.speedBoostsCollected,
   distance: game.distance,
   distanceUnits: game.distanceUnits,
   state: game.state,

@@ -48,11 +48,11 @@ const getDesiredCountByKind = ({
 }) => {
   switch (kind) {
     case "fuel":
-      return fuelRatio < 0.35
-        ? GAME_CONFIG.maxFuelPickups
-        : Math.max(1, GAME_CONFIG.maxFuelPickups - 1);
+      return fuelRatio < GAME_CONFIG.fuelPickupLowFuelThreshold
+        ? GAME_CONFIG.fuelPickupActiveCap
+        : GAME_CONFIG.fuelPickupCruiseCap;
     case "boost":
-      return boostActive ? 1 : GAME_CONFIG.maxBoostPickups;
+      return boostActive ? 0 : GAME_CONFIG.boostPickupActiveCap;
     case "parachuter":
       return GAME_CONFIG.maxParachuters;
     default:
@@ -293,7 +293,9 @@ export const collectNearbyCollectibles = ({
   nowMs: number;
 }) => {
   let fuelDelta = 0;
+  let fuelCollectedCount = 0;
   let boostUntilMs = 0;
+  let boostCollectedCount = 0;
   let rescuedCount = 0;
   const effects: VisualEffect[] = [];
 
@@ -307,6 +309,7 @@ export const collectNearbyCollectibles = ({
 
     if (collectible.kind === "fuel") {
       fuelDelta += collectible.value;
+      fuelCollectedCount += 1;
       effects.push(
         createEffect({
           kind: "pulse",
@@ -319,6 +322,7 @@ export const collectNearbyCollectibles = ({
       );
     } else if (collectible.kind === "boost") {
       boostUntilMs = Math.max(boostUntilMs, nowMs + collectible.value);
+      boostCollectedCount += 1;
       effects.push(
         createEffect({
           kind: "trail",
@@ -373,7 +377,9 @@ export const collectNearbyCollectibles = ({
   return {
     collectibles: nextCollectibles,
     fuelDelta,
+    fuelCollectedCount,
     boostUntilMs,
+    boostCollectedCount,
     rescuedCount,
     effects,
   };
@@ -386,6 +392,8 @@ export const applyCollectibleOutcome = ({
   fuelMax,
   boostUntilMs,
   rescues,
+  fuelTanksCollected,
+  speedBoostsCollected,
   collectibleResult,
   pickupsEnabled,
 }: {
@@ -393,9 +401,13 @@ export const applyCollectibleOutcome = ({
   fuelMax: number;
   boostUntilMs: number;
   rescues: number;
+  fuelTanksCollected: number;
+  speedBoostsCollected: number;
   collectibleResult: {
     fuelDelta: number;
+    fuelCollectedCount: number;
     boostUntilMs: number;
+    boostCollectedCount: number;
     rescuedCount: number;
   };
   pickupsEnabled: boolean;
@@ -406,6 +418,9 @@ export const applyCollectibleOutcome = ({
     ? Math.max(boostUntilMs, collectibleResult.boostUntilMs)
     : 0;
   const nextRescues = rescues + collectibleResult.rescuedCount;
+  const nextFuelTanksCollected = fuelTanksCollected + collectibleResult.fuelCollectedCount;
+  const nextSpeedBoostsCollected =
+    speedBoostsCollected + collectibleResult.boostCollectedCount;
   const notices: string[] = [];
 
   if (collectibleResult.rescuedCount > 0) {
@@ -428,6 +443,8 @@ export const applyCollectibleOutcome = ({
     fuel: nextFuel,
     boostUntilMs: nextBoostUntilMs,
     rescues: nextRescues,
+    fuelTanksCollected: nextFuelTanksCollected,
+    speedBoostsCollected: nextSpeedBoostsCollected,
     pickupLabel: notices.join(" · ") || null,
   };
 };
