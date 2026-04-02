@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useEffect, useMemo, useState } from "react";
+import { startTransition, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { FilterState } from "./FilterBar";
 import { FilterBar } from "./FilterBar";
 import { SearchBox } from "./SearchBox";
@@ -9,13 +9,16 @@ import { DetailDrawer } from "./DetailDrawer";
 import { MiniMap } from "./MiniMap";
 import { DiegeticHud } from "./DiegeticHud";
 import { HangarPanel } from "./HangarPanel";
+import { HangarCustomizationPanel } from "./HangarPanel";
 import { AchievementToast } from "./AchievementToast";
 import { FuelGauge } from "./FuelGauge";
 import { LeaderboardPanel } from "./LeaderboardPanel";
+import { MobileDrawer } from "./MobileDrawer";
 import {
   ConstellationProgressProvider,
   useConstellationProgress,
 } from "./ProgressProvider";
+import { useMediaQuery } from "./useMediaQuery";
 import type { FlightTelemetry } from "../../lib/layout/focusContext";
 import type { GameSessionSnapshot } from "../../lib/game/types";
 import type {
@@ -102,6 +105,68 @@ const emptyScene: InitialScene = {
   },
 };
 
+function AtlasIcon({ children }: { children: ReactNode }) {
+  return (
+    <svg
+      className="atlas-icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {children}
+    </svg>
+  );
+}
+
+function FiltersIcon() {
+  return (
+    <AtlasIcon>
+      <path d="M4 7h16" />
+      <path d="M7 12h10" />
+      <path d="M10 17h4" />
+    </AtlasIcon>
+  );
+}
+
+function MapIcon() {
+  return (
+    <AtlasIcon>
+      <path d="M4 6.5 9 4l6 2.5L20 4v13.5L15 20l-6-2.5L4 20Z" />
+      <path d="M9 4v13.5" />
+      <path d="M15 6.5V20" />
+    </AtlasIcon>
+  );
+}
+
+function PaintIcon() {
+  return (
+    <AtlasIcon>
+      <path d="M12 4a8 8 0 1 0 0 16h1.1a2.4 2.4 0 0 0 0-4.8H12a2.6 2.6 0 0 1 0-5.2h.5A3.5 3.5 0 0 0 12 4Z" />
+      <circle cx="8" cy="10" r="1" />
+      <circle cx="12.5" cy="7.5" r="1" />
+      <circle cx="16" cy="10" r="1" />
+    </AtlasIcon>
+  );
+}
+
+function TrophyIcon() {
+  return (
+    <AtlasIcon>
+      <path d="M8 5h8v3a4 4 0 0 1-8 0Z" />
+      <path d="M8 7H5a2 2 0 0 0 2 3h1" />
+      <path d="M16 7h3a2 2 0 0 1-2 3h-1" />
+      <path d="M12 12v4" />
+      <path d="M9 20h6" />
+      <path d="M10 16h4" />
+    </AtlasIcon>
+  );
+}
+
 export function ConstellationExperience() {
   const [scene, setScene] = useState<InitialScene | null>(null);
   const [sceneLoading, setSceneLoading] = useState(true);
@@ -177,7 +242,10 @@ function ConstellationExperienceBody({
   sceneError: string;
   onRetryScene: () => void;
 }) {
+  const isTabletLayout = useMediaQuery("(max-width: 768px)");
+  const isPhoneLayout = useMediaQuery("(max-width: 480px)");
   const [filters, setFilters] = useState<FilterState>(initialFilters);
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedAppName, setSelectedAppName] = useState<string | null>(null);
   const [focusTarget, setFocusTarget] = useState<{
     key: string;
@@ -195,6 +263,10 @@ function ConstellationExperienceBody({
   const [telemetry, setTelemetry] = useState<FlightTelemetry | null>(null);
   const [gameSnapshot, setGameSnapshot] = useState<GameSessionSnapshot | null>(null);
   const [panelMode, setPanelMode] = useState<"none" | "hangar" | "leaderboard">("none");
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [mobilePanelMode, setMobilePanelMode] = useState<
+    "none" | "hangar" | "leaderboard"
+  >("none");
 
   const {
     progress,
@@ -230,7 +302,10 @@ function ConstellationExperienceBody({
     () => skins.find((skin) => skin.selected) ?? skins[0] ?? null,
     [skins],
   );
-  const showLowerPanels = (hasSearched && searchResults.length > 0) || panelMode !== "none";
+  const showLowerPanels =
+    !isTabletLayout && ((hasSearched && searchResults.length > 0) || panelMode !== "none");
+  const mobileOverlayOpen =
+    isTabletLayout && (mobileFiltersOpen || mobilePanelMode !== "none");
 
   const visibleSystems = useMemo(
     () =>
@@ -422,8 +497,16 @@ function ConstellationExperienceBody({
     systemsByApp,
   ]);
 
+  useEffect(() => {
+    if (!isTabletLayout) {
+      setMobileFiltersOpen(false);
+      setMobilePanelMode("none");
+    }
+  }, [isTabletLayout]);
+
   const handleSearch = async (query: string) => {
     const trimmed = query.trim();
+    setSearchQuery(query);
     if (!trimmed) {
       setHasSearched(false);
       setSearchResults([]);
@@ -465,6 +548,10 @@ function ConstellationExperienceBody({
 
   const handleSelectApp = (appName: string) => {
     setSelectedAppName(appName);
+    if (isTabletLayout) {
+      setMobileFiltersOpen(false);
+      setMobilePanelMode("none");
+    }
     const system = systemsByApp.get(appName);
     if (!system) {
       return;
@@ -487,8 +574,53 @@ function ConstellationExperienceBody({
     });
   };
 
+  const toggleMobileFilters = () => {
+    setMobilePanelMode("none");
+    setMobileFiltersOpen((current) => !current);
+  };
+
+  const toggleMobilePanel = (next: "hangar" | "leaderboard") => {
+    setMobileFiltersOpen(false);
+    setMobilePanelMode((current) => (current === next ? "none" : next));
+  };
+
+  const handleResetProgress = () => {
+    resetProgress();
+    setGameSnapshot(null);
+    setSearchQuery("");
+    setSearchResults([]);
+    setHasSearched(false);
+    setStatusMessage("");
+    setPanelMode("none");
+    setMobilePanelMode("none");
+    setMobileFiltersOpen(false);
+  };
+
+  const searchResultsPanel =
+    hasSearched && searchResults.length > 0 ? (
+      <section className="panel-card panel-card--compact">
+        <div className="panel-card-header panel-card-header--compact">
+          <h2>Search hits</h2>
+          <span>{searchResults.length}</span>
+        </div>
+        <ul className="result-list result-list--compact">
+          {searchResults.map((result) => (
+            <li key={result.appName}>
+              <button type="button" onClick={() => handleSelectApp(result.appName)}>
+                <strong>{result.appName}</strong>
+                <span data-owner={result.owner} data-runtime={result.runtimeFamily}>
+                  {result.owner} Â· {result.runtimeFamily}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </section>
+    ) : null;
+
   return (
-    <main className="atlas-page">
+    <>
+      <main className="atlas-page" aria-hidden={mobileOverlayOpen ? true : undefined}>
       <section className="hero-shell">
         <div className="hero-copy">
           <div className="brand-row">
@@ -527,8 +659,40 @@ function ConstellationExperienceBody({
 
       <section className="atlas-grid">
         <div className="atlas-main">
+          <div className="mobile-control-header" aria-label="Mobile search and filters">
+            <div className="mobile-control-header__brand">
+              <img
+                className="flux-logo mobile-control-header__logo"
+                src="/flux-logo.svg"
+                alt="FluxCloud Explore"
+                width={96}
+                height={30}
+                decoding="async"
+              />
+              <div className="mobile-control-header__copy">
+                <span>FluxCloud</span>
+                <strong>Explore</strong>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="icon-button mobile-control-header__toggle"
+              onClick={toggleMobileFilters}
+              aria-haspopup="dialog"
+              aria-expanded={mobileFiltersOpen}
+            >
+              <FiltersIcon />
+              <span>Search / Filter</span>
+            </button>
+          </div>
+
           <div className="control-bar">
-            <SearchBox onSearch={handleSearch} busy={searchBusy || sceneLoading} />
+            <SearchBox
+              onSearch={handleSearch}
+              busy={searchBusy || sceneLoading}
+              value={searchQuery}
+              onQueryChange={setSearchQuery}
+            />
             <FilterBar filters={activeScene.filters} value={filters} onChange={setFilters} />
           </div>
 
@@ -549,26 +713,28 @@ function ConstellationExperienceBody({
             onUpdateFeatureFlags={updateFeatureFlags}
             overlay={
               <>
-                <MiniMap
-                  bounds={activeScene.bounds}
-                  regionClusters={visibleClusters.filter(
-                    (cluster) => cluster.level === "region",
-                  )}
-                  telemetry={telemetry}
-                  snapshot={gameSnapshot}
-                  visitedRegionIds={progress.visitedRegionIds}
-                  mode={flightSettings.hudDensity}
-                  onSelectCluster={handleFocusCluster}
-                />
-                <DiegeticHud
-                  telemetry={telemetry}
-                  snapshot={gameSnapshot}
-                  selectedSkinLabel={selectedSkin?.label ?? "Classic"}
-                  unlockedSkinCount={summary.unlockedSkins}
-                  totalSkinCount={skins.length}
-                  mode={flightSettings.hudDensity}
-                />
-                <FuelGauge snapshot={gameSnapshot} />
+                <div className="scene-mobile-status-stack">
+                  <DiegeticHud
+                    telemetry={telemetry}
+                    snapshot={gameSnapshot}
+                    selectedSkinLabel={selectedSkin?.label ?? "Classic"}
+                    unlockedSkinCount={summary.unlockedSkins}
+                    totalSkinCount={skins.length}
+                    mode={flightSettings.hudDensity}
+                  />
+                  <FuelGauge snapshot={gameSnapshot} />
+                  <MiniMap
+                    bounds={activeScene.bounds}
+                    regionClusters={visibleClusters.filter(
+                      (cluster) => cluster.level === "region",
+                    )}
+                    telemetry={telemetry}
+                    snapshot={gameSnapshot}
+                    visitedRegionIds={progress.visitedRegionIds}
+                    mode={flightSettings.hudDensity}
+                    onSelectCluster={handleFocusCluster}
+                  />
+                </div>
                 <div className="flight-disclaimer">Tip: Click deployments to discover them.</div>
                 <AchievementToast toast={activeToast} onDismiss={dismissToast} />
               </>
@@ -619,6 +785,45 @@ function ConstellationExperienceBody({
             ) : null}
           </div>
 
+          <nav className="atlas-mobile-nav" aria-label="Mobile panel navigation">
+            <button
+              type="button"
+              className={`atlas-mobile-nav__item ${
+                mobilePanelMode === "none" ? "atlas-mobile-nav__item--active" : ""
+              }`}
+              onClick={() => setMobilePanelMode("none")}
+            >
+              <MapIcon />
+              <span>Map</span>
+            </button>
+            <button
+              type="button"
+              className={`atlas-mobile-nav__item ${
+                mobilePanelMode === "hangar" ? "atlas-mobile-nav__item--active" : ""
+              }`}
+              onClick={() => toggleMobilePanel("hangar")}
+              aria-expanded={mobilePanelMode === "hangar"}
+            >
+              <PaintIcon />
+              <span>Customize</span>
+            </button>
+            {featureFlags.leaderboard ? (
+              <button
+                type="button"
+                className={`atlas-mobile-nav__item ${
+                  mobilePanelMode === "leaderboard"
+                    ? "atlas-mobile-nav__item--active"
+                    : ""
+                }`}
+                onClick={() => toggleMobilePanel("leaderboard")}
+                aria-expanded={mobilePanelMode === "leaderboard"}
+              >
+                <TrophyIcon />
+                <span>Leaderboard</span>
+              </button>
+            ) : null}
+          </nav>
+
           <div
             className={`atlas-lower-grid atlas-lower-grid--minimal atlas-lower-grid--game ${
               hasSearched && searchResults.length > 0
@@ -654,14 +859,7 @@ function ConstellationExperienceBody({
               <HangarPanel
                 skins={skins}
                 onSelectSkin={selectSkin}
-                onResetProgress={() => {
-                  resetProgress();
-                  setGameSnapshot(null);
-                  setSearchResults([]);
-                  setHasSearched(false);
-                  setStatusMessage("");
-                  setPanelMode("none");
-                }}
+                onResetProgress={handleResetProgress}
               />
             ) : null}
 
@@ -695,7 +893,65 @@ function ConstellationExperienceBody({
           onClose={() => setSelectedAppName(null)}
         />
       </section>
-    </main>
+      </main>
+
+      {isTabletLayout ? (
+        <MobileDrawer
+          open={mobileFiltersOpen}
+          title="Search and filters"
+          description="Search by app or owner, then narrow the sky with runtime, category, tier, and status filters."
+          onClose={() => setMobileFiltersOpen(false)}
+          placement="right"
+          className={isPhoneLayout ? "mobile-drawer--phone" : "mobile-drawer--filters"}
+        >
+          <div className="mobile-controls-panel">
+            <SearchBox
+              onSearch={handleSearch}
+              busy={searchBusy || sceneLoading}
+              value={searchQuery}
+              onQueryChange={setSearchQuery}
+              autoFocus
+              submitLabel="Find"
+            />
+            <FilterBar filters={activeScene.filters} value={filters} onChange={setFilters} />
+            {searchResultsPanel ? (
+              <div className="mobile-controls-panel__results">{searchResultsPanel}</div>
+            ) : null}
+          </div>
+        </MobileDrawer>
+      ) : null}
+
+      {isTabletLayout ? (
+        <MobileDrawer
+          open={mobilePanelMode !== "none"}
+          title={mobilePanelMode === "leaderboard" ? "Leaderboard" : "Customize aircraft"}
+          description={
+            mobilePanelMode === "leaderboard"
+              ? "Track weekly runs and update your pilot callsign without leaving the map."
+              : "Swap paint styles and reset progress from a mobile-friendly drawer."
+          }
+          onClose={() => setMobilePanelMode("none")}
+          placement="bottom"
+          className={isPhoneLayout ? "mobile-drawer--phone" : "mobile-drawer--panel"}
+        >
+          {mobilePanelMode === "hangar" ? (
+            <HangarCustomizationPanel
+              skins={skins}
+              onSelectSkin={selectSkin}
+              onResetProgress={handleResetProgress}
+            />
+          ) : null}
+          {featureFlags.leaderboard && mobilePanelMode === "leaderboard" ? (
+            <LeaderboardPanel
+              callsign={playerCallsign}
+              onChangeCallsign={setPlayerCallsign}
+              leaderboard={leaderboard}
+              snapshot={gameSnapshot}
+            />
+          ) : null}
+        </MobileDrawer>
+      ) : null}
+    </>
   );
 }
 

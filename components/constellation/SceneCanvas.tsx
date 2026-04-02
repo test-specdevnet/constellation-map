@@ -12,6 +12,8 @@ import {
 } from "react";
 import { DebugHud } from "./DebugHud";
 import { FlightSettingsPanel } from "./FlightSettingsPanel";
+import { MobileDrawer } from "./MobileDrawer";
+import { useMediaQuery } from "./useMediaQuery";
 import {
   drawParachuterPickup,
   drawFuelCanPickup,
@@ -194,6 +196,24 @@ const IDLE_FLIGHT_INPUT: FlightInputState = {
   turnRight: false,
   mouseTurn: 0,
 };
+
+function SceneIcon({ children }: { children: ReactNode }) {
+  return (
+    <svg
+      className="scene-icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {children}
+    </svg>
+  );
+}
 
 const clusterMarkerSignature = (markers: Array<{ id: string; count: number }>) =>
   markers
@@ -559,6 +579,7 @@ export function SceneCanvas({
   onGameStateChange,
   onRunComplete,
 }: SceneCanvasProps) {
+  const isCompactLayout = useMediaQuery("(max-width: 768px)");
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const pointerRef = useRef<{ x: number; y: number } | null>(null);
@@ -620,6 +641,7 @@ export function SceneCanvas({
   const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 760 });
   const [showFlightTip, setShowFlightTip] = useState(false);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  const [showActionMenu, setShowActionMenu] = useState(false);
   const [showTouchControls, setShowTouchControls] = useState(false);
   const [debugHudHotkey, setDebugHudHotkey] = useState(false);
   const [debugStats, setDebugStats] = useState<DebugHudSnapshot>(createInitialDebugHudSnapshot);
@@ -909,8 +931,15 @@ export function SceneCanvas({
   useEffect(() => {
     if (showSettingsPanel) {
       resetTransientControls();
+      setShowActionMenu(false);
     }
   }, [resetTransientControls, showSettingsPanel]);
+
+  useEffect(() => {
+    if (!isCompactLayout) {
+      setShowActionMenu(false);
+    }
+  }, [isCompactLayout]);
 
   useEffect(
     () => () => {
@@ -1963,40 +1992,125 @@ export function SceneCanvas({
 
   return (
     <div className="scene-shell">
-      <div className="scene-toolbar">
-        <div className="scene-toolbar-group">
-          <button type="button" className="secondary-action" onClick={() => bumpZoom(1.12)}>
+      {isCompactLayout ? (
+        <div className="scene-toolbar scene-toolbar--mobile">
+          <span className="scene-zoom-label scene-zoom-label--wrap">
+            Tap the action menu for zoom, reset, and flight settings.
+          </span>
+          <button
+            type="button"
+            className="icon-button scene-toolbar__menu"
+            onClick={() => setShowActionMenu(true)}
+            aria-haspopup="dialog"
+            aria-expanded={showActionMenu}
+          >
+            <SceneIcon>
+              <path d="M4 7h16" />
+              <path d="M4 12h16" />
+              <path d="M4 17h16" />
+            </SceneIcon>
+            <span>Actions</span>
+          </button>
+        </div>
+      ) : (
+        <div className="scene-toolbar">
+          <div className="scene-toolbar-group">
+            <button type="button" className="secondary-action" onClick={() => bumpZoom(1.12)}>
+              Zoom in
+            </button>
+            <button
+              type="button"
+              className="secondary-action"
+              onClick={() => bumpZoom(1 / 1.12)}
+            >
+              Zoom out
+            </button>
+            <button
+              type="button"
+              className="secondary-action"
+              onClick={() => bumpZoom(getDefaultZoom() / currentCameraRef.current.zoom)}
+            >
+              Reset view
+            </button>
+            <button type="button" className="secondary-action" onClick={resetFlight}>
+              Reset flight
+            </button>
+            <button
+              type="button"
+              className="secondary-action"
+              onClick={() => setShowSettingsPanel((current) => !current)}
+            >
+              Controls / Settings
+            </button>
+          </div>
+          <span className="scene-zoom-label scene-zoom-label--wrap">
+            Fly with WASD or arrows. Scroll to zoom. Sweep the cloud for buoys, fuel,
+            boosts, and rescue pilots.
+          </span>
+        </div>
+      )}
+
+      <MobileDrawer
+        open={showActionMenu}
+        title="Scene actions"
+        description="Zoom the map, reset the camera, restart your flight, or open the controls drawer."
+        onClose={() => setShowActionMenu(false)}
+        placement="bottom"
+        className="mobile-drawer--panel"
+      >
+        <div className="mobile-scene-actions">
+          <button
+            type="button"
+            className="secondary-action"
+            onClick={() => {
+              bumpZoom(1.12);
+              setShowActionMenu(false);
+            }}
+          >
             Zoom in
           </button>
           <button
             type="button"
             className="secondary-action"
-            onClick={() => bumpZoom(1 / 1.12)}
+            onClick={() => {
+              bumpZoom(1 / 1.12);
+              setShowActionMenu(false);
+            }}
           >
             Zoom out
           </button>
           <button
             type="button"
             className="secondary-action"
-            onClick={() => bumpZoom(getDefaultZoom() / currentCameraRef.current.zoom)}
+            onClick={() => {
+              bumpZoom(getDefaultZoom() / currentCameraRef.current.zoom);
+              setShowActionMenu(false);
+            }}
           >
             Reset view
-          </button>
-          <button type="button" className="secondary-action" onClick={resetFlight}>
-            Reset flight
           </button>
           <button
             type="button"
             className="secondary-action"
-            onClick={() => setShowSettingsPanel((current) => !current)}
+            onClick={() => {
+              resetFlight();
+              setShowActionMenu(false);
+            }}
+          >
+            Reset flight
+          </button>
+          <button
+            type="button"
+            className="primary-action"
+            onClick={() => {
+              setShowActionMenu(false);
+              setShowSettingsPanel(true);
+            }}
           >
             Controls / Settings
           </button>
         </div>
-        <span className="scene-zoom-label scene-zoom-label--wrap">
-          Fly with WASD or arrows. Scroll to zoom. Sweep the cloud for buoys, fuel, boosts, and rescue pilots.
-        </span>
-      </div>
+      </MobileDrawer>
 
       <div
         ref={wrapRef}
@@ -2054,6 +2168,7 @@ export function SceneCanvas({
           settings={flightSettings}
           featureFlags={featureFlags}
           qualityMode={qualityMode}
+          mobile={isCompactLayout}
           onClose={() => setShowSettingsPanel(false)}
           onUpdateSettings={onUpdateFlightSettings}
           onUpdateFeatureFlags={onUpdateFeatureFlags}

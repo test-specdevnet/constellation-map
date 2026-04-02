@@ -5,14 +5,33 @@ import { useState, type FormEvent } from "react";
 type SearchBoxProps = {
   onSearch: (query: string) => void;
   busy?: boolean;
+  value?: string;
+  onQueryChange?: (query: string) => void;
+  autoFocus?: boolean;
+  submitLabel?: string;
 };
 
-export function SearchBox({ onSearch, busy = false }: SearchBoxProps) {
-  const [query, setQuery] = useState("");
+export function SearchBox({
+  onSearch,
+  busy = false,
+  value,
+  onQueryChange,
+  autoFocus = false,
+  submitLabel,
+}: SearchBoxProps) {
+  const [internalQuery, setInternalQuery] = useState("");
+  const query = value ?? internalQuery;
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     onSearch(query);
+  };
+
+  const handleChange = (next: string) => {
+    if (value === undefined) {
+      setInternalQuery(next);
+    }
+    onQueryChange?.(next);
   };
 
   return (
@@ -22,13 +41,14 @@ export function SearchBox({ onSearch, busy = false }: SearchBoxProps) {
         <input
           type="search"
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => handleChange(event.target.value)}
           placeholder="Search app name, owner, runtime, category"
           aria-label="Search apps, owners, or categories"
+          autoFocus={autoFocus}
         />
       </label>
       <button type="submit" className="primary-action" disabled={busy}>
-        {busy ? "Searching..." : "Search"}
+        {busy ? "Searching..." : submitLabel ?? "Search"}
       </button>
     </form>
   );

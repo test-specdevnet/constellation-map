@@ -19,6 +19,14 @@ Interactive star-atlas style discovery surface for public FluxCloud deployment d
 - Compact or detailed HUD modes, minimap, hangar, and leaderboard panels
 - Internal API layer for render-ready stars, detail hydration, filters, search, and refresh
 
+## Mobile layout
+
+- Mobile-only breakpoints at `768px` and `480px` collapse the desktop chrome into touch-friendly drawers and a fixed bottom nav.
+- Search and filter controls move into an accessible off-canvas drawer so the scene keeps most of the viewport on phones.
+- Scene actions and flight settings switch to bottom-sheet drawers on compact screens to avoid toolbar wrapping.
+- HUD stats, minimap, and fuel reserve stack into a condensed overlay column while the on-screen D-pad floats above the mobile nav on touch devices.
+- Desktop classes and wide-screen layout remain intact outside the mobile media queries.
+
 ## Gameplay architecture
 
 - `lib/game/flightController.ts`

@@ -1,5 +1,6 @@
 "use client";
 
+import { MobileDrawer } from "./MobileDrawer";
 import type {
   FeatureFlags,
   FlightSettings,
@@ -22,6 +23,7 @@ export function FlightSettingsPanel({
   onClose,
   onUpdateSettings,
   onUpdateFeatureFlags,
+  mobile = false,
 }: {
   open: boolean;
   settings: FlightSettings;
@@ -30,21 +32,17 @@ export function FlightSettingsPanel({
   onClose: () => void;
   onUpdateSettings: (settings: Partial<FlightSettings>) => void;
   onUpdateFeatureFlags: (flags: Partial<FeatureFlags>) => void;
+  mobile?: boolean;
 }) {
   if (!open) {
     return null;
   }
 
-  return (
-    <div className="flight-settings-panel" role="dialog" aria-label="Flight settings">
-      <div className="flight-settings-panel__header">
-        <div>
-          <strong>Controls / Settings</strong>
-          <span>Resolved quality: {labelize(qualityMode)}</span>
-        </div>
-        <button type="button" className="icon-button" onClick={onClose}>
-          Close
-        </button>
+  const content = (
+    <>
+      <div className="flight-settings-panel__section flight-settings-panel__section--intro">
+        <strong>Resolved quality</strong>
+        <p>{labelize(qualityMode)}</p>
       </div>
 
       <div className="flight-settings-panel__section">
@@ -123,7 +121,10 @@ export function FlightSettingsPanel({
           ["deploymentClustering", "Deployment clustering"],
         ] as const
       ).map(([key, label]) => (
-        <label key={key} className="flight-settings-panel__field flight-settings-panel__field--toggle">
+        <label
+          key={key}
+          className="flight-settings-panel__field flight-settings-panel__field--toggle"
+        >
           <span>{label}</span>
           <input
             type="checkbox"
@@ -136,6 +137,36 @@ export function FlightSettingsPanel({
           />
         </label>
       ))}
+    </>
+  );
+
+  if (mobile) {
+    return (
+      <MobileDrawer
+        open={open}
+        title="Controls and settings"
+        description="Adjust flight controls, HUD density, and exploration systems for touch play."
+        onClose={onClose}
+        placement="bottom"
+        className="mobile-drawer--panel"
+      >
+        <div className="flight-settings-panel flight-settings-panel--mobile">{content}</div>
+      </MobileDrawer>
+    );
+  }
+
+  return (
+    <div className="flight-settings-panel" role="dialog" aria-label="Flight settings">
+      <div className="flight-settings-panel__header">
+        <div>
+          <strong>Controls / Settings</strong>
+          <span>Resolved quality: {labelize(qualityMode)}</span>
+        </div>
+        <button type="button" className="icon-button" onClick={onClose}>
+          Close
+        </button>
+      </div>
+      {content}
     </div>
   );
 }

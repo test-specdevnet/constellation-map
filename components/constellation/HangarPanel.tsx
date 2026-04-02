@@ -3,6 +3,73 @@
 import { useState } from "react";
 import type { SkinView } from "./ProgressProvider";
 
+function HangarCustomizationBody({
+  skins,
+  onSelectSkin,
+  onResetProgress,
+  onDone,
+}: {
+  skins: SkinView[];
+  onSelectSkin: (skinId: SkinView["id"]) => void;
+  onResetProgress: () => void;
+  onDone?: () => void;
+}) {
+  return (
+    <>
+      <p className="hangar-panel-copy">Pick your aircraft color for the next flight.</p>
+      <div className="hangar-grid">
+        {skins.map((skin) => (
+          <button
+            key={skin.id}
+            type="button"
+            className={`hangar-card hangar-card--swatch-only ${
+              skin.selected ? "hangar-card--selected" : ""
+            }`}
+            disabled={!skin.unlocked}
+            onClick={() => onSelectSkin(skin.id)}
+            aria-label={`Choose ${skin.label} plane paint`}
+            aria-pressed={skin.selected}
+            title={skin.label}
+          >
+            <div className={`hangar-swatch hangar-swatch--${skin.id}`} />
+          </button>
+        ))}
+      </div>
+
+      <div className="hangar-modal-actions">
+        <button type="button" className="secondary-action" onClick={onResetProgress}>
+          Reset progress
+        </button>
+        {onDone ? (
+          <button type="button" className="primary-action" onClick={onDone}>
+            Done
+          </button>
+        ) : null}
+      </div>
+    </>
+  );
+}
+
+export function HangarCustomizationPanel({
+  skins,
+  onSelectSkin,
+  onResetProgress,
+}: {
+  skins: SkinView[];
+  onSelectSkin: (skinId: SkinView["id"]) => void;
+  onResetProgress: () => void;
+}) {
+  return (
+    <section className="hangar-customization-panel" aria-label="Plane customization">
+      <HangarCustomizationBody
+        skins={skins}
+        onSelectSkin={onSelectSkin}
+        onResetProgress={onResetProgress}
+      />
+    </section>
+  );
+}
+
 export function HangarPanel({
   skins,
   onSelectSkin,
@@ -55,34 +122,12 @@ export function HangarPanel({
               </button>
             </div>
 
-            <p className="hangar-panel-copy">Pick your aircraft color for the next flight.</p>
-            <div className="hangar-grid">
-              {skins.map((skin) => (
-                <button
-                  key={skin.id}
-                  type="button"
-                  className={`hangar-card hangar-card--swatch-only ${
-                    skin.selected ? "hangar-card--selected" : ""
-                  }`}
-                  disabled={!skin.unlocked}
-                  onClick={() => onSelectSkin(skin.id)}
-                  aria-label={`Choose ${skin.label} plane paint`}
-                  aria-pressed={skin.selected}
-                  title={skin.label}
-                >
-                  <div className={`hangar-swatch hangar-swatch--${skin.id}`} />
-                </button>
-              ))}
-            </div>
-
-            <div className="hangar-modal-actions">
-              <button type="button" className="secondary-action" onClick={onResetProgress}>
-                Reset progress
-              </button>
-              <button type="button" className="primary-action" onClick={() => setOpen(false)}>
-                Done
-              </button>
-            </div>
+            <HangarCustomizationBody
+              skins={skins}
+              onSelectSkin={onSelectSkin}
+              onResetProgress={onResetProgress}
+              onDone={() => setOpen(false)}
+            />
           </section>
         </div>
       ) : null}

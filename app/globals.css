@@ -2155,3 +2155,522 @@ h1 {
     align-items: stretch;
   }
 }
+
+.atlas-icon,
+.scene-icon,
+.hud-chip__icon,
+.fuel-gauge-icon {
+  width: 1.05rem;
+  height: 1.05rem;
+  flex: 0 0 auto;
+}
+
+.mobile-control-header,
+.atlas-mobile-nav {
+  display: none;
+}
+
+.scene-mobile-status-stack {
+  display: contents;
+}
+
+.mobile-drawer-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.mobile-drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(6, 12, 24, 0.68);
+  backdrop-filter: blur(12px);
+}
+
+.mobile-drawer {
+  position: relative;
+  z-index: 1;
+  width: min(420px, 100vw);
+  height: 100%;
+  margin-left: auto;
+  padding: 18px 18px 20px;
+  border-left: 1px solid rgba(184, 228, 255, 0.22);
+  background: linear-gradient(180deg, rgba(10, 22, 46, 0.98), rgba(7, 16, 34, 0.98));
+  box-shadow: -12px 0 48px rgba(0, 0, 0, 0.34);
+  overflow: auto;
+}
+
+.mobile-drawer--bottom {
+  align-self: flex-end;
+  width: min(720px, calc(100vw - 16px));
+  height: auto;
+  max-height: min(72vh, 680px);
+  margin: 0 auto 8px;
+  border: 1px solid rgba(184, 228, 255, 0.22);
+  border-radius: 24px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
+}
+
+.mobile-drawer__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.mobile-drawer__title {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.mobile-drawer__copy {
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.mobile-drawer__body,
+.mobile-controls-panel,
+.mobile-controls-panel__results,
+.mobile-scene-actions,
+.hangar-customization-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.mobile-scene-actions .secondary-action,
+.mobile-scene-actions .primary-action {
+  width: 100%;
+}
+
+.mobile-controls-panel .filter-bar {
+  grid-template-columns: 1fr;
+}
+
+.mobile-controls-panel__results .panel-card {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.mobile-controls-panel__results .panel-card-header {
+  margin-bottom: 8px;
+}
+
+.scene-toolbar__menu {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.flight-settings-panel--mobile {
+  position: static;
+  width: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.flight-settings-panel--mobile .flight-settings-panel__section--intro {
+  margin-bottom: 0;
+}
+
+.hud-chip__icon {
+  display: none;
+}
+
+.hud-chip__label {
+  display: block;
+}
+
+.fuel-gauge-header__title,
+.fuel-gauge-header__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fuel-gauge-icon {
+  color: rgba(255, 224, 146, 0.94);
+}
+
+.fuel-gauge-toggle {
+  display: none;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+}
+
+.scene-flight-pad {
+  pointer-events: none;
+}
+
+.scene-flight-pad-btn {
+  pointer-events: auto;
+}
+
+@media (max-width: 768px) {
+  .atlas-page {
+    padding: 12px 12px 112px;
+  }
+
+  .hero-shell,
+  .control-bar,
+  .atlas-panel-toggles,
+  .atlas-lower-grid {
+    display: none !important;
+  }
+
+  .mobile-control-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+    padding: 14px 16px;
+    border: 1px solid rgba(184, 228, 255, 0.22);
+    border-radius: 22px;
+    background: linear-gradient(180deg, rgba(11, 24, 50, 0.84), rgba(8, 18, 38, 0.92));
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(12px);
+  }
+
+  .mobile-control-header__brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .mobile-control-header__logo {
+    width: 92px;
+    height: auto;
+  }
+
+  .mobile-control-header__copy {
+    display: grid;
+    gap: 2px;
+  }
+
+  .mobile-control-header__copy span {
+    color: var(--muted);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .mobile-control-header__copy strong {
+    font-size: 1.08rem;
+    letter-spacing: -0.02em;
+  }
+
+  .mobile-control-header__toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 48px;
+    padding-inline: 12px;
+    white-space: nowrap;
+  }
+
+  .scene-shell {
+    padding: 12px;
+    border-radius: 24px;
+  }
+
+  .scene-toolbar--mobile {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .scene-toolbar--mobile .scene-zoom-label--wrap {
+    max-width: none;
+    text-align: left;
+    font-size: 0.76rem;
+  }
+
+  .scene-wrap,
+  .scene-canvas {
+    min-height: min(66vh, 560px);
+    height: min(66vh, 560px);
+  }
+
+  .scene-mobile-status-stack {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 3;
+    display: grid;
+    gap: 8px;
+    width: min(45vw, 238px);
+    max-width: calc(100% - 136px);
+  }
+
+  .scene-mobile-status-stack .diegetic-hud,
+  .scene-mobile-status-stack .mini-map,
+  .scene-mobile-status-stack .fuel-gauge {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    max-width: 100%;
+    pointer-events: auto;
+  }
+
+  .scene-mobile-status-stack .diegetic-hud,
+  .scene-mobile-status-stack .diegetic-hud--compact,
+  .scene-mobile-status-stack .diegetic-hud--detailed {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .scene-mobile-status-stack .hud-chip--stat {
+    min-height: 0;
+    padding: 10px 11px;
+    border-radius: 18px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-areas:
+      "icon value"
+      "icon label";
+    align-items: center;
+    justify-items: start;
+    text-align: left;
+    row-gap: 2px;
+    column-gap: 8px;
+  }
+
+  .scene-mobile-status-stack .hud-chip__icon {
+    display: block;
+    grid-area: icon;
+    color: rgba(191, 231, 255, 0.84);
+  }
+
+  .scene-mobile-status-stack .hud-chip__label {
+    grid-area: label;
+    margin: 0;
+    font-size: 0.58rem;
+    line-height: 1.25;
+  }
+
+  .scene-mobile-status-stack .hud-chip strong {
+    grid-area: value;
+    font-size: 1rem;
+    white-space: nowrap;
+  }
+
+  .scene-mobile-status-stack .mini-map {
+    padding: 10px;
+  }
+
+  .scene-mobile-status-stack .mini-map-legend {
+    display: none;
+  }
+
+  .scene-mobile-status-stack .mini-map-label {
+    margin-top: 6px;
+    font-size: 0.72rem;
+  }
+
+  .scene-mobile-status-stack .fuel-gauge {
+    padding: 10px 12px;
+  }
+
+  .scene-mobile-status-stack .fuel-gauge-status,
+  .scene-mobile-status-stack .fuel-gauge-meta {
+    display: none;
+  }
+
+  .scene-mobile-status-stack .fuel-gauge--expanded .fuel-gauge-status,
+  .scene-mobile-status-stack .fuel-gauge--expanded .fuel-gauge-meta {
+    display: flex;
+  }
+
+  .scene-mobile-status-stack .fuel-gauge-toggle {
+    display: inline-flex;
+  }
+
+  .scene-mobile-status-stack .fuel-gauge-track {
+    margin-top: 8px;
+    margin-bottom: 0;
+  }
+
+  .flight-disclaimer {
+    left: 12px;
+    right: 124px;
+    bottom: 98px;
+    transform: none;
+    max-width: none;
+    text-align: left;
+  }
+
+  .achievement-toast {
+    left: 12px;
+    right: auto;
+    bottom: 148px;
+    transform: none;
+    width: min(300px, calc(100% - 136px));
+    max-width: calc(100% - 136px);
+  }
+
+  .pickup-notice {
+    bottom: 188px;
+  }
+
+  .scene-flight-pad {
+    right: 12px;
+    bottom: 98px;
+    padding: 8px;
+  }
+
+  .debug-hud {
+    left: 12px;
+    right: 12px;
+    bottom: 98px;
+    width: auto;
+  }
+
+  .scene-flight-tip,
+  .scene-run-end {
+    left: 12px;
+    right: 12px;
+    top: auto;
+    bottom: 104px;
+    width: auto;
+    transform: none;
+    max-width: none;
+  }
+
+  .detail-drawer {
+    display: none;
+  }
+
+  .detail-drawer.open {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: 104px;
+    z-index: 38;
+    display: block;
+    max-height: min(62vh, 540px);
+  }
+
+  .atlas-mobile-nav {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    z-index: 36;
+    padding: 10px;
+    border: 1px solid rgba(184, 228, 255, 0.22);
+    border-radius: 20px;
+    background: linear-gradient(180deg, rgba(11, 24, 50, 0.92), rgba(7, 16, 34, 0.96));
+    box-shadow: 0 22px 60px rgba(0, 0, 0, 0.36);
+    backdrop-filter: blur(14px);
+  }
+
+  .atlas-mobile-nav__item {
+    display: grid;
+    justify-items: center;
+    gap: 6px;
+    padding: 8px 6px;
+    border-radius: 16px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text);
+    font-size: 0.72rem;
+  }
+
+  .atlas-mobile-nav__item--active {
+    border-color: rgba(255, 214, 120, 0.32);
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .mobile-drawer--phone {
+    width: min(100vw, 360px);
+  }
+}
+
+@media (max-width: 480px) {
+  .atlas-page {
+    padding: 10px 10px 104px;
+  }
+
+  .mobile-control-header {
+    padding: 12px 14px;
+  }
+
+  .mobile-control-header__logo {
+    width: 82px;
+  }
+
+  .mobile-control-header__copy strong {
+    font-size: 1rem;
+  }
+
+  .mobile-control-header__toggle span,
+  .scene-toolbar__menu span {
+    display: none;
+  }
+
+  .scene-wrap,
+  .scene-canvas {
+    min-height: min(60vh, 500px);
+    height: min(60vh, 500px);
+  }
+
+  .scene-mobile-status-stack {
+    width: min(52vw, 210px);
+    max-width: calc(100% - 116px);
+  }
+
+  .scene-mobile-status-stack .hud-chip--stat {
+    padding: 8px 9px;
+  }
+
+  .scene-mobile-status-stack .hud-chip strong {
+    font-size: 0.92rem;
+  }
+
+  .flight-disclaimer {
+    right: 110px;
+    font-size: 0.72rem;
+  }
+
+  .achievement-toast {
+    bottom: 140px;
+    width: min(260px, calc(100% - 124px));
+    max-width: calc(100% - 124px);
+  }
+
+  .scene-flight-pad {
+    transform: scale(0.92);
+    transform-origin: bottom right;
+  }
+
+  .atlas-mobile-nav {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    padding: 8px;
+  }
+
+  .mobile-drawer--bottom {
+    width: calc(100vw - 10px);
+    margin-bottom: 5px;
+  }
+}
