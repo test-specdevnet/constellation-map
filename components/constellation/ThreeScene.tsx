@@ -835,7 +835,15 @@ function ThreeWorld({
           ))}
       </group>
       <Effects effects={runtime.effects} />
-      <HologramPanel flight={runtime.flight} selectedAppName={selectedAppName} />
+      {runtime.pickupNotice || selectedAppName ? (
+        <HologramPanel
+          flight={runtime.flight}
+          selectedAppName={selectedAppName}
+          notice={runtime.pickupNotice}
+        />
+      ) : (
+        <HologramPanel flight={runtime.flight} selectedAppName={selectedAppName} notice="Find a deployment" />
+      )}
       <Biplane flight={runtime.flight} selectedSkinId={selectedSkinId} />
     </>
   );
@@ -1127,10 +1135,18 @@ function RobotAvatar({
 function HologramPanel({
   flight,
   selectedAppName,
+  notice,
 }: {
   flight: FlightState;
   selectedAppName: string | null;
+  notice: string | null;
 }) {
+  const panelRef = useRef<THREE.Group>(null);
+  useFrame((state) => {
+    if (panelRef.current) {
+      panelRef.current.position.y += Math.sin(state.clock.elapsedTime * 1.8) * 0.002;
+    }
+  });
   const position = to3(
     {
       x: flight.x + Math.cos(flight.heading) * 360,
@@ -1140,7 +1156,7 @@ function HologramPanel({
   );
   return (
     <BillboardGroup position={position}>
-      <group>
+      <group ref={panelRef}>
         <mesh>
           <planeGeometry args={[8, 4.4]} />
           <meshStandardMaterial
@@ -1156,6 +1172,21 @@ function HologramPanel({
           <boxGeometry args={[4.2, 0.08, 0.02]} />
           <meshBasicMaterial color="#e7fbff" transparent opacity={0.88} />
         </mesh>
+        <mesh position={[0, -1.76, 0.07]}>
+          <boxGeometry args={[5.6, 0.12, 0.02]} />
+          <meshBasicMaterial color={notice ? "#ffe178" : "#78efff"} transparent opacity={0.72} />
+        </mesh>
+        {[
+          [-1.2, -0.02, 1.6, 0.82, 0.86],
+          [1.08, 0.0, 1.55, -0.78, -0.72],
+          [-1.22, -0.86, 1.2, 0.52, -0.8],
+          [1.85, -0.38, 0.74, -0.8, 0.86],
+        ].map(([x, y, width, rotation, opacity], index) => (
+          <mesh key={`holo-line-${index}`} position={[x, y, 0.055]} rotation={[0, 0, rotation]}>
+            <boxGeometry args={[width, 0.035, 0.02]} />
+            <meshBasicMaterial color="#9df4ff" transparent opacity={opacity} />
+          </mesh>
+        ))}
         {[
           [-2.4, 0.42, "#5fe3ff"],
           [0, -0.45, "#9f83ff"],
@@ -1172,10 +1203,35 @@ function HologramPanel({
               <boxGeometry args={[0.34, 0.08, 0.02]} />
               <meshBasicMaterial color="#06233a" transparent opacity={0.72} />
             </mesh>
+            <mesh position={[0, -0.62, 0.04]}>
+              <planeGeometry args={[0.76, 0.08]} />
+              <meshBasicMaterial color={color as string} transparent opacity={0.64} side={THREE.DoubleSide} />
+            </mesh>
           </group>
         ))}
+        <HologramNotice active={Boolean(notice || selectedAppName)} color={notice ? "#ffe178" : "#a5f3ff"} />
       </group>
     </BillboardGroup>
+  );
+}
+
+function HologramNotice({ active, color }: { active: boolean; color: string }) {
+  return (
+    <group position={[0, -2.18, 0.1]}>
+      <mesh>
+        <planeGeometry args={[3.8, 0.48]} />
+        <meshBasicMaterial
+          color={active ? color : "#79dfff"}
+          transparent
+          opacity={active ? 0.34 : 0.18}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+      <mesh position={[0, 0, 0.03]}>
+        <planeGeometry args={[2.7, 0.08]} />
+        <meshBasicMaterial color="#f3fbff" transparent opacity={0.78} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
   );
 }
 
