@@ -9,8 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Billboard, Text } from "@react-three/drei";
+import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import { DebugHud } from "./DebugHud";
 import { FlightSettingsPanel } from "./FlightSettingsPanel";
@@ -895,11 +894,9 @@ function CloudIsland({
           scale={0.75}
         />
       ) : null}
-      <Billboard position={[0, radius * 0.08 + 2.6, 0]}>
-        <Text fontSize={0.75} color="#f7fbff" anchorX="center" anchorY="middle" outlineColor="#13213c" outlineWidth={0.05}>
-          {cluster.label}
-        </Text>
-      </Billboard>
+      <BillboardGroup position={[0, radius * 0.08 + 2.6, 0]}>
+        <BeaconPlaque color={cluster.level === "region" ? "#61d7ff" : "#9b82ff"} />
+      </BillboardGroup>
     </group>
   );
 }
@@ -922,11 +919,11 @@ function DeploymentMarker({
   return (
     <group
       position={position}
-      onClick={(event) => {
+      onClick={(event: ThreeEvent<MouseEvent>) => {
         event.stopPropagation();
         onSelectApp(system.appName);
       }}
-      onPointerOver={(event) => {
+      onPointerOver={(event: ThreeEvent<PointerEvent>) => {
         event.stopPropagation();
         onHoverEntity({
           kind: "system",
@@ -953,11 +950,9 @@ function DeploymentMarker({
         <coneGeometry args={[0.28, 1.6, 4]} />
         <meshStandardMaterial color={colorway.main} emissive={colorway.beacon} emissiveIntensity={0.7} />
       </mesh>
-      <Billboard position={[0, 1.55, 0]}>
-        <Text fontSize={0.52} color="#ffffff" anchorX="center" anchorY="middle" outlineWidth={0.04} outlineColor="#14213b">
-          {system.label}
-        </Text>
-      </Billboard>
+      <BillboardGroup position={[0, 1.55, 0]}>
+        <BeaconPlaque color={colorway.beacon} compact />
+      </BillboardGroup>
     </group>
   );
 }
@@ -1102,7 +1097,7 @@ function HologramPanel({
     PLANE_ALTITUDE + 6,
   );
   return (
-    <Billboard position={position}>
+    <BillboardGroup position={position}>
       <group>
         <mesh>
           <planeGeometry args={[8, 4.4]} />
@@ -1115,28 +1110,64 @@ function HologramPanel({
             side={THREE.DoubleSide}
           />
         </mesh>
-        <Text position={[0, 1.55, 0.04]} fontSize={0.38} color="#e7fbff" anchorX="center">
-          {selectedAppName ?? "FluxCloud Topology"}
-        </Text>
+        <mesh position={[0, 1.55, 0.06]}>
+          <boxGeometry args={[4.2, 0.08, 0.02]} />
+          <meshBasicMaterial color="#e7fbff" transparent opacity={0.88} />
+        </mesh>
         {[
-          [-2.4, 0.42, "#5fe3ff", "APP"],
-          [0, -0.45, "#9f83ff", "AI"],
-          [2.25, 0.5, "#77e6a0", "DB"],
-          [1.8, -1.25, "#ffd36a", "NET"],
-          [-1.9, -1.2, "#66c7ff", "API"],
-        ].map(([x, y, color, label]) => (
-          <group key={label as string} position={[x as number, y as number, 0.08]}>
+          [-2.4, 0.42, "#5fe3ff"],
+          [0, -0.45, "#9f83ff"],
+          [2.25, 0.5, "#77e6a0"],
+          [1.8, -1.25, "#ffd36a"],
+          [-1.9, -1.2, "#66c7ff"],
+        ].map(([x, y, color], index) => (
+          <group key={index} position={[x as number, y as number, 0.08]}>
             <mesh>
               <circleGeometry args={[0.42, 24]} />
               <meshStandardMaterial color={color as string} emissive={color as string} emissiveIntensity={0.72} />
             </mesh>
-            <Text position={[0, 0, 0.05]} fontSize={0.18} color="#06233a" anchorX="center" anchorY="middle">
-              {label as string}
-            </Text>
+            <mesh position={[0, 0, 0.06]}>
+              <boxGeometry args={[0.34, 0.08, 0.02]} />
+              <meshBasicMaterial color="#06233a" transparent opacity={0.72} />
+            </mesh>
           </group>
         ))}
       </group>
-    </Billboard>
+    </BillboardGroup>
+  );
+}
+
+function BillboardGroup({
+  children,
+  position,
+}: {
+  children: ReactNode;
+  position: [number, number, number] | THREE.Vector3;
+}) {
+  const ref = useRef<THREE.Group>(null);
+  const { camera } = useThree();
+  useFrame(() => {
+    ref.current?.quaternion.copy(camera.quaternion);
+  });
+  return (
+    <group ref={ref} position={position}>
+      {children}
+    </group>
+  );
+}
+
+function BeaconPlaque({ color, compact = false }: { color: string; compact?: boolean }) {
+  return (
+    <group>
+      <mesh>
+        <planeGeometry args={compact ? [1.3, 0.28] : [2.2, 0.38]} />
+        <meshBasicMaterial color="#0c1f38" transparent opacity={0.72} side={THREE.DoubleSide} />
+      </mesh>
+      <mesh position={[0, 0, 0.02]}>
+        <planeGeometry args={compact ? [0.86, 0.06] : [1.5, 0.08]} />
+        <meshBasicMaterial color={color} transparent opacity={0.86} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
   );
 }
 
