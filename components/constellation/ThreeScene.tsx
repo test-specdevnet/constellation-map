@@ -509,9 +509,16 @@ export function ThreeScene({
 
   const snapshot = runtimeRef.current;
   const debugHudVisible = featureFlags.debugHud || debugHudHotkey;
+  const boostLaunchSpeed = () => {
+    runtimeRef.current.flight = {
+      ...runtimeRef.current.flight,
+      speed: Math.max(runtimeRef.current.flight.speed, 240),
+    };
+  };
   const dismissFlightTip = () => {
     window.localStorage.setItem("flux-flight-tip-dismissed", "1");
     setShowFlightTip(false);
+    boostLaunchSpeed();
     focusInputController(inputControllerRef.current);
     window.requestAnimationFrame(() => wrapRef.current?.focus());
   };
@@ -537,6 +544,7 @@ export function ThreeScene({
                 bounds.minX + bounds.width / 2,
                 bounds.minY + bounds.height / 2,
               );
+              runtimeRef.current.flight.speed = 180;
               setRunEndSnapshot(null);
               setRuntimeVersion((value) => value + 1);
             }}
@@ -616,7 +624,7 @@ export function ThreeScene({
               selectedAppName={selectedAppName}
               selectedSkinId={selectedSkinId}
               searchMatches={matchSet}
-              focusTarget={focusTarget}
+              focusTarget={showFlightTip ? focusTarget : null}
               cloudsEnabled={featureFlags.clouds}
               qualityMode={qualityMode}
               onSelectApp={onSelectApp}
@@ -673,6 +681,7 @@ export function ThreeScene({
                 onClick={() => {
                   runtimeRef.current.game = createGameState();
                   runtimeRef.current.game.runStartedAtMs = performance.now();
+                  runtimeRef.current.flight.speed = 180;
                   setRunEndSnapshot(null);
                 }}
               >
@@ -770,7 +779,7 @@ function ThreeWorld({
       -Math.sin(flight.heading) * distance,
     );
     const desired = planePosition.clone().add(behind);
-    if (focusTarget) {
+    if (focusTarget && runtime.flight.speed < 5) {
       desired.lerp(to3(focusTarget, PLANE_ALTITUDE + 18), 0.08);
     }
     const cameraBlend = 1 - Math.exp(-delta * 4.6);
@@ -1296,6 +1305,8 @@ function TouchFlightPad({
           data-label="Up"
           onPointerDown={() => press("ArrowUp")}
           onPointerUp={() => release("ArrowUp")}
+          onPointerCancel={() => release("ArrowUp")}
+          onPointerLeave={() => release("ArrowUp")}
         >
           Accelerate
         </button>
@@ -1313,6 +1324,8 @@ function TouchFlightPad({
             data-label={label}
             onPointerDown={() => press(key as ControlKey)}
             onPointerUp={() => release(key as ControlKey)}
+            onPointerCancel={() => release(key as ControlKey)}
+            onPointerLeave={() => release(key as ControlKey)}
           >
             {label}
           </button>
