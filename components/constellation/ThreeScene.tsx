@@ -955,21 +955,17 @@ function DeploymentMarker({
       onPointerOut={() => onHoverEntity(null)}
     >
       <pointLight color={colorway.beacon} intensity={selected ? 2.9 : 1.35} distance={12} />
-      <mesh>
-        <sphereGeometry args={[selected ? 0.8 : 0.58, 24, 16]} />
-        <meshStandardMaterial
-          color={colorway.main}
-          emissive={colorway.beacon}
-          emissiveIntensity={selected ? 1.25 : 0.62}
-          roughness={0.22}
-        />
+      <mesh position={[0, -0.9, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[0.82, 0.045, 8, 36]} />
+        <meshBasicMaterial color={colorway.beacon} transparent opacity={selected ? 0.9 : 0.62} />
       </mesh>
-      <mesh position={[0, -1.1, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <coneGeometry args={[0.28, 1.6, 4]} />
-        <meshStandardMaterial color={colorway.main} emissive={colorway.beacon} emissiveIntensity={0.7} />
+      <RobotAvatar color={colorway.main} accent={colorway.beacon} scale={0.74} position={[0, -0.46, 0]} />
+      <mesh position={[0, -1.08, 0]}>
+        <cylinderGeometry args={[0.92, 1.12, 0.18, 24]} />
+        <meshStandardMaterial color="#dff8ff" emissive={colorway.beacon} emissiveIntensity={0.18} roughness={0.5} />
       </mesh>
-      <BillboardGroup position={[0, 1.55, 0]}>
-        <BeaconPlaque color={colorway.beacon} compact />
+      <BillboardGroup position={[0, 2.1, 0]}>
+        <BeaconPlaque color={colorway.beacon} compact selected={selected} />
       </BillboardGroup>
     </group>
   );
@@ -1036,11 +1032,15 @@ function Biplane({ flight, selectedSkinId }: { flight: FlightState; selectedSkin
     }
   });
   return (
-    <group position={position} rotation={[0, -flight.heading + Math.PI / 2, 0]} scale={1.15}>
+    <group position={position} rotation={[0, -flight.heading + Math.PI / 2, 0]} scale={1.22}>
       <RobotAvatar color={palette.bodyHi} scale={0.36} position={[0, 0.8, -0.45]} />
       <mesh castShadow rotation={[0, 0, Math.PI / 2]}>
         <cylinderGeometry args={[0.38, 0.48, 2.8, 20]} />
         <meshStandardMaterial color={palette.body} roughness={0.35} metalness={0.08} />
+      </mesh>
+      <mesh castShadow position={[0, 0.08, -1.52]} rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[0.46, 0.34, 0.34, 24]} />
+        <meshStandardMaterial color={palette.bodyHi} roughness={0.3} metalness={0.08} />
       </mesh>
       <mesh castShadow position={[0, 0.18, 0]}>
         <boxGeometry args={[4.8, 0.16, 0.82]} />
@@ -1049,6 +1049,22 @@ function Biplane({ flight, selectedSkinId }: { flight: FlightState; selectedSkin
       <mesh castShadow position={[0, 1.0, -0.05]}>
         <boxGeometry args={[4.4, 0.16, 0.72]} />
         <meshStandardMaterial color={palette.wingHi} roughness={0.34} />
+      </mesh>
+      <mesh castShadow position={[-2.55, 0.58, -0.04]} rotation={[0, 0, 0.12]}>
+        <cylinderGeometry args={[0.035, 0.035, 1.22, 8]} />
+        <meshStandardMaterial color={palette.trim} roughness={0.5} />
+      </mesh>
+      <mesh castShadow position={[2.55, 0.58, -0.04]} rotation={[0, 0, -0.12]}>
+        <cylinderGeometry args={[0.035, 0.035, 1.22, 8]} />
+        <meshStandardMaterial color={palette.trim} roughness={0.5} />
+      </mesh>
+      <mesh castShadow position={[-1.7, -0.42, 0.84]}>
+        <torusGeometry args={[0.22, 0.055, 8, 16]} />
+        <meshStandardMaterial color="#111827" roughness={0.62} />
+      </mesh>
+      <mesh castShadow position={[1.7, -0.42, 0.84]}>
+        <torusGeometry args={[0.22, 0.055, 8, 16]} />
+        <meshStandardMaterial color="#111827" roughness={0.62} />
       </mesh>
       <mesh castShadow position={[0, 0.2, 1.2]}>
         <boxGeometry args={[1.7, 0.12, 0.5]} />
@@ -1073,10 +1089,12 @@ function Biplane({ flight, selectedSkinId }: { flight: FlightState; selectedSkin
 
 function RobotAvatar({
   color,
+  accent = "#4edfff",
   position,
   scale = 1,
 }: {
   color: string;
+  accent?: string;
   position: [number, number, number];
   scale?: number;
 }) {
@@ -1088,11 +1106,11 @@ function RobotAvatar({
       </mesh>
       <mesh position={[-0.22, 1.28, -0.55]}>
         <sphereGeometry args={[0.12, 12, 8]} />
-        <meshStandardMaterial color="#7df2ff" emissive="#4edfff" emissiveIntensity={1.2} />
+        <meshStandardMaterial color="#7df2ff" emissive={accent} emissiveIntensity={1.2} />
       </mesh>
       <mesh position={[0.22, 1.28, -0.55]}>
         <sphereGeometry args={[0.12, 12, 8]} />
-        <meshStandardMaterial color="#7df2ff" emissive="#4edfff" emissiveIntensity={1.2} />
+        <meshStandardMaterial color="#7df2ff" emissive={accent} emissiveIntensity={1.2} />
       </mesh>
       <mesh castShadow position={[0, 0.42, 0]}>
         <capsuleGeometry args={[0.42, 0.6, 8, 16]} />
@@ -1180,15 +1198,23 @@ function BillboardGroup({
   );
 }
 
-function BeaconPlaque({ color, compact = false }: { color: string; compact?: boolean }) {
+function BeaconPlaque({
+  color,
+  compact = false,
+  selected = false,
+}: {
+  color: string;
+  compact?: boolean;
+  selected?: boolean;
+}) {
   return (
     <group>
       <mesh>
-        <planeGeometry args={compact ? [1.3, 0.28] : [2.2, 0.38]} />
-        <meshBasicMaterial color="#0c1f38" transparent opacity={0.72} side={THREE.DoubleSide} />
+        <planeGeometry args={compact ? [1.45, 0.36] : [2.2, 0.38]} />
+        <meshBasicMaterial color="#f5fbff" transparent opacity={selected ? 0.82 : 0.62} side={THREE.DoubleSide} />
       </mesh>
       <mesh position={[0, 0, 0.02]}>
-        <planeGeometry args={compact ? [0.86, 0.06] : [1.5, 0.08]} />
+        <planeGeometry args={compact ? [0.94, 0.08] : [1.5, 0.08]} />
         <meshBasicMaterial color={color} transparent opacity={0.86} side={THREE.DoubleSide} />
       </mesh>
     </group>

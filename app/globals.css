@@ -2745,6 +2745,8 @@ h1 {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(196, 233, 255, 0.38));
   color: #12365d;
   box-shadow: 0 8px 18px rgba(40, 116, 190, 0.16);
+  font-weight: 800;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.42);
 }
 
 .scene-shell--three .scene-zoom-label--wrap {
@@ -2801,7 +2803,9 @@ h1 {
 .scene-shell--three .fuel-gauge,
 .scene-shell--three .mini-map {
   border-color: rgba(255, 255, 255, 0.38);
-  background: rgba(12, 52, 94, 0.3);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(255, 255, 255, 0.42), transparent 42%),
+    rgba(18, 91, 150, 0.24);
   box-shadow: 0 16px 34px rgba(15, 72, 132, 0.18);
   backdrop-filter: blur(12px);
 }
@@ -2817,7 +2821,9 @@ h1 {
 .scene-shell--three .hud-chip--stat {
   min-height: 60px;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.18);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(145, 218, 255, 0.16));
+  color: #f7fcff;
 }
 
 .scene-shell--three .fuel-gauge {
