@@ -2674,3 +2674,203 @@ h1 {
     margin-bottom: 5px;
   }
 }
+
+/* 3D flight-sim mode: make the game the product surface, not a narrow atlas card. */
+.atlas-page:has(.scene-shell--three) {
+  min-height: 100svh;
+  padding: 0;
+  background:
+    linear-gradient(180deg, rgba(120, 203, 255, 0.16), rgba(40, 122, 207, 0.24)),
+    #8fd7ff;
+}
+
+.atlas-page:has(.scene-shell--three) .hero-shell,
+.atlas-page:has(.scene-shell--three) .control-bar,
+.atlas-page:has(.scene-shell--three) .atlas-panel-toggles,
+.atlas-page:has(.scene-shell--three) .atlas-lower-grid,
+.atlas-page:has(.scene-shell--three) .detail-drawer,
+.atlas-page:has(.scene-shell--three) .flight-disclaimer {
+  display: none !important;
+}
+
+.atlas-page:has(.scene-shell--three) .atlas-grid {
+  display: block;
+  max-width: none;
+  margin: 0;
+}
+
+.atlas-page:has(.scene-shell--three) .atlas-main {
+  display: block;
+}
+
+.scene-shell--three {
+  min-height: 100svh;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.scene-shell--three .scene-toolbar {
+  position: fixed;
+  z-index: 6;
+  left: 18px;
+  right: 18px;
+  top: 14px;
+  align-items: center;
+  margin: 0;
+  pointer-events: none;
+}
+
+.scene-shell--three .scene-toolbar-group,
+.scene-shell--three .scene-zoom-label {
+  pointer-events: auto;
+}
+
+.scene-shell--three .scene-toolbar-group {
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 22px;
+  background: rgba(14, 50, 92, 0.28);
+  box-shadow: 0 16px 38px rgba(25, 92, 150, 0.18);
+  backdrop-filter: blur(14px);
+}
+
+.scene-shell--three .secondary-action,
+.scene-shell--three .icon-button {
+  border-radius: 999px;
+  border-color: rgba(255, 255, 255, 0.48);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(196, 233, 255, 0.38));
+  color: #12365d;
+  box-shadow: 0 8px 18px rgba(40, 116, 190, 0.16);
+}
+
+.scene-shell--three .scene-zoom-label--wrap {
+  max-width: min(520px, 48vw);
+  padding: 9px 14px;
+  border-radius: 999px;
+  color: #0e335c;
+  background: rgba(255, 255, 255, 0.54);
+  border: 1px solid rgba(255, 255, 255, 0.52);
+  text-align: right;
+  backdrop-filter: blur(12px);
+}
+
+.scene-wrap--three,
+.scene-canvas--three {
+  width: 100%;
+  height: 100svh;
+  min-height: 720px;
+}
+
+.scene-wrap--three {
+  border: 0;
+  border-radius: 0;
+}
+
+.scene-overlay-layer {
+  pointer-events: none;
+}
+
+.scene-flight-tip,
+.scene-run-end,
+.flight-settings-panel,
+.debug-hud,
+.pickup-notice,
+.achievement-toast,
+.mini-map {
+  pointer-events: auto;
+}
+
+.scene-flight-tip {
+  border-color: rgba(255, 255, 255, 0.56);
+  background:
+    radial-gradient(circle at 22% 0%, rgba(255, 255, 255, 0.9), transparent 42%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(208, 237, 255, 0.72));
+  color: #17385f;
+}
+
+.scene-flight-tip-list,
+.scene-flight-tip-copy {
+  color: rgba(23, 56, 95, 0.78);
+}
+
+.scene-shell--three .diegetic-hud,
+.scene-shell--three .fuel-gauge,
+.scene-shell--three .mini-map {
+  border-color: rgba(255, 255, 255, 0.38);
+  background: rgba(12, 52, 94, 0.3);
+  box-shadow: 0 16px 34px rgba(15, 72, 132, 0.18);
+  backdrop-filter: blur(12px);
+}
+
+.scene-shell--three .diegetic-hud {
+  top: auto;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  width: min(620px, calc(100% - 240px));
+}
+
+.scene-shell--three .hud-chip--stat {
+  min-height: 60px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.scene-shell--three .fuel-gauge {
+  top: 92px;
+  left: auto;
+  right: 18px;
+  width: min(260px, calc(100% - 36px));
+}
+
+.scene-shell--three .mini-map {
+  top: auto;
+  right: 18px;
+  bottom: 18px;
+  width: 174px;
+}
+
+.scene-shell--three .scene-flight-pad {
+  right: 20px;
+  bottom: 214px;
+  background: rgba(255, 255, 255, 0.34);
+  border-color: rgba(255, 255, 255, 0.48);
+  backdrop-filter: blur(12px);
+}
+
+.scene-shell--three .scene-flight-pad-btn {
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(128, 207, 255, 0.42));
+  color: #113a66;
+}
+
+@media (max-width: 768px) {
+  .scene-shell--three .scene-toolbar {
+    left: 12px;
+    right: 12px;
+    top: 12px;
+  }
+
+  .scene-wrap--three,
+  .scene-canvas--three {
+    min-height: 100svh;
+    height: 100svh;
+  }
+
+  .scene-shell--three .scene-mobile-status-stack {
+    top: 82px;
+    width: min(46vw, 220px);
+  }
+
+  .scene-shell--three .mini-map {
+    width: 142px;
+  }
+
+  .scene-shell--three .scene-flight-pad {
+    bottom: 110px;
+  }
+}

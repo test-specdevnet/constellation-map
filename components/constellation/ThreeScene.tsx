@@ -223,6 +223,7 @@ export function ThreeScene({
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showActionMenu, setShowActionMenu] = useState(false);
   const [showFlightTip, setShowFlightTip] = useState(false);
+  const [hudVisible, setHudVisible] = useState(true);
   const [debugHudHotkey, setDebugHudHotkey] = useState(false);
   const [debugStats, setDebugStats] = useState(createInitialDebugHudSnapshot);
   const [pickupNotice, setPickupNotice] = useState<string | null>(null);
@@ -508,6 +509,12 @@ export function ThreeScene({
 
   const snapshot = runtimeRef.current;
   const debugHudVisible = featureFlags.debugHud || debugHudHotkey;
+  const dismissFlightTip = () => {
+    window.localStorage.setItem("flux-flight-tip-dismissed", "1");
+    setShowFlightTip(false);
+    focusInputController(inputControllerRef.current);
+    window.requestAnimationFrame(() => wrapRef.current?.focus());
+  };
 
   return (
     <section className="scene-shell scene-shell--three">
@@ -545,6 +552,20 @@ export function ThreeScene({
               Actions
             </button>
           ) : null}
+          <button
+            type="button"
+            className="secondary-action"
+            onClick={() => setHudVisible((value) => !value)}
+          >
+            {hudVisible ? "Hide HUD" : "Show HUD"}
+          </button>
+          <button
+            type="button"
+            className="secondary-action"
+            onClick={() => setShowSettingsPanel(true)}
+          >
+            Customize
+          </button>
         </div>
         <span className="scene-zoom-label scene-zoom-label--wrap">
           3D chase view | WASD or arrow keys | scroll changes camera distance
@@ -607,7 +628,7 @@ export function ThreeScene({
         </Canvas>
 
         <div className="scene-overlay-layer">
-          {overlay}
+          {hudVisible ? overlay : null}
           {showSettingsPanel ? (
             <FlightSettingsPanel
               open={showSettingsPanel}
@@ -632,10 +653,7 @@ export function ThreeScene({
               <button
                 type="button"
                 className="primary-action scene-flight-tip-dismiss"
-                onClick={() => {
-                  window.localStorage.setItem("flux-flight-tip-dismissed", "1");
-                  setShowFlightTip(false);
-                }}
+                onClick={dismissFlightTip}
               >
                 Start flying
               </button>
@@ -1011,6 +1029,12 @@ function Effects({ effects }: { effects: VisualEffect[] }) {
 function Biplane({ flight, selectedSkinId }: { flight: FlightState; selectedSkinId: PlaneSkinId }) {
   const palette = planeSkinPalettes[selectedSkinId] ?? planeSkinPalettes.classic;
   const position = to3(flight, PLANE_ALTITUDE);
+  const propRef = useRef<THREE.Mesh>(null);
+  useFrame((_, delta) => {
+    if (propRef.current) {
+      propRef.current.rotation.z += delta * 26;
+    }
+  });
   return (
     <group position={position} rotation={[0, -flight.heading + Math.PI / 2, 0]} scale={1.15}>
       <RobotAvatar color={palette.bodyHi} scale={0.36} position={[0, 0.8, -0.45]} />
@@ -1038,7 +1062,7 @@ function Biplane({ flight, selectedSkinId }: { flight: FlightState; selectedSkin
         <torusGeometry args={[0.42, 0.035, 8, 28]} />
         <meshStandardMaterial color="#f7d06c" emissive="#ffaf44" emissiveIntensity={0.18} />
       </mesh>
-      <mesh position={[0, 0, -1.58]} rotation={[0, 0, performance.now() / 90]}>
+      <mesh ref={propRef} position={[0, 0, -1.58]}>
         <boxGeometry args={[0.12, 1.3, 0.08]} />
         <meshStandardMaterial color="#fff2ba" transparent opacity={0.56} />
       </mesh>
