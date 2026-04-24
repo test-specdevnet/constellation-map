@@ -4,7 +4,7 @@ import { startTransition, useEffect, useMemo, useState, type ReactNode } from "r
 import type { FilterState } from "./FilterBar";
 import { FilterBar } from "./FilterBar";
 import { SearchBox } from "./SearchBox";
-import { SceneCanvas } from "./SceneCanvas";
+import { ThreeScene } from "./ThreeScene";
 import { DetailDrawer } from "./DetailDrawer";
 import { MiniMap } from "./MiniMap";
 import { DiegeticHud } from "./DiegeticHud";
@@ -696,7 +696,7 @@ function ConstellationExperienceBody({
             <FilterBar filters={activeScene.filters} value={filters} onChange={setFilters} />
           </div>
 
-          <SceneCanvas
+          <ThreeScene
             stars={visibleStars}
             clusters={visibleClusters}
             systems={visibleSystems}
