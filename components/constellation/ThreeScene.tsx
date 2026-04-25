@@ -635,7 +635,11 @@ export function ThreeScene({
           </Suspense>
         </Canvas>
 
-        <div className="scene-overlay-layer">
+        <div
+          className={`scene-overlay-layer ${
+            showFlightTip || runEndSnapshot ? "scene-overlay-layer--modal" : ""
+          }`}
+        >
           {hudVisible ? overlay : null}
           {showSettingsPanel ? (
             <FlightSettingsPanel
@@ -661,6 +665,10 @@ export function ThreeScene({
               <button
                 type="button"
                 className="primary-action scene-flight-tip-dismiss"
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                  dismissFlightTip();
+                }}
                 onClick={dismissFlightTip}
               >
                 Start flying
@@ -799,9 +807,9 @@ function ThreeWorld({
 
   return (
     <>
-      <color attach="background" args={["#88d5ff"]} />
-      <fog attach="fog" args={["#c6ebff", 42, 210]} />
-      <hemisphereLight args={["#ffffff", "#88bde7", 1.25]} />
+      <color attach="background" args={["#54b9ff"]} />
+      <fog attach="fog" args={["#b7e7ff", 70, 260]} />
+      <hemisphereLight args={["#ffffff", "#6ab1df", 1.45]} />
       <directionalLight
         position={[30, 48, 28]}
         intensity={2.15}
@@ -862,7 +870,7 @@ function SkyDome() {
   return (
     <mesh scale={[1, 1, 1]} position={[0, -80, 0]}>
       <sphereGeometry args={[520, 32, 16]} />
-      <meshBasicMaterial side={THREE.BackSide} color="#94dfff" transparent opacity={0.62} />
+      <meshBasicMaterial side={THREE.BackSide} color="#46b8ff" transparent opacity={0.76} />
     </mesh>
   );
 }
@@ -910,23 +918,27 @@ function CloudIsland({
   onFocusCluster: (cluster: Cluster) => void;
 }) {
   const position = to3(cluster.centroid, ISLAND_ALTITUDE + (index % 5) * 0.12);
-  const radius = clamp(cluster.radius * WORLD_SCALE * 0.32, 2.8, cluster.level === "region" ? 8 : 5);
+  const radius = clamp(cluster.radius * WORLD_SCALE * 0.38, 3.4, cluster.level === "region" ? 10 : 6.5);
   return (
     <group position={position} onClick={() => onFocusCluster(cluster)}>
       <mesh receiveShadow castShadow position={[0, 0, 0]}>
-        <cylinderGeometry args={[radius * 0.82, radius * 1.05, 1.8, 24]} />
-        <meshStandardMaterial color="#79c96e" roughness={0.8} metalness={0.02} />
+        <cylinderGeometry args={[radius * 0.9, radius * 1.08, 2.0, 32]} />
+        <meshStandardMaterial color="#68c857" roughness={0.72} metalness={0.02} />
       </mesh>
       <mesh position={[0, -1.15, 0]} castShadow>
-        <coneGeometry args={[radius * 0.88, radius * 1.12, 7]} />
-        <meshStandardMaterial color="#7d7470" roughness={0.95} />
+        <coneGeometry args={[radius * 0.92, radius * 1.34, 9]} />
+        <meshStandardMaterial color="#847066" roughness={0.95} />
+      </mesh>
+      <mesh position={[0, 1.08, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[radius * 0.72, 0.08, 8, 48]} />
+        <meshStandardMaterial color="#b9f28f" emissive="#62d973" emissiveIntensity={0.18} roughness={0.5} />
       </mesh>
       <CloudPuff scale={radius * 0.32} />
       {cluster.level === "region" ? (
         <RobotAvatar
           position={[radius * 0.34, 1.2, radius * -0.2]}
           color={["#8f6df2", "#44c887", "#f0a33a", "#3fa7f5", "#ec6dc6"][index % 5]}
-          scale={0.75}
+          scale={1.05}
         />
       ) : null}
       <BillboardGroup position={[0, radius * 0.08 + 2.6, 0]}>
@@ -950,7 +962,7 @@ function DeploymentMarker({
   onHoverEntity: (entity: HoveredEntity | null) => void;
 }) {
   const colorway = getBuoyColorway(system);
-  const position = to3(system, ISLAND_ALTITUDE + 5.5 + (index % 4) * 0.08);
+  const position = to3(system, ISLAND_ALTITUDE + 6.1 + (index % 4) * 0.08);
   return (
     <group
       position={position}
@@ -976,12 +988,12 @@ function DeploymentMarker({
         <torusGeometry args={[0.82, 0.045, 8, 36]} />
         <meshBasicMaterial color={colorway.beacon} transparent opacity={selected ? 0.9 : 0.62} />
       </mesh>
-      <RobotAvatar color={colorway.main} accent={colorway.beacon} scale={0.74} position={[0, -0.46, 0]} />
+      <RobotAvatar color={colorway.main} accent={colorway.beacon} scale={1.02} position={[0, -0.72, 0]} />
       <mesh position={[0, -1.08, 0]}>
         <cylinderGeometry args={[0.92, 1.12, 0.18, 24]} />
         <meshStandardMaterial color="#dff8ff" emissive={colorway.beacon} emissiveIntensity={0.18} roughness={0.5} />
       </mesh>
-      <BillboardGroup position={[0, 2.1, 0]}>
+      <BillboardGroup position={[0, 2.72, 0]}>
         <BeaconPlaque color={colorway.beacon} compact selected={selected} />
       </BillboardGroup>
     </group>
@@ -1040,7 +1052,7 @@ function Effects({ effects }: { effects: VisualEffect[] }) {
 }
 
 function Biplane({ flight, selectedSkinId }: { flight: FlightState; selectedSkinId: PlaneSkinId }) {
-  const palette = planeSkinPalettes[selectedSkinId] ?? planeSkinPalettes.classic;
+  const palette = selectedSkinId === "classic" ? planeSkinPalettes.classic : planeSkinPalettes[selectedSkinId] ?? planeSkinPalettes.classic;
   const position = to3(flight, PLANE_ALTITUDE);
   const propRef = useRef<THREE.Mesh>(null);
   useFrame((_, delta) => {
@@ -1049,7 +1061,7 @@ function Biplane({ flight, selectedSkinId }: { flight: FlightState; selectedSkin
     }
   });
   return (
-    <group position={position} rotation={[0, -flight.heading + Math.PI / 2, 0]} scale={1.22}>
+    <group position={position} rotation={[0, -flight.heading + Math.PI / 2, 0]} scale={1.42}>
       <RobotAvatar color={palette.bodyHi} scale={0.36} position={[0, 0.8, -0.45]} />
       <mesh castShadow rotation={[0, 0, Math.PI / 2]}>
         <cylinderGeometry args={[0.38, 0.48, 2.8, 20]} />
@@ -1060,11 +1072,11 @@ function Biplane({ flight, selectedSkinId }: { flight: FlightState; selectedSkin
         <meshStandardMaterial color={palette.bodyHi} roughness={0.3} metalness={0.08} />
       </mesh>
       <mesh castShadow position={[0, 0.18, 0]}>
-        <boxGeometry args={[4.8, 0.16, 0.82]} />
+        <boxGeometry args={[5.4, 0.2, 0.92]} />
         <meshStandardMaterial color={palette.wing} roughness={0.34} />
       </mesh>
       <mesh castShadow position={[0, 1.0, -0.05]}>
-        <boxGeometry args={[4.4, 0.16, 0.72]} />
+        <boxGeometry args={[5.0, 0.18, 0.82]} />
         <meshStandardMaterial color={palette.wingHi} roughness={0.34} />
       </mesh>
       <mesh castShadow position={[-2.55, 0.58, -0.04]} rotation={[0, 0, 0.12]}>
@@ -1117,21 +1129,29 @@ function RobotAvatar({
 }) {
   return (
     <group position={position} scale={scale}>
-      <mesh castShadow position={[0, 1.2, 0]}>
-        <sphereGeometry args={[0.62, 24, 16]} />
-        <meshStandardMaterial color={color} roughness={0.32} metalness={0.08} />
+      <mesh castShadow position={[0, 1.22, 0]}>
+        <sphereGeometry args={[0.68, 28, 18]} />
+        <meshStandardMaterial color="#f4fbff" roughness={0.28} metalness={0.04} />
       </mesh>
-      <mesh position={[-0.22, 1.28, -0.55]}>
-        <sphereGeometry args={[0.12, 12, 8]} />
+      <mesh castShadow position={[0, 1.13, -0.08]}>
+        <boxGeometry args={[1.04, 0.48, 0.16]} />
+        <meshStandardMaterial color="#18395f" emissive={accent} emissiveIntensity={0.18} roughness={0.32} />
+      </mesh>
+      <mesh position={[-0.24, 1.2, -0.2]}>
+        <sphereGeometry args={[0.14, 14, 10]} />
         <meshStandardMaterial color="#7df2ff" emissive={accent} emissiveIntensity={1.2} />
       </mesh>
-      <mesh position={[0.22, 1.28, -0.55]}>
-        <sphereGeometry args={[0.12, 12, 8]} />
+      <mesh position={[0.24, 1.2, -0.2]}>
+        <sphereGeometry args={[0.14, 14, 10]} />
         <meshStandardMaterial color="#7df2ff" emissive={accent} emissiveIntensity={1.2} />
       </mesh>
       <mesh castShadow position={[0, 0.42, 0]}>
-        <capsuleGeometry args={[0.42, 0.6, 8, 16]} />
-        <meshStandardMaterial color="#eef7ff" roughness={0.42} />
+        <capsuleGeometry args={[0.46, 0.68, 8, 18]} />
+        <meshStandardMaterial color={color} roughness={0.38} />
+      </mesh>
+      <mesh position={[0, 0.46, -0.36]}>
+        <sphereGeometry args={[0.12, 12, 8]} />
+        <meshStandardMaterial color={accent} emissive={accent} emissiveIntensity={0.9} />
       </mesh>
       <mesh position={[0, 1.92, 0]}>
         <torusGeometry args={[0.18, 0.025, 8, 18]} />
@@ -1167,18 +1187,18 @@ function HologramPanel({
     <BillboardGroup position={position}>
       <group ref={panelRef}>
         <mesh>
-          <planeGeometry args={[8, 4.4]} />
+          <planeGeometry args={[8.8, 4.8]} />
           <meshStandardMaterial
             color="#68dfff"
             emissive="#28bfff"
-            emissiveIntensity={0.38}
+            emissiveIntensity={0.55}
             transparent
-            opacity={0.18}
+            opacity={0.26}
             side={THREE.DoubleSide}
           />
         </mesh>
-        <mesh position={[0, 1.55, 0.06]}>
-          <boxGeometry args={[4.2, 0.08, 0.02]} />
+        <mesh position={[0, 1.68, 0.06]}>
+          <boxGeometry args={[4.8, 0.1, 0.02]} />
           <meshBasicMaterial color="#e7fbff" transparent opacity={0.88} />
         </mesh>
         <mesh position={[0, -1.76, 0.07]}>

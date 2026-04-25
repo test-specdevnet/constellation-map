@@ -2680,8 +2680,9 @@ h1 {
   min-height: 100svh;
   padding: 0;
   background:
-    linear-gradient(180deg, rgba(120, 203, 255, 0.16), rgba(40, 122, 207, 0.24)),
-    #8fd7ff;
+    radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.5), transparent 24%),
+    linear-gradient(180deg, rgba(70, 181, 255, 0.4), rgba(21, 111, 218, 0.28)),
+    #5ac1ff;
 }
 
 .atlas-page:has(.scene-shell--three) .hero-shell,
@@ -2733,7 +2734,8 @@ h1 {
   padding: 8px;
   border: 1px solid rgba(255, 255, 255, 0.42);
   border-radius: 22px;
-  background: rgba(14, 50, 92, 0.28);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(77, 168, 238, 0.32));
   box-shadow: 0 16px 38px rgba(25, 92, 150, 0.18);
   backdrop-filter: blur(14px);
 }
@@ -2776,6 +2778,10 @@ h1 {
   pointer-events: none;
 }
 
+.scene-overlay-layer--modal {
+  pointer-events: auto;
+}
+
 .scene-flight-tip,
 .scene-run-end,
 .flight-settings-panel,
@@ -2790,7 +2796,7 @@ h1 {
   border-color: rgba(255, 255, 255, 0.56);
   background:
     radial-gradient(circle at 22% 0%, rgba(255, 255, 255, 0.9), transparent 42%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(208, 237, 255, 0.72));
+    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(208, 237, 255, 0.82));
   color: #17385f;
 }
 
@@ -2805,7 +2811,7 @@ h1 {
   border-color: rgba(255, 255, 255, 0.38);
   background:
     radial-gradient(circle at 12% 0%, rgba(255, 255, 255, 0.42), transparent 42%),
-    rgba(18, 91, 150, 0.24);
+    rgba(18, 91, 150, 0.18);
   box-shadow: 0 16px 34px rgba(15, 72, 132, 0.18);
   backdrop-filter: blur(12px);
 }
@@ -2824,6 +2830,7 @@ h1 {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(145, 218, 255, 0.16));
   color: #f7fcff;
+  text-shadow: 0 2px 8px rgba(12, 46, 84, 0.34);
 }
 
 .scene-shell--three .fuel-gauge {
