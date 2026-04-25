@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
+import { Canvas, useFrame, useLoader, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import { DebugHud } from "./DebugHud";
 import { FlightSettingsPanel } from "./FlightSettingsPanel";
@@ -17,6 +17,11 @@ import { MobileDrawer } from "./MobileDrawer";
 import { useMediaQuery } from "./useMediaQuery";
 import { getBuoyColorway } from "../../lib/canvas/buoyCategory";
 import { planeSkinPalettes, type PlaneSkinId } from "../../lib/canvas/cartoonMarkers";
+import {
+  getAircraftColorForSkin,
+  getAircraftSprite,
+  resolveAircraftDirection,
+} from "../../lib/canvas/sprites";
 import {
   getDisclosureState,
   type FlightTelemetry,
@@ -936,7 +941,7 @@ function CloudIsland({
       <CloudPuff scale={radius * 0.32} />
       {cluster.level === "region" ? (
         <RobotAvatar
-          position={[radius * 0.34, 1.2, radius * -0.2]}
+          position={[radius * 0.34, 2.1, radius * -0.2]}
           color={["#8f6df2", "#44c887", "#f0a33a", "#3fa7f5", "#ec6dc6"][index % 5]}
           scale={1.05}
         />
@@ -1053,8 +1058,15 @@ function Effects({ effects }: { effects: VisualEffect[] }) {
 
 function Biplane({ flight, selectedSkinId }: { flight: FlightState; selectedSkinId: PlaneSkinId }) {
   const palette = selectedSkinId === "classic" ? planeSkinPalettes.classic : planeSkinPalettes[selectedSkinId] ?? planeSkinPalettes.classic;
+  const aircraftView = resolveAircraftDirection(flight.heading);
+  const aircraftSprite = getAircraftSprite(getAircraftColorForSkin(selectedSkinId), aircraftView.direction);
+  const aircraftTexture = useLoader(THREE.TextureLoader, aircraftSprite.src);
   const position = to3(flight, PLANE_ALTITUDE);
   const propRef = useRef<THREE.Mesh>(null);
+  useMemo(() => {
+    aircraftTexture.colorSpace = THREE.SRGBColorSpace;
+    aircraftTexture.anisotropy = 4;
+  }, [aircraftTexture]);
   useFrame((_, delta) => {
     if (propRef.current) {
       propRef.current.rotation.z += delta * 26;
@@ -1062,6 +1074,23 @@ function Biplane({ flight, selectedSkinId }: { flight: FlightState; selectedSkin
   });
   return (
     <group position={position} rotation={[0, -flight.heading + Math.PI / 2, 0]} scale={1.42}>
+      <mesh
+        castShadow
+        position={[0, 0.45, 0]}
+        rotation={[-Math.PI / 2, 0, aircraftView.flipX ? Math.PI : 0]}
+        scale={[aircraftView.flipX ? -1 : 1, 1, 1]}
+      >
+        <planeGeometry args={[6.2, 6.2]} />
+        <meshBasicMaterial
+          map={aircraftTexture}
+          transparent
+          alphaTest={0.08}
+          side={THREE.DoubleSide}
+          toneMapped={false}
+        />
+      </mesh>
+      <pointLight color={palette.bodyHi} intensity={0.35} distance={6} position={[0, 0.8, -0.3]} />
+      <group visible={false}>
       <RobotAvatar color={palette.bodyHi} scale={0.36} position={[0, 0.8, -0.45]} />
       <mesh castShadow rotation={[0, 0, Math.PI / 2]}>
         <cylinderGeometry args={[0.38, 0.48, 2.8, 20]} />
@@ -1111,6 +1140,7 @@ function Biplane({ flight, selectedSkinId }: { flight: FlightState; selectedSkin
         <boxGeometry args={[0.12, 1.3, 0.08]} />
         <meshStandardMaterial color="#fff2ba" transparent opacity={0.56} />
       </mesh>
+      </group>
       <pointLight color="#ff9170" intensity={0.85} distance={8} position={[0, 0.5, -1.5]} />
     </group>
   );

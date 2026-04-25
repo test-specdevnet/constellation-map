@@ -26,6 +26,19 @@ import {
   planeSkinPalettes,
   type PlaneSkinId,
 } from "../../lib/canvas/cartoonMarkers";
+import {
+  SPRITE_REGIONS,
+  SPRITES,
+  drawSprite,
+  drawSpriteSheetRegion,
+  getAircraftColorForSkin,
+  getAircraftSprite,
+  getAllSpriteDefs,
+  getSpriteImage,
+  loadSprites,
+  resolveAircraftDirection,
+  type SpriteImageMap,
+} from "../../lib/canvas/sprites";
 import { categoryLabel, getBuoyColorway } from "../../lib/canvas/buoyCategory";
 import {
   applyFisheyeToPoint,
@@ -212,6 +225,41 @@ function SceneIcon({ children }: { children: ReactNode }) {
     >
       {children}
     </svg>
+  );
+}
+
+function SpriteDebugGallery({ visible }: { visible: boolean }) {
+  if (!visible || process.env.NODE_ENV === "production") return null;
+  return (
+    <aside className="sprite-debug-gallery" aria-label="Sprite debug gallery">
+      <strong>Sprite Gallery</strong>
+      <div className="sprite-debug-gallery__grid">
+        {getAllSpriteDefs().map(([key, def]) => (
+          <figure key={key}>
+            <img src={def.src} alt="" />
+            <figcaption>{key}</figcaption>
+          </figure>
+        ))}
+        {Object.entries(SPRITE_REGIONS.clouds).map(([key, rect]) => (
+          <figure key={`cloud:${key}`}>
+            <span>{`${rect.w}x${rect.h}`}</span>
+            <figcaption>{`clouds.${key}`}</figcaption>
+          </figure>
+        ))}
+        {Object.entries(SPRITE_REGIONS.buoys).map(([key, rect]) => (
+          <figure key={`buoy:${key}`}>
+            <span>{`${rect.w}x${rect.h}`}</span>
+            <figcaption>{`buoys.${key}`}</figcaption>
+          </figure>
+        ))}
+        {Object.entries(SPRITE_REGIONS.pilots).map(([key, rect]) => (
+          <figure key={`pilot:${key}`}>
+            <span>{`${rect.w}x${rect.h}`}</span>
+            <figcaption>{`pilots.${key}`}</figcaption>
+          </figure>
+        ))}
+      </div>
+    </aside>
   );
 }
 
@@ -647,6 +695,8 @@ export function SceneCanvas({
   const [debugStats, setDebugStats] = useState<DebugHudSnapshot>(createInitialDebugHudSnapshot);
   const [pickupNotice, setPickupNotice] = useState<string | null>(null);
   const [runEndSnapshot, setRunEndSnapshot] = useState<GameSessionSnapshot | null>(null);
+  const [spriteImages, setSpriteImages] = useState<SpriteImageMap>(() => new Map());
+  const [spritesReady, setSpritesReady] = useState(false);
 
   const regionClusters = useMemo(
     () => clusters.filter((cluster) => cluster.level === "region"),
@@ -758,6 +808,18 @@ export function SceneCanvas({
   useEffect(() => {
     onRunCompleteRef.current = onRunComplete;
   }, [onRunComplete]);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadSprites().then((images) => {
+      if (cancelled) return;
+      setSpriteImages(images);
+      setSpritesReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -1277,15 +1339,54 @@ export function SceneCanvas({
       }
 
       if (featureFlags.clouds) {
-        drawParallaxCloudLayers(
-          context,
-          canvasSize.width,
-          canvasSize.height,
-          timestamp,
-          renderCamera.x,
-          renderCamera.y,
-          { layerMin: 0, layerMax: qualityMode === "low" ? 1 : 2 },
-        );
+        const cloudSheet = getSpriteImage(spriteImages, SPRITES.environment.cloudsSheet);
+        if (cloudSheet) {
+          const cloudRegions = [
+            SPRITE_REGIONS.clouds.cumulusLarge,
+            SPRITE_REGIONS.clouds.cumulusSmall,
+            SPRITE_REGIONS.clouds.windStreaks,
+            SPRITE_REGIONS.clouds.mistBank,
+            SPRITE_REGIONS.clouds.stormPuff,
+            SPRITE_REGIONS.clouds.foregroundCloud,
+          ];
+          const cloudCount = qualityMode === "low" ? 8 : 15;
+          for (let i = 0; i < cloudCount; i += 1) {
+            const region = cloudRegions[i % cloudRegions.length];
+            const layer = i % 3;
+            const parallax = 0.006 + layer * 0.008;
+            const scale = (0.5 + layer * 0.2 + ((i * 17) % 9) * 0.018) * canvasSize.height / 760;
+            const w = region.w * scale;
+            const h = region.h * scale;
+            const wrap = canvasSize.width + w + 160;
+            const travel =
+              ((timestamp * (0.012 + layer * 0.006) + renderCamera.x * parallax + i * 173) %
+                wrap +
+                wrap) %
+              wrap;
+            const x = canvasSize.width + w / 2 - travel;
+            const y =
+              canvasSize.height * (0.12 + ((i * 29) % 68) / 100) +
+              Math.sin(timestamp / (2200 + i * 90) + i) * (4 + layer * 2) +
+              renderCamera.y * parallax * 0.012;
+            drawSpriteSheetRegion(
+              context,
+              cloudSheet,
+              region,
+              { x: x - w / 2, y: y - h / 2, w, h },
+              { alpha: layer === 0 ? 0.42 : layer === 1 ? 0.58 : 0.72 },
+            );
+          }
+        } else {
+          drawParallaxCloudLayers(
+            context,
+            canvasSize.width,
+            canvasSize.height,
+            timestamp,
+            renderCamera.x,
+            renderCamera.y,
+            { layerMin: 0, layerMax: qualityMode === "low" ? 1 : 2 },
+          );
+        }
       }
 
       if (!clusters.length && !systems.length && !stars.length) {
@@ -1375,6 +1476,15 @@ export function SceneCanvas({
           level: cluster.level,
           band: disclosure.band,
         });
+        const upgradeSprite =
+          cluster.level === "region" ? SPRITES.stations.upgradeLabWide : SPRITES.stations.upgradeLabAngled;
+        const upgradeImage = getSpriteImage(spriteImages, upgradeSprite);
+        if (upgradeImage) {
+          drawSprite(context, upgradeImage, projected.x, projected.y + radius * 0.18, upgradeSprite, {
+            scale: clamp((radius / 72) * projected.radialScale, 0.42, 0.9),
+            alpha: alpha * 0.92,
+          });
+        }
 
         renderables.push({
           entity: {
@@ -1427,6 +1537,14 @@ export function SceneCanvas({
             level: cluster.level,
             band: disclosure.band,
           });
+          const upgradeSprite = SPRITES.stations.upgradeLabClose;
+          const upgradeImage = getSpriteImage(spriteImages, upgradeSprite);
+          if (upgradeImage) {
+            drawSprite(context, upgradeImage, projected.x, projected.y + radius * 0.2, upgradeSprite, {
+              scale: clamp((radius / 58) * projected.radialScale, 0.34, 0.72),
+              alpha: alpha * 0.9,
+            });
+          }
 
           renderables.push({
             entity: {
@@ -1479,18 +1597,41 @@ export function SceneCanvas({
             band: disclosure.band,
             emphasis: isSelected || isSearchMatch || isHovered ? 0.18 : 0,
           });
-          drawDeploymentBuoy({
-            ctx: context,
-            x,
-            y,
-            colors: getBuoyColorway(system),
-            baseScale: Math.max(0.58, radius / 12.8),
-            seed: system.systemId,
-            proximity: isSelected || isHovered ? 2 : 0,
-            selected: isSelected || isHovered,
-            searchOrPointer: isSearchMatch || isHovered,
-            timestamp,
-          });
+          const buoySheet = getSpriteImage(spriteImages, SPRITES.environment.deploymentBuoysSheet);
+          if (buoySheet) {
+            const buoyRegions = [
+              SPRITE_REGIONS.buoys.blueBeacon,
+              SPRITE_REGIONS.buoys.greenBeacon,
+              SPRITE_REGIONS.buoys.yellowBeacon,
+              SPRITE_REGIONS.buoys.redBeacon,
+            ];
+            const region =
+              buoyRegions[
+                system.systemId.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0) %
+                  buoyRegions.length
+              ];
+            const size = Math.max(38, radius * 3.8);
+            drawSpriteSheetRegion(
+              context,
+              buoySheet,
+              region,
+              { x: x - size / 2, y: y - size / 2, w: size, h: size },
+              { alpha: isSelected || isHovered ? 1 : 0.92 },
+            );
+          } else {
+            drawDeploymentBuoy({
+              ctx: context,
+              x,
+              y,
+              colors: getBuoyColorway(system),
+              baseScale: Math.max(0.58, radius / 12.8),
+              seed: system.systemId,
+              proximity: isSelected || isHovered ? 2 : 0,
+              selected: isSelected || isHovered,
+              searchOrPointer: isSearchMatch || isHovered,
+              timestamp,
+            });
+          }
           context.restore();
 
           renderables.push({
@@ -1583,18 +1724,41 @@ export function SceneCanvas({
                     ? 0.08
                     : 0,
             });
-            drawDeploymentBuoy({
-              ctx: context,
-              x,
-              y,
-              colors: getBuoyColorway(star),
-              baseScale: baseScale * projected.radialScale,
-              seed: star.id,
-              proximity: isSelected || isHovered ? 2 : 1,
-              selected: isSelected || isHovered,
-              searchOrPointer: isSearchMatch || isHovered,
-              timestamp,
-            });
+            const buoySheet = getSpriteImage(spriteImages, SPRITES.environment.deploymentBuoysSheet);
+            if (buoySheet) {
+              const buoyRegions = [
+                SPRITE_REGIONS.buoys.blueRing,
+                SPRITE_REGIONS.buoys.greenRing,
+                SPRITE_REGIONS.buoys.yellowRing,
+                SPRITE_REGIONS.buoys.redRing,
+              ];
+              const region =
+                buoyRegions[
+                  star.id.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0) %
+                    buoyRegions.length
+                ];
+              const size = Math.max(30, 42 * baseScale * projected.radialScale);
+              drawSpriteSheetRegion(
+                context,
+                buoySheet,
+                region,
+                { x: x - size / 2, y: y - size / 2, w: size, h: size },
+                { alpha: isSelected || isHovered ? 1 : 0.94 },
+              );
+            } else {
+              drawDeploymentBuoy({
+                ctx: context,
+                x,
+                y,
+                colors: getBuoyColorway(star),
+                baseScale: baseScale * projected.radialScale,
+                seed: star.id,
+                proximity: isSelected || isHovered ? 2 : 1,
+                selected: isSelected || isHovered,
+                searchOrPointer: isSearchMatch || isHovered,
+                timestamp,
+              });
+            }
             context.restore();
 
             renderables.push({
@@ -1635,13 +1799,25 @@ export function SceneCanvas({
           continue;
         }
         if (collectible.kind === "fuel") {
-          drawFuelCanPickup(
-            context,
-            px,
-            py,
-            0.82 * projected.radialScale,
-            timestamp / 1800 + collectible.spinSeed,
-          );
+          const refuelSprite =
+            collectible.source === "near-system"
+              ? SPRITES.stations.refuelStationWide
+              : SPRITES.stations.refuelStationAngled;
+          const refuelImage = getSpriteImage(spriteImages, refuelSprite);
+          if (refuelImage) {
+            drawSprite(context, refuelImage, px, py, refuelSprite, {
+              scale: 0.46 * projected.radialScale,
+              rotation: Math.sin(timestamp / 1800 + collectible.spinSeed) * 0.06,
+            });
+          } else {
+            drawFuelCanPickup(
+              context,
+              px,
+              py,
+              0.82 * projected.radialScale,
+              timestamp / 1800 + collectible.spinSeed,
+            );
+          }
         } else if (collectible.kind === "boost") {
           drawSpeedBoostPickup(
             context,
@@ -1651,13 +1827,34 @@ export function SceneCanvas({
             timestamp / 1600 + collectible.spinSeed,
           );
         } else {
-          drawParachuterPickup(
-            context,
-            px,
-            py,
-            0.88 * projected.radialScale,
-            Math.sin(timestamp / 900 + collectible.spinSeed),
-          );
+          const pilotsSheet = getSpriteImage(spriteImages, SPRITES.ui.robotPilotsSheet);
+          if (pilotsSheet) {
+            const pilotRegion =
+              collectible.id.charCodeAt(collectible.id.length - 1) % 4 === 0
+                ? SPRITE_REGIONS.pilots.green
+                : collectible.id.charCodeAt(collectible.id.length - 1) % 4 === 1
+                  ? SPRITE_REGIONS.pilots.yellow
+                  : collectible.id.charCodeAt(collectible.id.length - 1) % 4 === 2
+                    ? SPRITE_REGIONS.pilots.blue
+                    : SPRITE_REGIONS.pilots.red;
+            const w = 34 * projected.radialScale;
+            const h = 46 * projected.radialScale;
+            drawSpriteSheetRegion(
+              context,
+              pilotsSheet,
+              pilotRegion,
+              { x: px - w / 2, y: py - h / 2, w, h },
+              { rotation: Math.sin(timestamp / 900 + collectible.spinSeed) * 0.1 },
+            );
+          } else {
+            drawParachuterPickup(
+              context,
+              px,
+              py,
+              0.88 * projected.radialScale,
+              Math.sin(timestamp / 900 + collectible.spinSeed),
+            );
+          }
         }
       }
 
@@ -1669,16 +1866,28 @@ export function SceneCanvas({
       }
 
       if (clusters.length || systems.length || stars.length) {
-        drawTopDownBiplane(
-          context,
-          projectedPlane.x,
-          projectedPlane.y,
-          renderFlight.heading,
-          clamp(renderFlight.angVel * 0.38, -0.42, 0.42),
-          timestamp,
-          planeSkinPalettes[selectedSkinId],
-          clamp(projectedPlane.radialScale, 0.94, 1.08),
-        );
+        const aircraftColor = getAircraftColorForSkin(selectedSkinId);
+        const aircraftView = resolveAircraftDirection(renderFlight.heading);
+        const aircraftSprite = getAircraftSprite(aircraftColor, aircraftView.direction);
+        const aircraftImage = getSpriteImage(spriteImages, aircraftSprite);
+        if (aircraftImage) {
+          drawSprite(context, aircraftImage, projectedPlane.x, projectedPlane.y, aircraftSprite, {
+            scale: clamp(projectedPlane.radialScale, 0.94, 1.08),
+            rotation: aircraftView.rotation,
+            flipX: aircraftView.flipX,
+          });
+        } else {
+          drawTopDownBiplane(
+            context,
+            projectedPlane.x,
+            projectedPlane.y,
+            renderFlight.heading,
+            clamp(renderFlight.angVel * 0.38, -0.42, 0.42),
+            timestamp,
+            planeSkinPalettes[selectedSkinId],
+            clamp(projectedPlane.radialScale, 0.94, 1.08),
+          );
+        }
 
         if (featureFlags.pickups && game.boostUntilMs > timestamp && game.state === "flying") {
           context.save();
@@ -1835,6 +2044,7 @@ export function SceneCanvas({
     selectedAppName,
     selectedSkinId,
     snapshotError,
+    spriteImages,
     stars,
     starsBySystem,
     systems,
@@ -2184,9 +2394,11 @@ export function SceneCanvas({
           onWheel={handleWheel}
         />
 
+        {!spritesReady ? <div className="pickup-notice">Loading flight sprites...</div> : null}
         {overlay ? <div className="scene-overlay-layer">{overlay}</div> : null}
         {pickupNotice ? <div className="pickup-notice">{pickupNotice}</div> : null}
         <DebugHud visible={debugHudVisible} stats={debugStats} />
+        <SpriteDebugGallery visible={debugHudVisible} />
 
         {showTouchControls ? (
           <div className="scene-flight-pad" aria-label="Touch flight controls">
