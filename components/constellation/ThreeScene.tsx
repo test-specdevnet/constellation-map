@@ -726,7 +726,7 @@ export function ThreeScene({
               searchMatches={matchSet}
               focusTarget={showFlightTip ? focusTarget : null}
               cloudsEnabled={featureFlags.clouds}
-              modelsEnabled={!mapDataLoading && !snapshotError}
+              modelsEnabled
               qualityMode={qualityMode}
               onSelectApp={onSelectApp}
               onFocusCluster={onFocusCluster}
