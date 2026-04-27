@@ -11,8 +11,8 @@ Interactive star-atlas style discovery surface for public FluxCloud deployment d
 
 ## Core features
 
-- Canvas-rendered constellation scene with pan, zoom, hover, and selection
-- Cartoon-style sky layer with parallax clouds and buoy markers
+- Three.js flight scene with chase camera, GLB aircraft/stations, hover, and selection
+- Cartoon-style sky layer with parallax clouds, islands, drones, and buoy markers
 - Deterministic constellation and system layout
 - Runtime, status, category, and resource-tier filtering
 - Search-to-focus camera flow with smooth flight follow
@@ -37,8 +37,10 @@ Interactive star-atlas style discovery surface for public FluxCloud deployment d
   Parachuter, fuel, and speed-boost spawning, collection, feedback, and respawn rules.
 - `lib/game/session.ts`
   Fuel drain, exploration scoring, run lifecycle, and HUD snapshot creation.
-- `components/constellation/SceneCanvas.tsx`
-  Main render/simulation loop that orchestrates the exploration experience.
+- `components/constellation/ThreeScene.tsx`
+  Main 3D render/simulation loop that orchestrates the exploration experience.
+- `public/models/`
+  Runtime GLB assets for the aircraft, FluxCloud drones, refuel stations, upgrade labs, and service robots.
 
 ## Local development
 

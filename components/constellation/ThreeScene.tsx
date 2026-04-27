@@ -11,17 +11,13 @@ import {
 } from "react";
 import { Canvas, useFrame, useLoader, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DebugHud } from "./DebugHud";
 import { FlightSettingsPanel } from "./FlightSettingsPanel";
 import { MobileDrawer } from "./MobileDrawer";
 import { useMediaQuery } from "./useMediaQuery";
 import { getBuoyColorway } from "../../lib/canvas/buoyCategory";
 import { planeSkinPalettes, type PlaneSkinId } from "../../lib/canvas/cartoonMarkers";
-import {
-  getAircraftColorForSkin,
-  getAircraftSprite,
-  resolveAircraftDirection,
-} from "../../lib/canvas/sprites";
 import {
   getDisclosureState,
   type FlightTelemetry,
@@ -131,12 +127,28 @@ type SceneRuntime = {
   nowMs: number;
   zoom: number;
   pickupNotice: string | null;
+  landedStation: LandingStation | null;
+};
+
+type LandingStation = {
+  id: string;
+  kind: "refuel" | "upgrade";
+  label: string;
 };
 
 const GAME_STATE_EMIT_INTERVAL_MS = 80;
 const WORLD_SCALE = 0.024;
 const PLANE_ALTITUDE = 6.4;
 const ISLAND_ALTITUDE = 1.2;
+const LANDING_RADIUS_WORLD = 420;
+const LANDING_MAX_SPEED = 120;
+const MODEL_PATHS = {
+  biplane: "/models/biplane.glb",
+  drone: "/models/floatingdrone.glb",
+  upgradeLab: "/models/floatingupgradelab.glb",
+  refuelStation: "/models/refuelstation.glb",
+  serviceRobot: "/models/servicerobot.glb",
+} as const;
 const EMPTY_VISIBILITY: DeploymentVisibilityState = {
   visibleSystems: [],
   detailSystems: [],
@@ -221,6 +233,7 @@ export function ThreeScene({
     nowMs: 0,
     zoom: getDefaultZoom(),
     pickupNotice: null,
+    landedStation: null,
   });
   const gameEmitTsRef = useRef(0);
   const debugPerfRef = useRef({ lastSampleAtMs: 0, frames: 0, ticks: 0 });
@@ -278,6 +291,7 @@ export function ThreeScene({
     runtimeRef.current.previousFlight = createFlightState(center.x, center.y);
     runtimeRef.current.game = createGameState();
     runtimeRef.current.game.runStartedAtMs = performance.now();
+    runtimeRef.current.landedStation = null;
     setRunEndSnapshot(null);
     setRuntimeVersion((value) => value + 1);
   }, [bounds]);
@@ -319,6 +333,22 @@ export function ThreeScene({
         controller: inputControllerRef.current,
         mouseSensitivity: flightSettings.mouseSensitivity,
       });
+      if (runtime.landedStation) {
+        game.fuel = game.fuelMax;
+        runtime.flight = { ...runtime.flight, speed: 0, angVel: 0 };
+        runtime.previousFlight = runtime.flight;
+        runtime.input = inputSample.flightInput;
+        runtime.nowMs = nowMs;
+        runtime.pickupNotice =
+          runtime.landedStation.kind === "refuel" ? "Refueled and ready" : "Upgrade lab docked";
+        if (inputSample.flightInput.accelerate) {
+          runtime.landedStation = null;
+          runtime.flight = { ...runtime.flight, speed: 180, heading: runtime.flight.heading };
+          setPickupNotice("Taking off");
+          window.setTimeout(() => setPickupNotice(null), 1000);
+        }
+        return;
+      }
       const boostActive = game.boostUntilMs > nowMs;
       const previousFlight = runtime.flight;
       const nextFlight =
@@ -332,6 +362,29 @@ export function ThreeScene({
               boostActive,
             })
           : runtime.flight;
+
+      if (inputSample.flightInput.brake && nextFlight.speed <= LANDING_MAX_SPEED) {
+        const station = clusters
+          .filter((cluster) => cluster.level === "region")
+          .map((cluster, index) => ({
+            cluster,
+            distance: Math.hypot(cluster.centroid.x - nextFlight.x, cluster.centroid.y - nextFlight.y),
+            kind: index % 2 === 0 ? ("refuel" as const) : ("upgrade" as const),
+          }))
+          .sort((left, right) => left.distance - right.distance)[0];
+        if (station && station.distance <= LANDING_RADIUS_WORLD) {
+          runtime.landedStation = {
+            id: station.cluster.clusterId,
+            kind: station.kind,
+            label: station.kind === "refuel" ? "Refuel station" : "Upgrade lab",
+          };
+          nextFlight.speed = 0;
+          nextFlight.angVel = 0;
+          game.fuel = game.fuelMax;
+          setPickupNotice(station.kind === "refuel" ? "Landed: refueled" : "Landed: upgrades online");
+          window.setTimeout(() => setPickupNotice(null), 1400);
+        }
+      }
 
       accumulateDistanceFlown({ game, from: previousFlight, to: nextFlight });
       updateRunResources({
@@ -514,6 +567,47 @@ export function ThreeScene({
 
   const snapshot = runtimeRef.current;
   const debugHudVisible = featureFlags.debugHud || debugHudHotkey;
+  useEffect(() => {
+    const browserWindow = window as Window & {
+      render_game_to_text?: () => string;
+      advanceTime?: (ms: number) => void;
+    };
+    browserWindow.render_game_to_text = () => {
+      const runtime = runtimeRef.current;
+      return JSON.stringify({
+        coordinateSystem: "world x/y map units; y increases south; render uses x/z with altitude y",
+        mode: runtime.landedStation ? "landed" : runtime.game.state,
+        landedStation: runtime.landedStation,
+        player: {
+          x: Math.round(runtime.flight.x),
+          y: Math.round(runtime.flight.y),
+          heading: Number(runtime.flight.heading.toFixed(3)),
+          speed: Math.round(runtime.flight.speed),
+          fuel: Math.round(runtime.game.fuel),
+        },
+        visibleDeployments: runtime.visibility.visibleSystems.length,
+        collectibles: runtime.game.collectibles
+          .filter((item) => item.active)
+          .slice(0, 12)
+          .map((item) => ({
+            kind: item.kind,
+            x: Math.round(item.x),
+            y: Math.round(item.y),
+          })),
+      });
+    };
+    browserWindow.advanceTime = (ms: number) => {
+      const steps = Math.max(1, Math.min(30, Math.round(ms / GAME_CONFIG.fixedStepMs)));
+      for (let index = 0; index < steps; index += 1) {
+        handleRuntimeTick(GAME_CONFIG.fixedStepMs, runtimeRef.current.nowMs / 1000);
+      }
+    };
+    return () => {
+      delete browserWindow.render_game_to_text;
+      delete browserWindow.advanceTime;
+    };
+  }, [handleRuntimeTick]);
+
   const boostLaunchSpeed = () => {
     runtimeRef.current.flight = {
       ...runtimeRef.current.flight,
@@ -545,6 +639,7 @@ export function ThreeScene({
             onClick={() => {
               runtimeRef.current.game = createGameState();
               runtimeRef.current.game.runStartedAtMs = performance.now();
+              runtimeRef.current.landedStation = null;
               runtimeRef.current.flight = createFlightState(
                 bounds.minX + bounds.width / 2,
                 bounds.minY + bounds.height / 2,
@@ -631,6 +726,7 @@ export function ThreeScene({
               searchMatches={matchSet}
               focusTarget={showFlightTip ? focusTarget : null}
               cloudsEnabled={featureFlags.clouds}
+              modelsEnabled={!mapDataLoading && !snapshotError}
               qualityMode={qualityMode}
               onSelectApp={onSelectApp}
               onFocusCluster={onFocusCluster}
@@ -694,6 +790,7 @@ export function ThreeScene({
                 onClick={() => {
                   runtimeRef.current.game = createGameState();
                   runtimeRef.current.game.runStartedAtMs = performance.now();
+                  runtimeRef.current.landedStation = null;
                   runtimeRef.current.flight.speed = 180;
                   setRunEndSnapshot(null);
                 }}
@@ -750,6 +847,7 @@ function ThreeWorld({
   searchMatches,
   focusTarget,
   cloudsEnabled,
+  modelsEnabled,
   qualityMode,
   onSelectApp,
   onFocusCluster,
@@ -767,6 +865,7 @@ function ThreeWorld({
   searchMatches: Set<string>;
   focusTarget: CameraTarget | null;
   cloudsEnabled: boolean;
+  modelsEnabled: boolean;
   qualityMode: "low" | "medium" | "high";
   onSelectApp: (appName: string) => void;
   onFocusCluster: (cluster: Cluster) => void;
@@ -830,6 +929,7 @@ function ThreeWorld({
             key={cluster.clusterId}
             cluster={cluster}
             index={index}
+            modelsEnabled={modelsEnabled}
             onFocusCluster={onFocusCluster}
           />
         ))}
@@ -841,6 +941,7 @@ function ThreeWorld({
             system={system}
             selected={system.appName === selectedAppName || searchMatches.has(system.appName)}
             index={index}
+            modelsEnabled={modelsEnabled}
             onSelectApp={onSelectApp}
             onHoverEntity={onHoverEntity}
           />
@@ -866,8 +967,74 @@ function ThreeWorld({
       ) : (
         <HologramPanel flight={runtime.flight} selectedAppName={selectedAppName} notice="Find a deployment" />
       )}
-      <Biplane flight={runtime.flight} selectedSkinId={selectedSkinId} />
+      <Biplane flight={runtime.flight} selectedSkinId={selectedSkinId} modelsEnabled={modelsEnabled} />
     </>
+  );
+}
+
+function ModelInstance(props: {
+  src: string;
+  scale?: number | [number, number, number];
+  position?: [number, number, number];
+  rotation?: [number, number, number];
+  fallbackColor?: string;
+}) {
+  return (
+    <Suspense fallback={<ModelFallback color={props.fallbackColor} scale={props.scale} position={props.position} />}>
+      <LoadedModel {...props} />
+    </Suspense>
+  );
+}
+
+function LoadedModel({
+  src,
+  scale = 1,
+  position = [0, 0, 0],
+  rotation = [0, 0, 0],
+}: {
+  src: string;
+  scale?: number | [number, number, number];
+  position?: [number, number, number];
+  rotation?: [number, number, number];
+}) {
+  const gltf = useLoader(GLTFLoader, src);
+  const model = useMemo(() => {
+    const clone = gltf.scene.clone(true);
+    clone.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+        if (child.material) {
+          const materials = Array.isArray(child.material) ? child.material : [child.material];
+          materials.forEach((material) => {
+            material.needsUpdate = true;
+          });
+        }
+      }
+    });
+    return clone;
+  }, [gltf.scene]);
+
+  return <primitive object={model} scale={scale} position={position} rotation={rotation} />;
+}
+
+function ModelFallback({
+  color = "#dff8ff",
+  scale = 1,
+  position = [0, 0, 0],
+}: {
+  color?: string;
+  scale?: number | [number, number, number];
+  position?: [number, number, number];
+}) {
+  const normalizedScale = Array.isArray(scale)
+    ? Math.max(scale[0], scale[1], scale[2]) * 28
+    : Math.max(0.4, scale * 28);
+  return (
+    <mesh position={position} scale={normalizedScale}>
+      <octahedronGeometry args={[0.5, 0]} />
+      <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.16} roughness={0.5} />
+    </mesh>
   );
 }
 
@@ -916,14 +1083,17 @@ function CloudPuff({ scale = 1 }: { scale?: number }) {
 function CloudIsland({
   cluster,
   index,
+  modelsEnabled,
   onFocusCluster,
 }: {
   cluster: Cluster;
   index: number;
+  modelsEnabled: boolean;
   onFocusCluster: (cluster: Cluster) => void;
 }) {
   const position = to3(cluster.centroid, ISLAND_ALTITUDE + (index % 5) * 0.12);
   const radius = clamp(cluster.radius * WORLD_SCALE * 0.38, 3.4, cluster.level === "region" ? 10 : 6.5);
+  const stationKind = index % 2 === 0 ? "refuel" : "upgrade";
   return (
     <group position={position} onClick={() => onFocusCluster(cluster)}>
       <mesh receiveShadow castShadow position={[0, 0, 0]}>
@@ -939,7 +1109,20 @@ function CloudIsland({
         <meshStandardMaterial color="#b9f28f" emissive="#62d973" emissiveIntensity={0.18} roughness={0.5} />
       </mesh>
       <CloudPuff scale={radius * 0.32} />
-      {cluster.level === "region" ? (
+      {cluster.level === "region" && modelsEnabled ? (
+        <group position={[radius * 0.18, 2.05, radius * -0.12]} rotation={[0, index * 0.72, 0]}>
+          <ModelInstance
+            src={stationKind === "refuel" ? MODEL_PATHS.refuelStation : MODEL_PATHS.upgradeLab}
+            scale={stationKind === "refuel" ? radius * 0.74 : radius * 0.68}
+          />
+          <ModelInstance
+            src={MODEL_PATHS.serviceRobot}
+            position={[radius * 0.42, 0.2, radius * 0.28]}
+            rotation={[0, Math.PI * 0.2, 0]}
+            scale={radius * 0.34}
+          />
+        </group>
+      ) : cluster.level === "region" ? (
         <RobotAvatar
           position={[radius * 0.34, 2.1, radius * -0.2]}
           color={["#8f6df2", "#44c887", "#f0a33a", "#3fa7f5", "#ec6dc6"][index % 5]}
@@ -957,12 +1140,14 @@ function DeploymentMarker({
   system,
   selected,
   index,
+  modelsEnabled,
   onSelectApp,
   onHoverEntity,
 }: {
   system: AppSystem;
   selected: boolean;
   index: number;
+  modelsEnabled: boolean;
   onSelectApp: (appName: string) => void;
   onHoverEntity: (entity: HoveredEntity | null) => void;
 }) {
@@ -993,7 +1178,9 @@ function DeploymentMarker({
         <torusGeometry args={[0.82, 0.045, 8, 36]} />
         <meshBasicMaterial color={colorway.beacon} transparent opacity={selected ? 0.9 : 0.62} />
       </mesh>
-      <RobotAvatar color={colorway.main} accent={colorway.beacon} scale={1.02} position={[0, -0.72, 0]} />
+      {modelsEnabled ? <group position={[0, -0.72, 0]} rotation={[0, index * 0.38, 0]}>
+        <ModelInstance src={MODEL_PATHS.drone} scale={1.7} />
+      </group> : <RobotAvatar color={colorway.main} accent={colorway.beacon} scale={1.02} position={[0, -0.72, 0]} />}
       <mesh position={[0, -1.08, 0]}>
         <cylinderGeometry args={[0.92, 1.12, 0.18, 24]} />
         <meshStandardMaterial color="#dff8ff" emissive={colorway.beacon} emissiveIntensity={0.18} roughness={0.5} />
@@ -1056,41 +1243,24 @@ function Effects({ effects }: { effects: VisualEffect[] }) {
   );
 }
 
-function Biplane({ flight, selectedSkinId }: { flight: FlightState; selectedSkinId: PlaneSkinId }) {
+function Biplane({
+  flight,
+  selectedSkinId,
+  modelsEnabled,
+}: {
+  flight: FlightState;
+  selectedSkinId: PlaneSkinId;
+  modelsEnabled: boolean;
+}) {
   const palette = selectedSkinId === "classic" ? planeSkinPalettes.classic : planeSkinPalettes[selectedSkinId] ?? planeSkinPalettes.classic;
-  const aircraftView = resolveAircraftDirection(flight.heading);
-  const aircraftSprite = getAircraftSprite(getAircraftColorForSkin(selectedSkinId), aircraftView.direction);
-  const aircraftTexture = useLoader(THREE.TextureLoader, aircraftSprite.src);
   const position = to3(flight, PLANE_ALTITUDE);
-  const propRef = useRef<THREE.Mesh>(null);
-  useMemo(() => {
-    aircraftTexture.colorSpace = THREE.SRGBColorSpace;
-    aircraftTexture.anisotropy = 4;
-  }, [aircraftTexture]);
-  useFrame((_, delta) => {
-    if (propRef.current) {
-      propRef.current.rotation.z += delta * 26;
-    }
-  });
   return (
     <group position={position} rotation={[0, -flight.heading + Math.PI / 2, 0]} scale={1.42}>
-      <mesh
-        castShadow
-        position={[0, 0.45, 0]}
-        rotation={[-Math.PI / 2, 0, aircraftView.flipX ? Math.PI : 0]}
-        scale={[aircraftView.flipX ? -1 : 1, 1, 1]}
-      >
-        <planeGeometry args={[6.2, 6.2]} />
-        <meshBasicMaterial
-          map={aircraftTexture}
-          transparent
-          alphaTest={0.08}
-          side={THREE.DoubleSide}
-          toneMapped={false}
-        />
-      </mesh>
+      {modelsEnabled ? (
+        <ModelInstance src={MODEL_PATHS.biplane} scale={5.2} />
+      ) : null}
       <pointLight color={palette.bodyHi} intensity={0.35} distance={6} position={[0, 0.8, -0.3]} />
-      <group visible={false}>
+      <group visible={!modelsEnabled}>
       <RobotAvatar color={palette.bodyHi} scale={0.36} position={[0, 0.8, -0.45]} />
       <mesh castShadow rotation={[0, 0, Math.PI / 2]}>
         <cylinderGeometry args={[0.38, 0.48, 2.8, 20]} />
@@ -1136,7 +1306,7 @@ function Biplane({ flight, selectedSkinId }: { flight: FlightState; selectedSkin
         <torusGeometry args={[0.42, 0.035, 8, 28]} />
         <meshStandardMaterial color="#f7d06c" emissive="#ffaf44" emissiveIntensity={0.18} />
       </mesh>
-      <mesh ref={propRef} position={[0, 0, -1.58]}>
+      <mesh position={[0, 0, -1.58]}>
         <boxGeometry args={[0.12, 1.3, 0.08]} />
         <meshStandardMaterial color="#fff2ba" transparent opacity={0.56} />
       </mesh>

@@ -1,13 +1,20 @@
 .next
+.swc
 node_modules
 out
 dist
+.vercel
+.netlify
+.wrangler
 .DS_Store
+Thumbs.db
 *.log
-tsconfig.tsbuildinfo
+*.tsbuildinfo
 assets/flux-presskit
 
 # Local junk / accidental copies (do not commit)
 .zip
 *.zip
 /constellation map repo
+/progress.md
+/live-before-start.png

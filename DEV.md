@@ -9,9 +9,11 @@
 
 ## Exploration debugging
 
-- Open flight mode from the main map scene and click the sky to focus controls.
+- Open flight mode from the main 3D scene and click the sky to focus controls.
 - Toggle the debug HUD with `F3`, or enable `Debug HUD` in `Controls / Settings`.
 - The debug HUD shows FPS, frame time, sim tick rate, entity counts, input axes, and current route/fuel state.
+- Brake near a refuel or upgrade island at low speed to land. Accelerate again to take off.
+- During browser testing, `window.render_game_to_text()` exposes a compact flight-state snapshot and `window.advanceTime(ms)` advances the sim deterministically.
 
 ## Runtime feature flags
 

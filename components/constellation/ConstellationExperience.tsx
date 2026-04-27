@@ -179,9 +179,14 @@ export function ConstellationExperience() {
     const loadScene = async () => {
       setSceneLoading(true);
       setSceneError("");
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 12_000);
 
       try {
-        const response = await fetch("/api/stars", { cache: "no-store" });
+        const response = await fetch("/api/stars", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
         if (!response.ok) {
           throw new Error("Unable to load the public FluxCloud snapshot.");
         }
@@ -193,12 +198,15 @@ export function ConstellationExperience() {
       } catch (error) {
         if (!cancelled) {
           setSceneError(
-            error instanceof Error
+            error instanceof DOMException && error.name === "AbortError"
+              ? "FluxCloud snapshot is taking too long. The flight simulator is available with an empty training sky."
+              : error instanceof Error
               ? error.message
               : "Unable to load the public FluxCloud snapshot.",
           );
         }
       } finally {
+        window.clearTimeout(timeoutId);
         if (!cancelled) {
           setSceneLoading(false);
         }
