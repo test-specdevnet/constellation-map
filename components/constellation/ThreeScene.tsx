@@ -159,8 +159,18 @@ const DEPLOYMENT_CREDIT_VALUE = 12;
 const UPGRADE_COST_BASE = 24;
 const MAX_DEPLOYMENT_GLB_MODELS = {
   low: 0,
-  medium: 5,
-  high: 10,
+  medium: 4,
+  high: 7,
+} as const;
+const MAX_STATION_GLB_MODELS = {
+  low: 0,
+  medium: 3,
+  high: 5,
+} as const;
+const MAX_STAR_MARKERS = {
+  low: 40,
+  medium: 70,
+  high: 100,
 } as const;
 const MODEL_PATHS = {
   biplane: "/models/biplane.glb",
@@ -208,7 +218,7 @@ const shouldIgnoreFlightPointer = (target: EventTarget | null) =>
   target instanceof Element
     ? Boolean(
         target.closest(
-          "button, a, input, select, textarea, [role='button'], .scene-overlay-layer, .scene-toolbar",
+          "button, a, input, select, textarea, [role='button'], .scene-overlay-layer, .scene-toolbar, .scene-flight-pad",
         ),
       )
     : false;
@@ -859,9 +869,14 @@ export function ThreeScene({
       >
         <Canvas
           className="scene-canvas scene-canvas--three"
-          shadows
+          shadows={false}
           camera={{ position: [0, 18, 32], fov: 50, near: 0.1, far: 1800 }}
-          gl={{ antialias: qualityMode !== "low", alpha: true }}
+          dpr={qualityMode === "high" ? [1, 1.25] : 1}
+          gl={{
+            antialias: qualityMode === "high",
+            alpha: false,
+            powerPreference: "high-performance",
+          }}
         >
           <Suspense fallback={null}>
             <ThreeWorld
@@ -1085,9 +1100,25 @@ function ThreeWorld({
     () =>
       stars
         .filter((star) => runtime.visibility.detailSystemIds.has(star.systemId))
-        .slice(0, qualityMode === "high" ? 180 : qualityMode === "medium" ? 120 : 70),
+        .slice(0, MAX_STAR_MARKERS[qualityMode]),
     [qualityMode, runtime.visibility.detailSystemIds, stars],
   );
+  const activeStationModelIds = useMemo(() => {
+    if (!modelsEnabled || MAX_STATION_GLB_MODELS[qualityMode] <= 0) {
+      return new Set<string>();
+    }
+    const maxModels = MAX_STATION_GLB_MODELS[qualityMode];
+    return new Set(
+      [...stations.values()]
+        .map((station) => ({
+          id: station.id,
+          distance: Math.hypot(station.x - runtime.flight.x, station.y - runtime.flight.y),
+        }))
+        .sort((left, right) => left.distance - right.distance)
+        .slice(0, maxModels)
+        .map((station) => station.id),
+    );
+  }, [modelsEnabled, qualityMode, runtime.flight.x, runtime.flight.y, stations]);
 
   return (
     <>
@@ -1096,9 +1127,7 @@ function ThreeWorld({
       <hemisphereLight args={["#ffffff", "#6ab1df", 1.45]} />
       <directionalLight
         position={[30, 48, 28]}
-        intensity={2.15}
-        castShadow={qualityMode !== "low"}
-        shadow-mapSize={[1024, 1024]}
+        intensity={1.85}
       />
       <ambientLight intensity={0.48} />
       <SkyDome />
@@ -1110,7 +1139,7 @@ function ThreeWorld({
             cluster={cluster}
             index={index}
             station={stations.get(cluster.clusterId) ?? null}
-            modelsEnabled={modelsEnabled}
+            modelsEnabled={modelsEnabled && activeStationModelIds.has(cluster.clusterId)}
             onFocusCluster={onFocusCluster}
           />
         ))}
@@ -1276,8 +1305,8 @@ function LoadedModel({
     clone.position.y += size.y / 2;
     clone.traverse((child) => {
       if (child instanceof THREE.Mesh) {
-        child.castShadow = true;
-        child.receiveShadow = true;
+        child.castShadow = false;
+        child.receiveShadow = false;
         child.frustumCulled = true;
         if (child.material) {
           const materials = Array.isArray(child.material) ? child.material : [child.material];
