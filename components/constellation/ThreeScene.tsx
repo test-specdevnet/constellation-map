@@ -128,20 +128,26 @@ type SceneRuntime = {
   zoom: number;
   pickupNotice: string | null;
   landedStation: LandingStation | null;
+  nearbyStation: LandingStation | null;
+  nearbyDeploymentId: string | null;
 };
 
 type LandingStation = {
   id: string;
   kind: "refuel" | "upgrade";
   label: string;
+  x: number;
+  y: number;
+  radius: number;
 };
 
 const GAME_STATE_EMIT_INTERVAL_MS = 80;
 const WORLD_SCALE = 0.024;
 const PLANE_ALTITUDE = 6.4;
 const ISLAND_ALTITUDE = 1.2;
-const LANDING_RADIUS_WORLD = 420;
-const LANDING_MAX_SPEED = 120;
+const LANDING_RADIUS_WORLD = 520;
+const LANDING_MAX_SPEED = 145;
+const DEPLOYMENT_DOCK_RADIUS_WORLD = GAME_CONFIG.discoveryRadius * 1.18;
 const MODEL_PATHS = {
   biplane: "/models/biplane.glb",
   drone: "/models/floatingdrone.glb",
@@ -166,6 +172,18 @@ const IDLE_FLIGHT_INPUT: FlightInputState = {
 
 const to3 = (point: { x: number; y: number }, altitude = 0) =>
   new THREE.Vector3(point.x * WORLD_SCALE, altitude, point.y * WORLD_SCALE);
+
+const getStationKind = (index: number): LandingStation["kind"] =>
+  index % 2 === 0 ? "refuel" : "upgrade";
+
+const getStationLabel = (kind: LandingStation["kind"]) =>
+  kind === "refuel" ? "Refuel station" : "Upgrade lab";
+
+const scheduleSceneAction = (action: () => void) => {
+  window.requestAnimationFrame(() => {
+    void Promise.resolve().then(action);
+  });
+};
 
 const controlKeyFromEvent = (key: string): ControlKey | null => {
   const normalized = key.toLowerCase();
@@ -234,6 +252,8 @@ export function ThreeScene({
     zoom: getDefaultZoom(),
     pickupNotice: null,
     landedStation: null,
+    nearbyStation: null,
+    nearbyDeploymentId: null,
   });
   const gameEmitTsRef = useRef(0);
   const debugPerfRef = useRef({ lastSampleAtMs: 0, frames: 0, ticks: 0 });
@@ -292,6 +312,8 @@ export function ThreeScene({
     runtimeRef.current.game = createGameState();
     runtimeRef.current.game.runStartedAtMs = performance.now();
     runtimeRef.current.landedStation = null;
+    runtimeRef.current.nearbyStation = null;
+    runtimeRef.current.nearbyDeploymentId = null;
     setRunEndSnapshot(null);
     setRuntimeVersion((value) => value + 1);
   }, [bounds]);
@@ -315,12 +337,14 @@ export function ThreeScene({
       const mapped = controlKeyFromEvent(event.key);
       if (mapped) releaseControlKey(controller, mapped);
     };
+    const blur = () => resetInputController({ controller, blur: true });
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
-    window.addEventListener("blur", () => resetInputController({ controller, blur: true }));
+    window.addEventListener("blur", blur);
     return () => {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", blur);
     };
   }, []);
 
@@ -339,6 +363,7 @@ export function ThreeScene({
         runtime.previousFlight = runtime.flight;
         runtime.input = inputSample.flightInput;
         runtime.nowMs = nowMs;
+        runtime.nearbyStation = runtime.landedStation;
         runtime.pickupNotice =
           runtime.landedStation.kind === "refuel" ? "Refueled and ready" : "Upgrade lab docked";
         if (inputSample.flightInput.accelerate) {
@@ -363,25 +388,38 @@ export function ThreeScene({
             })
           : runtime.flight;
 
-      if (inputSample.flightInput.brake && nextFlight.speed <= LANDING_MAX_SPEED) {
-        const station = clusters
-          .filter((cluster) => cluster.level === "region")
-          .map((cluster, index) => ({
-            cluster,
+      const nearbyStation = regionClusters
+        .map((cluster, index) => {
+          const kind = getStationKind(index);
+          const radius = Math.max(LANDING_RADIUS_WORLD, cluster.radius * 0.28);
+          return {
+            id: cluster.clusterId,
+            kind,
+            label: getStationLabel(kind),
+            x: cluster.centroid.x,
+            y: cluster.centroid.y,
+            radius,
             distance: Math.hypot(cluster.centroid.x - nextFlight.x, cluster.centroid.y - nextFlight.y),
-            kind: index % 2 === 0 ? ("refuel" as const) : ("upgrade" as const),
-          }))
-          .sort((left, right) => left.distance - right.distance)[0];
-        if (station && station.distance <= LANDING_RADIUS_WORLD) {
+          };
+        })
+        .filter((station) => station.distance <= station.radius)
+        .sort((left, right) => left.distance - right.distance)[0] ?? null;
+      runtime.nearbyStation = nearbyStation;
+
+      if (inputSample.flightInput.brake && nextFlight.speed <= LANDING_MAX_SPEED) {
+        if (nearbyStation) {
           runtime.landedStation = {
-            id: station.cluster.clusterId,
-            kind: station.kind,
-            label: station.kind === "refuel" ? "Refuel station" : "Upgrade lab",
+            id: nearbyStation.id,
+            kind: nearbyStation.kind,
+            label: nearbyStation.label,
+            x: nearbyStation.x,
+            y: nearbyStation.y,
+            radius: nearbyStation.radius,
           };
           nextFlight.speed = 0;
           nextFlight.angVel = 0;
           game.fuel = game.fuelMax;
-          setPickupNotice(station.kind === "refuel" ? "Landed: refueled" : "Landed: upgrades online");
+          setPickupNotice(nearbyStation.kind === "refuel" ? "Landed: refueled" : "Landed: upgrades online");
           window.setTimeout(() => setPickupNotice(null), 1400);
         }
       }
@@ -458,12 +496,19 @@ export function ThreeScene({
       game.fuelTanksCollected = pickupOutcome.fuelTanksCollected;
       game.speedBoostsCollected = pickupOutcome.speedBoostsCollected;
 
-      for (const system of visibility.detailSystems) {
+      let nearestDeployment: { id: string; appName: string; distance: number } | null = null;
+      for (const system of visibility.visibleSystems) {
         const distance = Math.hypot(system.x - nextFlight.x, system.y - nextFlight.y);
-        if (distance <= GAME_CONFIG.discoveryRadius) {
-          discoverDeployment(game, system.systemId);
+        if (distance <= DEPLOYMENT_DOCK_RADIUS_WORLD) {
+          if (!nearestDeployment || distance < nearestDeployment.distance) {
+            nearestDeployment = { id: system.systemId, appName: system.appName, distance };
+          }
+          if (distance <= GAME_CONFIG.discoveryRadius) {
+            discoverDeployment(game, system.systemId);
+          }
         }
       }
+      runtime.nearbyDeploymentId = nearestDeployment?.id ?? null;
       syncGameScore(game);
       game.effects = updateEffects({ effects: game.effects, dtMs });
 
@@ -578,6 +623,20 @@ export function ThreeScene({
         coordinateSystem: "world x/y map units; y increases south; render uses x/z with altitude y",
         mode: runtime.landedStation ? "landed" : runtime.game.state,
         landedStation: runtime.landedStation,
+        nearbyStation: runtime.nearbyStation
+          ? {
+              id: runtime.nearbyStation.id,
+              kind: runtime.nearbyStation.kind,
+              label: runtime.nearbyStation.label,
+            }
+          : null,
+        nearbyDeploymentId: runtime.nearbyDeploymentId,
+        counters: {
+          deploymentsFound: runtime.game.discoveries.size,
+          speedBoosts: runtime.game.speedBoostsCollected,
+          fuelTanks: runtime.game.fuelTanksCollected,
+          rescues: runtime.game.rescues,
+        },
         player: {
           x: Math.round(runtime.flight.x),
           y: Math.round(runtime.flight.y),
@@ -640,6 +699,8 @@ export function ThreeScene({
               runtimeRef.current.game = createGameState();
               runtimeRef.current.game.runStartedAtMs = performance.now();
               runtimeRef.current.landedStation = null;
+              runtimeRef.current.nearbyStation = null;
+              runtimeRef.current.nearbyDeploymentId = null;
               runtimeRef.current.flight = createFlightState(
                 bounds.minX + bounds.width / 2,
                 bounds.minY + bounds.height / 2,
@@ -791,6 +852,8 @@ export function ThreeScene({
                   runtimeRef.current.game = createGameState();
                   runtimeRef.current.game.runStartedAtMs = performance.now();
                   runtimeRef.current.landedStation = null;
+                  runtimeRef.current.nearbyStation = null;
+                  runtimeRef.current.nearbyDeploymentId = null;
                   runtimeRef.current.flight.speed = 180;
                   setRunEndSnapshot(null);
                 }}
@@ -875,29 +938,39 @@ function ThreeWorld({
   const { camera } = useThree();
   const cameraVelocity = useRef(new THREE.Vector3());
   const lookTarget = useRef(new THREE.Vector3());
+  const planePosition = useRef(new THREE.Vector3());
+  const desiredCamera = useRef(new THREE.Vector3());
+  const behindOffset = useRef(new THREE.Vector3());
 
   useFrame((state, delta) => {
     onTick(Math.min(delta * 1000, GAME_CONFIG.maxFrameMs), state.clock.elapsedTime);
     const flight = runtime.flight;
-    const planePosition = to3(flight, PLANE_ALTITUDE);
+    planePosition.current.set(flight.x * WORLD_SCALE, PLANE_ALTITUDE, flight.y * WORLD_SCALE);
     const zoomRatio =
       (runtime.zoom - GAME_CONFIG.zoomMin) /
       Math.max(GAME_CONFIG.zoomMax - GAME_CONFIG.zoomMin, 0.001);
     const distance = THREE.MathUtils.lerp(42, 22, zoomRatio);
     const height = THREE.MathUtils.lerp(22, 12, zoomRatio);
-    const behind = new THREE.Vector3(
+    behindOffset.current.set(
       -Math.cos(flight.heading) * distance,
       height,
       -Math.sin(flight.heading) * distance,
     );
-    const desired = planePosition.clone().add(behind);
+    desiredCamera.current.copy(planePosition.current).add(behindOffset.current);
     if (focusTarget && runtime.flight.speed < 5) {
-      desired.lerp(to3(focusTarget, PLANE_ALTITUDE + 18), 0.08);
+      desiredCamera.current.lerp(
+        behindOffset.current.set(
+          focusTarget.x * WORLD_SCALE,
+          PLANE_ALTITUDE + 18,
+          focusTarget.y * WORLD_SCALE,
+        ),
+        0.08,
+      );
     }
     const cameraBlend = 1 - Math.exp(-delta * 4.6);
-    cameraVelocity.current.subVectors(desired, camera.position).multiplyScalar(cameraBlend);
+    cameraVelocity.current.subVectors(desiredCamera.current, camera.position).multiplyScalar(cameraBlend);
     camera.position.add(cameraVelocity.current);
-    lookTarget.current.lerp(planePosition, 1 - Math.exp(-delta * 7));
+    lookTarget.current.lerp(planePosition.current, 1 - Math.exp(-delta * 7));
     camera.lookAt(lookTarget.current);
   });
 
@@ -1000,10 +1073,17 @@ function LoadedModel({
   const gltf = useLoader(GLTFLoader, src);
   const model = useMemo(() => {
     const clone = gltf.scene.clone(true);
+    clone.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(clone);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    clone.position.sub(center);
+    clone.position.y += size.y / 2;
     clone.traverse((child) => {
       if (child instanceof THREE.Mesh) {
         child.castShadow = true;
         child.receiveShadow = true;
+        child.frustumCulled = true;
         if (child.material) {
           const materials = Array.isArray(child.material) ? child.material : [child.material];
           materials.forEach((material) => {
@@ -1093,33 +1173,29 @@ function CloudIsland({
 }) {
   const position = to3(cluster.centroid, ISLAND_ALTITUDE + (index % 5) * 0.12);
   const radius = clamp(cluster.radius * WORLD_SCALE * 0.38, 3.4, cluster.level === "region" ? 10 : 6.5);
-  const stationKind = index % 2 === 0 ? "refuel" : "upgrade";
+  const stationKind = getStationKind(index);
   return (
-    <group position={position} onClick={() => onFocusCluster(cluster)}>
-      <mesh receiveShadow castShadow position={[0, 0, 0]}>
-        <cylinderGeometry args={[radius * 0.9, radius * 1.08, 2.0, 32]} />
-        <meshStandardMaterial color="#68c857" roughness={0.72} metalness={0.02} />
+    <group position={position} onClick={() => scheduleSceneAction(() => onFocusCluster(cluster))}>
+      <mesh receiveShadow position={[0, -0.08, 0]}>
+        <cylinderGeometry args={[radius * 0.88, radius * 0.96, 0.22, 40]} />
+        <meshStandardMaterial color="#dff8ff" emissive="#78e5ff" emissiveIntensity={0.1} roughness={0.48} />
       </mesh>
-      <mesh position={[0, -1.15, 0]} castShadow>
-        <coneGeometry args={[radius * 0.92, radius * 1.34, 9]} />
-        <meshStandardMaterial color="#847066" roughness={0.95} />
-      </mesh>
-      <mesh position={[0, 1.08, 0]} rotation={[Math.PI / 2, 0, 0]}>
+      <mesh position={[0, 0.08, 0]} rotation={[Math.PI / 2, 0, 0]}>
         <torusGeometry args={[radius * 0.72, 0.08, 8, 48]} />
         <meshStandardMaterial color="#b9f28f" emissive="#62d973" emissiveIntensity={0.18} roughness={0.5} />
       </mesh>
-      <CloudPuff scale={radius * 0.32} />
+      <CloudPuff scale={radius * 0.26} />
       {cluster.level === "region" && modelsEnabled ? (
-        <group position={[radius * 0.18, 2.05, radius * -0.12]} rotation={[0, index * 0.72, 0]}>
+        <group position={[radius * 0.08, 0.18, radius * -0.04]} rotation={[0, index * 0.72, 0]}>
           <ModelInstance
             src={stationKind === "refuel" ? MODEL_PATHS.refuelStation : MODEL_PATHS.upgradeLab}
-            scale={stationKind === "refuel" ? radius * 0.74 : radius * 0.68}
+            scale={stationKind === "refuel" ? radius * 0.44 : radius * 0.4}
           />
           <ModelInstance
             src={MODEL_PATHS.serviceRobot}
-            position={[radius * 0.42, 0.2, radius * 0.28]}
+            position={[radius * 0.42, 0, radius * 0.28]}
             rotation={[0, Math.PI * 0.2, 0]}
-            scale={radius * 0.34}
+            scale={radius * 0.2}
           />
         </group>
       ) : cluster.level === "region" ? (
@@ -1158,7 +1234,7 @@ function DeploymentMarker({
       position={position}
       onClick={(event: ThreeEvent<MouseEvent>) => {
         event.stopPropagation();
-        onSelectApp(system.appName);
+        scheduleSceneAction(() => onSelectApp(system.appName));
       }}
       onPointerOver={(event: ThreeEvent<PointerEvent>) => {
         event.stopPropagation();
@@ -1195,7 +1271,7 @@ function DeploymentMarker({
 function StarMarker({ star, onSelectApp }: { star: Star; onSelectApp: (appName: string) => void }) {
   const position = to3(star, ISLAND_ALTITUDE + 4.2);
   return (
-    <mesh position={position} onClick={() => onSelectApp(star.appName)}>
+    <mesh position={position} onClick={() => scheduleSceneAction(() => onSelectApp(star.appName))}>
       <sphereGeometry args={[clamp(star.size * 0.08, 0.1, 0.32), 12, 8]} />
       <meshStandardMaterial color="#fff3a3" emissive="#8ee8ff" emissiveIntensity={0.55} />
     </mesh>
