@@ -34,6 +34,9 @@ export const createGameState = (): GameState => ({
   rescues: 0,
   fuelTanksCollected: 0,
   speedBoostsCollected: 0,
+  upgradeCredits: 0,
+  thrusterLevel: 0,
+  fuelEfficiencyLevel: 0,
   discoveries: new Set<string>(),
   endReason: null,
   landingStartedAtMs: null,
@@ -98,8 +101,11 @@ export const updateRunResources = ({
     if (distanceTravelled > 0.5) {
       const qualityMultiplier =
         qualityMode === "low" ? 0.92 : qualityMode === "medium" ? 1 : 1.05;
+      const efficiencyMultiplier = Math.max(0.62, 1 - game.fuelEfficiencyLevel * 0.08);
       const drain =
-        (distanceTravelled / GAME_CONFIG.worldUnitsPerFuelUnit) * qualityMultiplier;
+        (distanceTravelled / GAME_CONFIG.worldUnitsPerFuelUnit) *
+        qualityMultiplier *
+        efficiencyMultiplier;
       game.fuel = clamp(game.fuel - drain, 0, game.fuelMax);
     }
 
@@ -146,6 +152,9 @@ export const createSessionSnapshot = ({
   rescues: game.rescues,
   fuelTanksCollected: game.fuelTanksCollected,
   speedBoostsCollected: game.speedBoostsCollected,
+  upgradeCredits: game.upgradeCredits,
+  thrusterLevel: game.thrusterLevel,
+  fuelEfficiencyLevel: game.fuelEfficiencyLevel,
   distance: game.distance,
   distanceUnits: game.distanceUnits,
   state: game.state,

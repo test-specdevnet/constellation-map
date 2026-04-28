@@ -2847,6 +2847,7 @@ h1 {
 
 .scene-flight-tip,
 .scene-run-end,
+.station-dock,
 .flight-settings-panel,
 .debug-hud,
 .pickup-notice,
@@ -2866,6 +2867,89 @@ h1 {
 .scene-flight-tip-list,
 .scene-flight-tip-copy {
   color: rgba(23, 56, 95, 0.78);
+}
+
+.station-dock {
+  position: absolute;
+  left: 18px;
+  bottom: 18px;
+  z-index: 7;
+  width: min(360px, calc(100% - 36px));
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.48);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 15% 0%, rgba(255, 255, 255, 0.68), transparent 42%),
+    rgba(17, 80, 136, 0.5);
+  color: #f7fcff;
+  box-shadow: 0 18px 46px rgba(13, 54, 104, 0.26);
+  backdrop-filter: blur(16px);
+}
+
+.station-dock__header {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 12px;
+}
+
+.station-dock__header span,
+.station-dock__grid span,
+.station-dock__copy {
+  color: rgba(247, 252, 255, 0.78);
+  font-size: 0.78rem;
+}
+
+.station-dock__header strong {
+  font-size: 1rem;
+}
+
+.station-dock__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.station-dock__grid div {
+  display: grid;
+  gap: 2px;
+  min-height: 58px;
+  padding: 9px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.station-shop {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.station-shop button,
+.station-dock__actions button {
+  min-height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.22);
+  color: #f7fcff;
+  font-weight: 800;
+}
+
+.station-shop button {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+}
+
+.station-dock__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.station-dock__takeoff {
+  background: linear-gradient(180deg, rgba(119, 230, 160, 0.65), rgba(50, 178, 115, 0.55)) !important;
 }
 
 .scene-shell--three .diegetic-hud,

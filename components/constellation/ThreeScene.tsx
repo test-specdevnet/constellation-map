@@ -130,7 +130,10 @@ type SceneRuntime = {
   landedStation: LandingStation | null;
   nearbyStation: LandingStation | null;
   nearbyDeploymentId: string | null;
+  playerMode: PlayerMode;
 };
+
+type PlayerMode = "flying" | "landed" | "onFoot" | "shop";
 
 type LandingStation = {
   id: string;
@@ -141,6 +144,10 @@ type LandingStation = {
   radius: number;
 };
 
+type StationLayout = LandingStation & {
+  cluster: Cluster;
+};
+
 const GAME_STATE_EMIT_INTERVAL_MS = 80;
 const WORLD_SCALE = 0.024;
 const PLANE_ALTITUDE = 6.4;
@@ -148,6 +155,13 @@ const ISLAND_ALTITUDE = 1.2;
 const LANDING_RADIUS_WORLD = 520;
 const LANDING_MAX_SPEED = 145;
 const DEPLOYMENT_DOCK_RADIUS_WORLD = GAME_CONFIG.discoveryRadius * 1.18;
+const DEPLOYMENT_CREDIT_VALUE = 12;
+const UPGRADE_COST_BASE = 24;
+const MAX_DEPLOYMENT_GLB_MODELS = {
+  low: 0,
+  medium: 5,
+  high: 10,
+} as const;
 const MODEL_PATHS = {
   biplane: "/models/biplane.glb",
   drone: "/models/floatingdrone.glb",
@@ -179,11 +193,25 @@ const getStationKind = (index: number): LandingStation["kind"] =>
 const getStationLabel = (kind: LandingStation["kind"]) =>
   kind === "refuel" ? "Refuel station" : "Upgrade lab";
 
+const getRefuelAmount = (discoveries: number, fuelMax: number) =>
+  clamp(fuelMax * (0.28 + discoveries * 0.035), fuelMax * 0.28, fuelMax);
+
+const getUpgradeCost = (level: number) => UPGRADE_COST_BASE * (level + 1);
+
 const scheduleSceneAction = (action: () => void) => {
   window.requestAnimationFrame(() => {
     void Promise.resolve().then(action);
   });
 };
+
+const shouldIgnoreFlightPointer = (target: EventTarget | null) =>
+  target instanceof Element
+    ? Boolean(
+        target.closest(
+          "button, a, input, select, textarea, [role='button'], .scene-overlay-layer, .scene-toolbar",
+        ),
+      )
+    : false;
 
 const controlKeyFromEvent = (key: string): ControlKey | null => {
   const normalized = key.toLowerCase();
@@ -254,6 +282,7 @@ export function ThreeScene({
     landedStation: null,
     nearbyStation: null,
     nearbyDeploymentId: null,
+    playerMode: "flying",
   });
   const gameEmitTsRef = useRef(0);
   const debugPerfRef = useRef({ lastSampleAtMs: 0, frames: 0, ticks: 0 });
@@ -296,6 +325,26 @@ export function ThreeScene({
     () => clusters.filter((cluster) => cluster.level === "region"),
     [clusters],
   );
+  const stationLayout = useMemo<StationLayout[]>(
+    () =>
+      regionClusters.map((cluster, index) => {
+        const kind = getStationKind(index);
+        return {
+          id: cluster.clusterId,
+          kind,
+          label: getStationLabel(kind),
+          x: cluster.centroid.x,
+          y: cluster.centroid.y,
+          radius: Math.max(LANDING_RADIUS_WORLD, cluster.radius * 0.28),
+          cluster,
+        };
+      }),
+    [regionClusters],
+  );
+  const stationByClusterId = useMemo(
+    () => new Map(stationLayout.map((station) => [station.id, station])),
+    [stationLayout],
+  );
   const runtimeClusters = useMemo(
     () => clusters.filter((cluster) => cluster.level === "runtime"),
     [clusters],
@@ -314,6 +363,7 @@ export function ThreeScene({
     runtimeRef.current.landedStation = null;
     runtimeRef.current.nearbyStation = null;
     runtimeRef.current.nearbyDeploymentId = null;
+    runtimeRef.current.playerMode = "flying";
     setRunEndSnapshot(null);
     setRuntimeVersion((value) => value + 1);
   }, [bounds]);
@@ -358,16 +408,22 @@ export function ThreeScene({
         mouseSensitivity: flightSettings.mouseSensitivity,
       });
       if (runtime.landedStation) {
-        game.fuel = game.fuelMax;
         runtime.flight = { ...runtime.flight, speed: 0, angVel: 0 };
         runtime.previousFlight = runtime.flight;
         runtime.input = inputSample.flightInput;
         runtime.nowMs = nowMs;
         runtime.nearbyStation = runtime.landedStation;
         runtime.pickupNotice =
-          runtime.landedStation.kind === "refuel" ? "Refueled and ready" : "Upgrade lab docked";
+          runtime.playerMode === "shop"
+            ? "Upgrade shop open"
+            : runtime.playerMode === "onFoot"
+              ? "Robot avatar active"
+              : runtime.landedStation.kind === "refuel"
+                ? "Refuel station docked"
+                : "Upgrade lab docked";
         if (inputSample.flightInput.accelerate) {
           runtime.landedStation = null;
+          runtime.playerMode = "flying";
           runtime.flight = { ...runtime.flight, speed: 180, heading: runtime.flight.heading };
           setPickupNotice("Taking off");
           window.setTimeout(() => setPickupNotice(null), 1000);
@@ -388,20 +444,11 @@ export function ThreeScene({
             })
           : runtime.flight;
 
-      const nearbyStation = regionClusters
-        .map((cluster, index) => {
-          const kind = getStationKind(index);
-          const radius = Math.max(LANDING_RADIUS_WORLD, cluster.radius * 0.28);
-          return {
-            id: cluster.clusterId,
-            kind,
-            label: getStationLabel(kind),
-            x: cluster.centroid.x,
-            y: cluster.centroid.y,
-            radius,
-            distance: Math.hypot(cluster.centroid.x - nextFlight.x, cluster.centroid.y - nextFlight.y),
-          };
-        })
+      const nearbyStation = stationLayout
+        .map((station) => ({
+          ...station,
+          distance: Math.hypot(station.x - nextFlight.x, station.y - nextFlight.y),
+        }))
         .filter((station) => station.distance <= station.radius)
         .sort((left, right) => left.distance - right.distance)[0] ?? null;
       runtime.nearbyStation = nearbyStation;
@@ -416,10 +463,14 @@ export function ThreeScene({
             y: nearbyStation.y,
             radius: nearbyStation.radius,
           };
+          runtime.playerMode = "landed";
           nextFlight.speed = 0;
           nextFlight.angVel = 0;
-          game.fuel = game.fuelMax;
-          setPickupNotice(nearbyStation.kind === "refuel" ? "Landed: refueled" : "Landed: upgrades online");
+          if (nearbyStation.kind === "refuel") {
+            const refuelAmount = getRefuelAmount(game.discoveries.size, game.fuelMax);
+            game.fuel = clamp(game.fuel + refuelAmount, 0, game.fuelMax);
+          }
+          setPickupNotice(nearbyStation.kind === "refuel" ? "Landed: refueled" : "Landed: upgrade bank");
           window.setTimeout(() => setPickupNotice(null), 1400);
         }
       }
@@ -504,7 +555,9 @@ export function ThreeScene({
             nearestDeployment = { id: system.systemId, appName: system.appName, distance };
           }
           if (distance <= GAME_CONFIG.discoveryRadius) {
-            discoverDeployment(game, system.systemId);
+            if (discoverDeployment(game, system.systemId)) {
+              game.upgradeCredits += DEPLOYMENT_CREDIT_VALUE;
+            }
           }
         }
       }
@@ -604,6 +657,7 @@ export function ThreeScene({
       onTelemetry,
       qualityMode,
       regionClusters.length,
+      stationLayout,
       selectedAppName,
       starsBySystem,
       systems,
@@ -621,7 +675,7 @@ export function ThreeScene({
       const runtime = runtimeRef.current;
       return JSON.stringify({
         coordinateSystem: "world x/y map units; y increases south; render uses x/z with altitude y",
-        mode: runtime.landedStation ? "landed" : runtime.game.state,
+        mode: runtime.landedStation ? runtime.playerMode : runtime.game.state,
         landedStation: runtime.landedStation,
         nearbyStation: runtime.nearbyStation
           ? {
@@ -636,6 +690,9 @@ export function ThreeScene({
           speedBoosts: runtime.game.speedBoostsCollected,
           fuelTanks: runtime.game.fuelTanksCollected,
           rescues: runtime.game.rescues,
+          upgradeCredits: runtime.game.upgradeCredits,
+          thrusterLevel: runtime.game.thrusterLevel,
+          fuelEfficiencyLevel: runtime.game.fuelEfficiencyLevel,
         },
         player: {
           x: Math.round(runtime.flight.x),
@@ -673,6 +730,49 @@ export function ThreeScene({
       speed: Math.max(runtimeRef.current.flight.speed, 240),
     };
   };
+  const resetRun = useCallback(() => {
+    runtimeRef.current.game = createGameState();
+    runtimeRef.current.game.runStartedAtMs = performance.now();
+    runtimeRef.current.landedStation = null;
+    runtimeRef.current.nearbyStation = null;
+    runtimeRef.current.nearbyDeploymentId = null;
+    runtimeRef.current.playerMode = "flying";
+    runtimeRef.current.flight = createFlightState(
+      bounds.minX + bounds.width / 2,
+      bounds.minY + bounds.height / 2,
+    );
+    runtimeRef.current.flight.speed = 180;
+    setRunEndSnapshot(null);
+    setRuntimeVersion((value) => value + 1);
+  }, [bounds]);
+  const setLandedMode = (mode: PlayerMode) => {
+    if (!runtimeRef.current.landedStation) return;
+    runtimeRef.current.playerMode = mode;
+    setRuntimeVersion((value) => value + 1);
+  };
+  const buyUpgrade = (kind: "thruster" | "fuel") => {
+    const game = runtimeRef.current.game;
+    const level = kind === "thruster" ? game.thrusterLevel : game.fuelEfficiencyLevel;
+    const cost = getUpgradeCost(level);
+    if (game.upgradeCredits < cost) {
+      setPickupNotice("Need more deployment data");
+      window.setTimeout(() => setPickupNotice(null), 1200);
+      return;
+    }
+    game.upgradeCredits -= cost;
+    if (kind === "thruster") {
+      game.thrusterLevel += 1;
+      runtimeRef.current.flight.speed = Math.max(runtimeRef.current.flight.speed, 210 + game.thrusterLevel * 18);
+      setPickupNotice("Thrusters upgraded");
+    } else {
+      game.fuelEfficiencyLevel += 1;
+      game.fuelMax = Math.min(GAME_CONFIG.fuelMax * 1.45, game.fuelMax + 12);
+      game.fuel = game.fuelMax;
+      setPickupNotice("Fuel system upgraded");
+    }
+    window.setTimeout(() => setPickupNotice(null), 1200);
+    setRuntimeVersion((value) => value + 1);
+  };
   const dismissFlightTip = () => {
     window.localStorage.setItem("flux-flight-tip-dismissed", "1");
     setShowFlightTip(false);
@@ -695,20 +795,7 @@ export function ThreeScene({
           <button
             type="button"
             className="secondary-action"
-            onClick={() => {
-              runtimeRef.current.game = createGameState();
-              runtimeRef.current.game.runStartedAtMs = performance.now();
-              runtimeRef.current.landedStation = null;
-              runtimeRef.current.nearbyStation = null;
-              runtimeRef.current.nearbyDeploymentId = null;
-              runtimeRef.current.flight = createFlightState(
-                bounds.minX + bounds.width / 2,
-                bounds.minY + bounds.height / 2,
-              );
-              runtimeRef.current.flight.speed = 180;
-              setRunEndSnapshot(null);
-              setRuntimeVersion((value) => value + 1);
-            }}
+            onClick={resetRun}
           >
             New run
           </button>
@@ -749,11 +836,13 @@ export function ThreeScene({
         aria-label="3D FluxCloud flight simulator"
         onPointerEnter={() => focusInputController(inputControllerRef.current)}
         onPointerMove={(event) => {
+          if (shouldIgnoreFlightPointer(event.target)) return;
           const rect = event.currentTarget.getBoundingClientRect();
           const normalized = ((event.clientX - rect.left) / Math.max(rect.width, 1) - 0.5) * 2;
           setPointerTurnBias(inputControllerRef.current, normalized);
         }}
-        onPointerDown={() => {
+        onPointerDown={(event) => {
+          if (shouldIgnoreFlightPointer(event.target)) return;
           focusInputController(inputControllerRef.current);
           setMouseSteerActive(inputControllerRef.current, true);
         }}
@@ -785,6 +874,7 @@ export function ThreeScene({
               selectedAppName={selectedAppName}
               selectedSkinId={selectedSkinId}
               searchMatches={matchSet}
+              stations={stationByClusterId}
               focusTarget={showFlightTip ? focusTarget : null}
               cloudsEnabled={featureFlags.clouds}
               modelsEnabled
@@ -801,6 +891,9 @@ export function ThreeScene({
           className={`scene-overlay-layer ${
             showFlightTip || runEndSnapshot ? "scene-overlay-layer--modal" : ""
           }`}
+          onPointerDown={(event) => event.stopPropagation()}
+          onPointerMove={(event) => event.stopPropagation()}
+          onWheel={(event) => event.stopPropagation()}
         >
           {hudVisible ? overlay : null}
           {showSettingsPanel ? (
@@ -816,6 +909,24 @@ export function ThreeScene({
           ) : null}
           <DebugHud visible={debugHudVisible} stats={debugStats} />
           {pickupNotice ? <div className="pickup-notice">{pickupNotice}</div> : null}
+          {snapshot.landedStation ? (
+            <StationDockPanel
+              station={snapshot.landedStation}
+              playerMode={snapshot.playerMode}
+              game={snapshot.game}
+              onExitPlane={() => setLandedMode("onFoot")}
+              onEnterPlane={() => setLandedMode("landed")}
+              onOpenShop={() => setLandedMode("shop")}
+              onCloseShop={() => setLandedMode("onFoot")}
+              onBuyUpgrade={buyUpgrade}
+              onTakeOff={() => {
+                runtimeRef.current.landedStation = null;
+                runtimeRef.current.playerMode = "flying";
+                runtimeRef.current.flight.speed = Math.max(190, runtimeRef.current.flight.speed);
+                setRuntimeVersion((value) => value + 1);
+              }}
+            />
+          ) : null}
           {showFlightTip ? (
             <div className="scene-flight-tip">
               <p className="scene-flight-tip-title">Welcome to the 3D sky map.</p>
@@ -849,13 +960,7 @@ export function ThreeScene({
                 type="button"
                 className="primary-action scene-run-end__action"
                 onClick={() => {
-                  runtimeRef.current.game = createGameState();
-                  runtimeRef.current.game.runStartedAtMs = performance.now();
-                  runtimeRef.current.landedStation = null;
-                  runtimeRef.current.nearbyStation = null;
-                  runtimeRef.current.nearbyDeploymentId = null;
-                  runtimeRef.current.flight.speed = 180;
-                  setRunEndSnapshot(null);
+                  resetRun();
                 }}
               >
                 Fly again
@@ -908,6 +1013,7 @@ function ThreeWorld({
   selectedAppName,
   selectedSkinId,
   searchMatches,
+  stations,
   focusTarget,
   cloudsEnabled,
   modelsEnabled,
@@ -926,6 +1032,7 @@ function ThreeWorld({
   selectedAppName: string | null;
   selectedSkinId: PlaneSkinId;
   searchMatches: Set<string>;
+  stations: Map<string, StationLayout>;
   focusTarget: CameraTarget | null;
   cloudsEnabled: boolean;
   modelsEnabled: boolean;
@@ -1002,6 +1109,7 @@ function ThreeWorld({
             key={cluster.clusterId}
             cluster={cluster}
             index={index}
+            station={stations.get(cluster.clusterId) ?? null}
             modelsEnabled={modelsEnabled}
             onFocusCluster={onFocusCluster}
           />
@@ -1014,7 +1122,7 @@ function ThreeWorld({
             system={system}
             selected={system.appName === selectedAppName || searchMatches.has(system.appName)}
             index={index}
-            modelsEnabled={modelsEnabled}
+            modelsEnabled={modelsEnabled && index < MAX_DEPLOYMENT_GLB_MODELS[qualityMode]}
             onSelectApp={onSelectApp}
             onHoverEntity={onHoverEntity}
           />
@@ -1040,7 +1148,12 @@ function ThreeWorld({
       ) : (
         <HologramPanel flight={runtime.flight} selectedAppName={selectedAppName} notice="Find a deployment" />
       )}
-      <Biplane flight={runtime.flight} selectedSkinId={selectedSkinId} modelsEnabled={modelsEnabled} />
+      <Biplane
+        flight={runtime.flight}
+        selectedSkinId={selectedSkinId}
+        modelsEnabled={modelsEnabled}
+        playerMode={runtime.playerMode}
+      />
     </>
   );
 }
@@ -1056,6 +1169,88 @@ function ModelInstance(props: {
     <Suspense fallback={<ModelFallback color={props.fallbackColor} scale={props.scale} position={props.position} />}>
       <LoadedModel {...props} />
     </Suspense>
+  );
+}
+
+function StationDockPanel({
+  station,
+  playerMode,
+  game,
+  onExitPlane,
+  onEnterPlane,
+  onOpenShop,
+  onCloseShop,
+  onBuyUpgrade,
+  onTakeOff,
+}: {
+  station: LandingStation;
+  playerMode: PlayerMode;
+  game: GameState;
+  onExitPlane: () => void;
+  onEnterPlane: () => void;
+  onOpenShop: () => void;
+  onCloseShop: () => void;
+  onBuyUpgrade: (kind: "thruster" | "fuel") => void;
+  onTakeOff: () => void;
+}) {
+  const refuelAmount = Math.round(getRefuelAmount(game.discoveries.size, game.fuelMax));
+  const thrusterCost = getUpgradeCost(game.thrusterLevel);
+  const fuelCost = getUpgradeCost(game.fuelEfficiencyLevel);
+  const isShop = playerMode === "shop";
+  return (
+    <div className={`station-dock station-dock--${station.kind}`} role="dialog" aria-label={station.label}>
+      <div className="station-dock__header">
+        <span>{playerMode === "flying" ? "Approach" : playerMode}</span>
+        <strong>{station.label}</strong>
+      </div>
+      <div className="station-dock__grid">
+        <div>
+          <span>Deployment data</span>
+          <strong>{game.upgradeCredits}</strong>
+        </div>
+        <div>
+          <span>Discovered</span>
+          <strong>{game.discoveries.size}</strong>
+        </div>
+        <div>
+          <span>Fuel service</span>
+          <strong>+{refuelAmount}</strong>
+        </div>
+      </div>
+      {station.kind === "upgrade" && isShop ? (
+        <div className="station-shop">
+          <button type="button" onClick={() => onBuyUpgrade("thruster")}>
+            <span>Thrusters Mk {game.thrusterLevel + 1}</span>
+            <strong>{thrusterCost} data</strong>
+          </button>
+          <button type="button" onClick={() => onBuyUpgrade("fuel")}>
+            <span>Fuel system Mk {game.fuelEfficiencyLevel + 1}</span>
+            <strong>{fuelCost} data</strong>
+          </button>
+        </div>
+      ) : (
+        <p className="station-dock__copy">
+          {station.kind === "refuel"
+            ? "Refuelling scales with confirmed deployments."
+            : "Bank deployment data and fit new parts before takeoff."}
+        </p>
+      )}
+      <div className="station-dock__actions">
+        {playerMode === "landed" ? (
+          <button type="button" onClick={onExitPlane}>Exit plane</button>
+        ) : (
+          <button type="button" onClick={onEnterPlane}>Enter plane</button>
+        )}
+        {station.kind === "upgrade" ? (
+          <button type="button" onClick={isShop ? onCloseShop : onOpenShop}>
+            {isShop ? "Close shop" : "Open shop"}
+          </button>
+        ) : null}
+        <button type="button" className="station-dock__takeoff" onClick={onTakeOff}>
+          Take off
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -1163,17 +1358,18 @@ function CloudPuff({ scale = 1 }: { scale?: number }) {
 function CloudIsland({
   cluster,
   index,
+  station,
   modelsEnabled,
   onFocusCluster,
 }: {
   cluster: Cluster;
   index: number;
+  station: StationLayout | null;
   modelsEnabled: boolean;
   onFocusCluster: (cluster: Cluster) => void;
 }) {
   const position = to3(cluster.centroid, ISLAND_ALTITUDE + (index % 5) * 0.12);
   const radius = clamp(cluster.radius * WORLD_SCALE * 0.38, 3.4, cluster.level === "region" ? 10 : 6.5);
-  const stationKind = getStationKind(index);
   return (
     <group position={position} onClick={() => scheduleSceneAction(() => onFocusCluster(cluster))}>
       <mesh receiveShadow position={[0, -0.08, 0]}>
@@ -1185,11 +1381,11 @@ function CloudIsland({
         <meshStandardMaterial color="#b9f28f" emissive="#62d973" emissiveIntensity={0.18} roughness={0.5} />
       </mesh>
       <CloudPuff scale={radius * 0.26} />
-      {cluster.level === "region" && modelsEnabled ? (
+      {station && modelsEnabled ? (
         <group position={[radius * 0.08, 0.18, radius * -0.04]} rotation={[0, index * 0.72, 0]}>
           <ModelInstance
-            src={stationKind === "refuel" ? MODEL_PATHS.refuelStation : MODEL_PATHS.upgradeLab}
-            scale={stationKind === "refuel" ? radius * 0.44 : radius * 0.4}
+            src={station.kind === "refuel" ? MODEL_PATHS.refuelStation : MODEL_PATHS.upgradeLab}
+            scale={station.kind === "refuel" ? radius * 0.44 : radius * 0.4}
           />
           <ModelInstance
             src={MODEL_PATHS.serviceRobot}
@@ -1198,7 +1394,7 @@ function CloudIsland({
             scale={radius * 0.2}
           />
         </group>
-      ) : cluster.level === "region" ? (
+      ) : station ? (
         <RobotAvatar
           position={[radius * 0.34, 2.1, radius * -0.2]}
           color={["#8f6df2", "#44c887", "#f0a33a", "#3fa7f5", "#ec6dc6"][index % 5]}
@@ -1323,10 +1519,12 @@ function Biplane({
   flight,
   selectedSkinId,
   modelsEnabled,
+  playerMode,
 }: {
   flight: FlightState;
   selectedSkinId: PlaneSkinId;
   modelsEnabled: boolean;
+  playerMode?: PlayerMode;
 }) {
   const palette = selectedSkinId === "classic" ? planeSkinPalettes.classic : planeSkinPalettes[selectedSkinId] ?? planeSkinPalettes.classic;
   const position = to3(flight, PLANE_ALTITUDE);
@@ -1337,7 +1535,7 @@ function Biplane({
       ) : null}
       <pointLight color={palette.bodyHi} intensity={0.35} distance={6} position={[0, 0.8, -0.3]} />
       <group visible={!modelsEnabled}>
-      <RobotAvatar color={palette.bodyHi} scale={0.36} position={[0, 0.8, -0.45]} />
+      <RobotAvatar color={palette.bodyHi} scale={0.36} position={[0, 0.8, -0.45]} visible={playerMode !== "onFoot" && playerMode !== "shop"} />
       <mesh castShadow rotation={[0, 0, Math.PI / 2]}>
         <cylinderGeometry args={[0.38, 0.48, 2.8, 20]} />
         <meshStandardMaterial color={palette.body} roughness={0.35} metalness={0.08} />
@@ -1387,6 +1585,9 @@ function Biplane({
         <meshStandardMaterial color="#fff2ba" transparent opacity={0.56} />
       </mesh>
       </group>
+      {playerMode === "onFoot" || playerMode === "shop" ? (
+        <RobotAvatar color={palette.bodyHi} scale={0.48} position={[2.1, -0.24, -0.65]} />
+      ) : null}
       <pointLight color="#ff9170" intensity={0.85} distance={8} position={[0, 0.5, -1.5]} />
     </group>
   );
@@ -1397,14 +1598,16 @@ function RobotAvatar({
   accent = "#4edfff",
   position,
   scale = 1,
+  visible = true,
 }: {
   color: string;
   accent?: string;
   position: [number, number, number];
   scale?: number;
+  visible?: boolean;
 }) {
   return (
-    <group position={position} scale={scale}>
+    <group position={position} scale={scale} visible={visible}>
       <mesh castShadow position={[0, 1.22, 0]}>
         <sphereGeometry args={[0.68, 28, 18]} />
         <meshStandardMaterial color="#f4fbff" roughness={0.28} metalness={0.04} />

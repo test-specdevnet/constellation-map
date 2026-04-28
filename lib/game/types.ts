@@ -115,6 +115,9 @@ export type GameState = {
   rescues: number;
   fuelTanksCollected: number;
   speedBoostsCollected: number;
+  upgradeCredits: number;
+  thrusterLevel: number;
+  fuelEfficiencyLevel: number;
   discoveries: Set<string>;
   endReason: string | null;
   landingStartedAtMs: number | null;
@@ -136,6 +139,9 @@ export type GameSessionSnapshot = {
   rescues: number;
   fuelTanksCollected: number;
   speedBoostsCollected: number;
+  upgradeCredits: number;
+  thrusterLevel: number;
+  fuelEfficiencyLevel: number;
   distance: number;
   distanceUnits: number;
   state: RunState;
