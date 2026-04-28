@@ -16,6 +16,7 @@ import { DebugHud } from "./DebugHud";
 import { FlightSettingsPanel } from "./FlightSettingsPanel";
 import { MobileDrawer } from "./MobileDrawer";
 import { useMediaQuery } from "./useMediaQuery";
+import { BUILD_STAMP } from "../../lib/buildStamp";
 import { getBuoyColorway } from "../../lib/canvas/buoyCategory";
 import { planeSkinPalettes, type PlaneSkinId } from "../../lib/canvas/cartoonMarkers";
 import {
@@ -296,6 +297,7 @@ export function ThreeScene({
   });
   const gameEmitTsRef = useRef(0);
   const debugPerfRef = useRef({ lastSampleAtMs: 0, frames: 0, ticks: 0 });
+  const modelEnableQueuedRef = useRef(false);
   const [runtimeVersion, setRuntimeVersion] = useState(0);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showActionMenu, setShowActionMenu] = useState(false);
@@ -305,6 +307,7 @@ export function ThreeScene({
   const [debugStats, setDebugStats] = useState(createInitialDebugHudSnapshot);
   const [pickupNotice, setPickupNotice] = useState<string | null>(null);
   const [runEndSnapshot, setRunEndSnapshot] = useState<GameSessionSnapshot | null>(null);
+  const [modelsReady, setModelsReady] = useState(false);
 
   const reducedMotion = prefersReducedMotion();
   const qualityMode = useMemo(
@@ -740,6 +743,20 @@ export function ThreeScene({
       speed: Math.max(runtimeRef.current.flight.speed, 240),
     };
   };
+  const enableModelsAfterFirstPaint = useCallback(() => {
+    if (modelEnableQueuedRef.current) return;
+    modelEnableQueuedRef.current = true;
+    window.setTimeout(() => {
+      const idleWindow = window as Window & {
+        requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number;
+      };
+      if (idleWindow.requestIdleCallback) {
+        idleWindow.requestIdleCallback(() => setModelsReady(true), { timeout: 1800 });
+      } else {
+        setModelsReady(true);
+      }
+    }, 900);
+  }, []);
   const resetRun = useCallback(() => {
     runtimeRef.current.game = createGameState();
     runtimeRef.current.game.runStartedAtMs = performance.now();
@@ -787,9 +804,16 @@ export function ThreeScene({
     window.localStorage.setItem("flux-flight-tip-dismissed", "1");
     setShowFlightTip(false);
     boostLaunchSpeed();
+    enableModelsAfterFirstPaint();
     focusInputController(inputControllerRef.current);
     window.requestAnimationFrame(() => wrapRef.current?.focus());
   };
+
+  useEffect(() => {
+    if (!showFlightTip) {
+      enableModelsAfterFirstPaint();
+    }
+  }, [enableModelsAfterFirstPaint, showFlightTip]);
 
   return (
     <section className="scene-shell scene-shell--three">
@@ -834,7 +858,7 @@ export function ThreeScene({
           </button>
         </div>
         <span className="scene-zoom-label scene-zoom-label--wrap">
-          3D chase view | WASD or arrow keys | scroll changes camera distance
+          3D chase view | build {BUILD_STAMP} | GLBs {modelsReady ? "streaming" : "paused"}
         </span>
       </div>
 
@@ -892,7 +916,7 @@ export function ThreeScene({
               stations={stationByClusterId}
               focusTarget={showFlightTip ? focusTarget : null}
               cloudsEnabled={featureFlags.clouds}
-              modelsEnabled
+              modelsEnabled={modelsReady}
               qualityMode={qualityMode}
               onSelectApp={onSelectApp}
               onFocusCluster={onFocusCluster}
