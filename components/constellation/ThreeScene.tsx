@@ -9,9 +9,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Canvas, useFrame, useLoader, useThree, type ThreeEvent } from "@react-three/fiber";
+import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DebugHud } from "./DebugHud";
 import { FlightSettingsPanel } from "./FlightSettingsPanel";
 import { MobileDrawer } from "./MobileDrawer";
@@ -173,13 +172,7 @@ const MAX_STAR_MARKERS = {
   medium: 70,
   high: 100,
 } as const;
-const MODEL_PATHS = {
-  biplane: "/models/biplane.glb",
-  drone: "/models/floatingdrone.glb",
-  upgradeLab: "/models/floatingupgradelab.glb",
-  refuelStation: "/models/refuelstation.glb",
-  serviceRobot: "/models/servicerobot.glb",
-} as const;
+const RUNTIME_GLB_MODELS_ENABLED = false;
 const EMPTY_VISIBILITY: DeploymentVisibilityState = {
   visibleSystems: [],
   detailSystems: [],
@@ -297,17 +290,14 @@ export function ThreeScene({
   });
   const gameEmitTsRef = useRef(0);
   const debugPerfRef = useRef({ lastSampleAtMs: 0, frames: 0, ticks: 0 });
-  const modelEnableQueuedRef = useRef(false);
   const [runtimeVersion, setRuntimeVersion] = useState(0);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showActionMenu, setShowActionMenu] = useState(false);
-  const [showFlightTip, setShowFlightTip] = useState(false);
   const [hudVisible, setHudVisible] = useState(true);
   const [debugHudHotkey, setDebugHudHotkey] = useState(false);
   const [debugStats, setDebugStats] = useState(createInitialDebugHudSnapshot);
   const [pickupNotice, setPickupNotice] = useState<string | null>(null);
   const [runEndSnapshot, setRunEndSnapshot] = useState<GameSessionSnapshot | null>(null);
-  const [modelsReady, setModelsReady] = useState(false);
 
   const reducedMotion = prefersReducedMotion();
   const qualityMode = useMemo(
@@ -380,10 +370,6 @@ export function ThreeScene({
     setRunEndSnapshot(null);
     setRuntimeVersion((value) => value + 1);
   }, [bounds]);
-
-  useEffect(() => {
-    setShowFlightTip(window.localStorage.getItem("flux-flight-tip-dismissed") !== "1");
-  }, []);
 
   useEffect(() => {
     const controller = inputControllerRef.current;
@@ -743,20 +729,6 @@ export function ThreeScene({
       speed: Math.max(runtimeRef.current.flight.speed, 240),
     };
   };
-  const enableModelsAfterFirstPaint = useCallback(() => {
-    if (modelEnableQueuedRef.current) return;
-    modelEnableQueuedRef.current = true;
-    window.setTimeout(() => {
-      const idleWindow = window as Window & {
-        requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number;
-      };
-      if (idleWindow.requestIdleCallback) {
-        idleWindow.requestIdleCallback(() => setModelsReady(true), { timeout: 1800 });
-      } else {
-        setModelsReady(true);
-      }
-    }, 900);
-  }, []);
   const resetRun = useCallback(() => {
     runtimeRef.current.game = createGameState();
     runtimeRef.current.game.runStartedAtMs = performance.now();
@@ -800,20 +772,14 @@ export function ThreeScene({
     window.setTimeout(() => setPickupNotice(null), 1200);
     setRuntimeVersion((value) => value + 1);
   };
-  const dismissFlightTip = () => {
-    window.localStorage.setItem("flux-flight-tip-dismissed", "1");
-    setShowFlightTip(false);
-    boostLaunchSpeed();
-    enableModelsAfterFirstPaint();
-    focusInputController(inputControllerRef.current);
-    window.requestAnimationFrame(() => wrapRef.current?.focus());
-  };
-
   useEffect(() => {
-    if (!showFlightTip) {
-      enableModelsAfterFirstPaint();
-    }
-  }, [enableModelsAfterFirstPaint, showFlightTip]);
+    const kickoff = window.setTimeout(() => {
+      boostLaunchSpeed();
+      focusInputController(inputControllerRef.current);
+      wrapRef.current?.focus();
+    }, 250);
+    return () => window.clearTimeout(kickoff);
+  }, []);
 
   return (
     <section className="scene-shell scene-shell--three">
@@ -858,7 +824,7 @@ export function ThreeScene({
           </button>
         </div>
         <span className="scene-zoom-label scene-zoom-label--wrap">
-          3D chase view | build {BUILD_STAMP} | GLBs {modelsReady ? "streaming" : "paused"}
+          3D chase view | build {BUILD_STAMP} | GLBs safe mode
         </span>
       </div>
 
@@ -914,9 +880,9 @@ export function ThreeScene({
               selectedSkinId={selectedSkinId}
               searchMatches={matchSet}
               stations={stationByClusterId}
-              focusTarget={showFlightTip ? focusTarget : null}
+              focusTarget={focusTarget}
               cloudsEnabled={featureFlags.clouds}
-              modelsEnabled={modelsReady}
+              modelsEnabled={RUNTIME_GLB_MODELS_ENABLED}
               qualityMode={qualityMode}
               onSelectApp={onSelectApp}
               onFocusCluster={onFocusCluster}
@@ -928,7 +894,7 @@ export function ThreeScene({
 
         <div
           className={`scene-overlay-layer ${
-            showFlightTip || runEndSnapshot ? "scene-overlay-layer--modal" : ""
+            runEndSnapshot ? "scene-overlay-layer--modal" : ""
           }`}
           onPointerDown={(event) => event.stopPropagation()}
           onPointerMove={(event) => event.stopPropagation()}
@@ -965,27 +931,6 @@ export function ThreeScene({
                 setRuntimeVersion((value) => value + 1);
               }}
             />
-          ) : null}
-          {showFlightTip ? (
-            <div className="scene-flight-tip">
-              <p className="scene-flight-tip-title">Welcome to the 3D sky map.</p>
-              <ul className="scene-flight-tip-list">
-                <li>Use WASD or arrow keys to steer the biplane through deployments.</li>
-                <li>Fly close to glowing markers to discover systems and collect pickups.</li>
-                <li>Scroll to pull the chase camera closer or farther away.</li>
-              </ul>
-              <button
-                type="button"
-                className="primary-action scene-flight-tip-dismiss"
-                onPointerDown={(event) => {
-                  event.stopPropagation();
-                  dismissFlightTip();
-                }}
-                onClick={dismissFlightTip}
-              >
-                Start flying
-              </button>
-            </div>
           ) : null}
           {runEndSnapshot ? (
             <div className="scene-run-end">
@@ -1211,20 +1156,6 @@ function ThreeWorld({
   );
 }
 
-function ModelInstance(props: {
-  src: string;
-  scale?: number | [number, number, number];
-  position?: [number, number, number];
-  rotation?: [number, number, number];
-  fallbackColor?: string;
-}) {
-  return (
-    <Suspense fallback={<ModelFallback color={props.fallbackColor} scale={props.scale} position={props.position} />}>
-      <LoadedModel {...props} />
-    </Suspense>
-  );
-}
-
 function StationDockPanel({
   station,
   playerMode,
@@ -1307,65 +1238,6 @@ function StationDockPanel({
   );
 }
 
-function LoadedModel({
-  src,
-  scale = 1,
-  position = [0, 0, 0],
-  rotation = [0, 0, 0],
-}: {
-  src: string;
-  scale?: number | [number, number, number];
-  position?: [number, number, number];
-  rotation?: [number, number, number];
-}) {
-  const gltf = useLoader(GLTFLoader, src);
-  const model = useMemo(() => {
-    const clone = gltf.scene.clone(true);
-    clone.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(clone);
-    const center = box.getCenter(new THREE.Vector3());
-    const size = box.getSize(new THREE.Vector3());
-    clone.position.sub(center);
-    clone.position.y += size.y / 2;
-    clone.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
-        child.castShadow = false;
-        child.receiveShadow = false;
-        child.frustumCulled = true;
-        if (child.material) {
-          const materials = Array.isArray(child.material) ? child.material : [child.material];
-          materials.forEach((material) => {
-            material.needsUpdate = true;
-          });
-        }
-      }
-    });
-    return clone;
-  }, [gltf.scene]);
-
-  return <primitive object={model} scale={scale} position={position} rotation={rotation} />;
-}
-
-function ModelFallback({
-  color = "#dff8ff",
-  scale = 1,
-  position = [0, 0, 0],
-}: {
-  color?: string;
-  scale?: number | [number, number, number];
-  position?: [number, number, number];
-}) {
-  const normalizedScale = Array.isArray(scale)
-    ? Math.max(scale[0], scale[1], scale[2]) * 28
-    : Math.max(0.4, scale * 28);
-  return (
-    <mesh position={position} scale={normalizedScale}>
-      <octahedronGeometry args={[0.5, 0]} />
-      <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.16} roughness={0.5} />
-    </mesh>
-  );
-}
-
 function SkyDome() {
   return (
     <mesh scale={[1, 1, 1]} position={[0, -80, 0]}>
@@ -1408,6 +1280,59 @@ function CloudPuff({ scale = 1 }: { scale?: number }) {
   );
 }
 
+function StationStructure({
+  station,
+  radius,
+  index,
+}: {
+  station: StationLayout;
+  radius: number;
+  index: number;
+}) {
+  const color = station.kind === "refuel" ? "#64e5ff" : "#b992ff";
+  const accent = station.kind === "refuel" ? "#54f0a8" : "#ffd36a";
+  return (
+    <group position={[radius * 0.08, 0.28, radius * -0.04]} rotation={[0, index * 0.72, 0]}>
+      <mesh position={[0, 0.22, 0]}>
+        <cylinderGeometry args={[radius * 0.28, radius * 0.36, 0.42, 28]} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.18} roughness={0.42} />
+      </mesh>
+      <mesh position={[0, 0.82, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[radius * 0.28, 0.055, 8, 36]} />
+        <meshStandardMaterial color={accent} emissive={accent} emissiveIntensity={0.32} roughness={0.34} />
+      </mesh>
+      {station.kind === "upgrade" ? (
+        <group position={[0, 1.38, 0]}>
+          <mesh>
+            <boxGeometry args={[radius * 0.55, radius * 0.18, radius * 0.55]} />
+            <meshStandardMaterial color="#efe8ff" emissive="#7f5cff" emissiveIntensity={0.12} roughness={0.35} />
+          </mesh>
+          <mesh position={[0, 0.28, 0]}>
+            <octahedronGeometry args={[radius * 0.18, 0]} />
+            <meshStandardMaterial color="#ffe28a" emissive="#f5ad31" emissiveIntensity={0.45} roughness={0.28} />
+          </mesh>
+        </group>
+      ) : (
+        <group position={[0, 1.14, 0]}>
+          <mesh rotation={[0, 0, Math.PI / 2]}>
+            <capsuleGeometry args={[radius * 0.14, radius * 0.42, 8, 16]} />
+            <meshStandardMaterial color="#e9fbff" emissive="#45d4ff" emissiveIntensity={0.18} roughness={0.32} />
+          </mesh>
+          <mesh position={[radius * 0.28, 0, 0]}>
+            <sphereGeometry args={[radius * 0.13, 16, 10]} />
+            <meshStandardMaterial color="#54f0a8" emissive="#54f0a8" emissiveIntensity={0.35} roughness={0.3} />
+          </mesh>
+        </group>
+      )}
+      <RobotAvatar
+        position={[radius * 0.42, 0.1, radius * 0.28]}
+        color={["#8f6df2", "#44c887", "#f0a33a", "#3fa7f5", "#ec6dc6"][index % 5]}
+        scale={radius * 0.16}
+      />
+    </group>
+  );
+}
+
 function CloudIsland({
   cluster,
   index,
@@ -1434,25 +1359,8 @@ function CloudIsland({
         <meshStandardMaterial color="#b9f28f" emissive="#62d973" emissiveIntensity={0.18} roughness={0.5} />
       </mesh>
       <CloudPuff scale={radius * 0.26} />
-      {station && modelsEnabled ? (
-        <group position={[radius * 0.08, 0.18, radius * -0.04]} rotation={[0, index * 0.72, 0]}>
-          <ModelInstance
-            src={station.kind === "refuel" ? MODEL_PATHS.refuelStation : MODEL_PATHS.upgradeLab}
-            scale={station.kind === "refuel" ? radius * 0.44 : radius * 0.4}
-          />
-          <ModelInstance
-            src={MODEL_PATHS.serviceRobot}
-            position={[radius * 0.42, 0, radius * 0.28]}
-            rotation={[0, Math.PI * 0.2, 0]}
-            scale={radius * 0.2}
-          />
-        </group>
-      ) : station ? (
-        <RobotAvatar
-          position={[radius * 0.34, 2.1, radius * -0.2]}
-          color={["#8f6df2", "#44c887", "#f0a33a", "#3fa7f5", "#ec6dc6"][index % 5]}
-          scale={1.05}
-        />
+      {station ? (
+        <StationStructure station={station} radius={radius} index={index} />
       ) : null}
       <BillboardGroup position={[0, radius * 0.08 + 2.6, 0]}>
         <BeaconPlaque color={cluster.level === "region" ? "#61d7ff" : "#9b82ff"} />
@@ -1503,9 +1411,7 @@ function DeploymentMarker({
         <torusGeometry args={[0.82, 0.045, 8, 36]} />
         <meshBasicMaterial color={colorway.beacon} transparent opacity={selected ? 0.9 : 0.62} />
       </mesh>
-      {modelsEnabled ? <group position={[0, -0.72, 0]} rotation={[0, index * 0.38, 0]}>
-        <ModelInstance src={MODEL_PATHS.drone} scale={1.7} />
-      </group> : <RobotAvatar color={colorway.main} accent={colorway.beacon} scale={1.02} position={[0, -0.72, 0]} />}
+      <RobotAvatar color={colorway.main} accent={colorway.beacon} scale={1.02} position={[0, -0.72, 0]} />
       <mesh position={[0, -1.08, 0]}>
         <cylinderGeometry args={[0.92, 1.12, 0.18, 24]} />
         <meshStandardMaterial color="#dff8ff" emissive={colorway.beacon} emissiveIntensity={0.18} roughness={0.5} />
@@ -1583,11 +1489,8 @@ function Biplane({
   const position = to3(flight, PLANE_ALTITUDE);
   return (
     <group position={position} rotation={[0, -flight.heading + Math.PI / 2, 0]} scale={1.42}>
-      {modelsEnabled ? (
-        <ModelInstance src={MODEL_PATHS.biplane} scale={5.2} />
-      ) : null}
       <pointLight color={palette.bodyHi} intensity={0.35} distance={6} position={[0, 0.8, -0.3]} />
-      <group visible={!modelsEnabled}>
+      <group>
       <RobotAvatar color={palette.bodyHi} scale={0.36} position={[0, 0.8, -0.45]} visible={playerMode !== "onFoot" && playerMode !== "shop"} />
       <mesh castShadow rotation={[0, 0, Math.PI / 2]}>
         <cylinderGeometry args={[0.38, 0.48, 2.8, 20]} />
