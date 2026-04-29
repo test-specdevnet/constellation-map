@@ -36,11 +36,19 @@ const main = async () => {
   for (const file of files) {
     const input = path.join(rawDir, file);
     const base = path.basename(file, ".glb");
-    const draco = path.join(optimizedDir, `${base}-draco.glb`);
-    const output = path.join(optimizedDir, `${base}-optimized.glb`);
+    const output = path.join(optimizedDir, `${base}.glb`);
 
-    await run(command, ["draco", input, draco, "--method", "edgebreaker"]);
-    await run(command, ["uastc", draco, output]);
+    await run(command, [
+      "optimize",
+      input,
+      output,
+      "--compress",
+      "quantize",
+      "--texture-compress",
+      "webp",
+      "--texture-size",
+      "1024",
+    ]);
     console.log(`optimized ${file} -> ${path.relative(root, output)}`);
   }
 };

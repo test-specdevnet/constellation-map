@@ -1,4 +1,4 @@
 /**
  * Bump when you need to confirm Flux served a fresh build (independent of git SHA).
  */
-export const BUILD_STAMP = "2026-04-29-playable-perf-pass";
+export const BUILD_STAMP = "2026-04-29-optimized-glb-pass";

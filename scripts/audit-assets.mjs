@@ -4,6 +4,7 @@ import process from "node:process";
 
 const root = process.cwd();
 const modelDir = path.join(root, "public", "models");
+const optimizedModelDir = path.join(root, "public", "models-optimized");
 const expectedModels = [
   "biplane.glb",
   "floatingdrone.glb",
@@ -13,6 +14,7 @@ const expectedModels = [
 ];
 const softSizeLimitBytes = 20 * 1024 * 1024;
 const hardSizeLimitBytes = 75 * 1024 * 1024;
+const optimizedSoftSizeLimitBytes = 5 * 1024 * 1024;
 
 const formatMb = (bytes) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
@@ -67,6 +69,31 @@ const main = async () => {
     }
 
     console.log(`ok ${model} ${formatMb(info.size)}`);
+  }
+
+  try {
+    const optimizedPresent = new Set(await readdir(optimizedModelDir));
+    for (const model of expectedModels) {
+      const filePath = path.join(optimizedModelDir, model);
+      if (!optimizedPresent.has(model)) {
+        failures.push(`${model}: missing from public/models-optimized`);
+        continue;
+      }
+      const info = await stat(filePath);
+      const header = await readGlbHeader(filePath);
+      if (!header.valid) {
+        failures.push(`optimized ${model}: ${header.reason}`);
+        continue;
+      }
+      if (info.size > optimizedSoftSizeLimitBytes) {
+        failures.push(
+          `optimized ${model}: ${formatMb(info.size)} exceeds runtime limit ${formatMb(optimizedSoftSizeLimitBytes)}`,
+        );
+      }
+      console.log(`ok optimized ${model} ${formatMb(info.size)}`);
+    }
+  } catch {
+    failures.push("public/models-optimized is missing; run npm run asset:optimize");
   }
 
   if (warnings.length > 0) {

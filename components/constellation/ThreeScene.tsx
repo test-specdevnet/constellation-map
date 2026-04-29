@@ -9,8 +9,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
+import { Canvas, useFrame, useLoader, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { DebugHud } from "./DebugHud";
 import { FlightSettingsPanel } from "./FlightSettingsPanel";
 import { MobileDrawer } from "./MobileDrawer";
@@ -74,7 +76,9 @@ import {
 } from "../../lib/game/worldLayout";
 import {
   getModelInstanceBudget,
+  getRuntimeModelConfig,
   getStationModelId,
+  type RuntimeModelId,
 } from "../../lib/game/modelAssets";
 import type {
   Collectible,
@@ -163,7 +167,7 @@ const MAX_ISLAND_MARKERS = {
   medium: 24,
   high: 34,
 } as const;
-const RUNTIME_GLB_MODELS_ENABLED = false;
+const RUNTIME_GLB_MODELS_ENABLED = true;
 const EMPTY_VISIBILITY: DeploymentVisibilityState = {
   visibleSystems: [],
   detailSystems: [],
@@ -777,7 +781,7 @@ export function ThreeScene({
           </button>
         </div>
         <span className="scene-zoom-label scene-zoom-label--wrap">
-            3D chase view | build {BUILD_STAMP} | performance mode
+            3D chase view | build {BUILD_STAMP} | GLB mode
         </span>
       </div>
 
@@ -1253,18 +1257,90 @@ function CloudPuff({ scale = 1 }: { scale?: number }) {
   );
 }
 
+function RuntimeModelAsset({
+  modelId,
+  targetSize,
+  position = [0, 0, 0],
+  rotation = [0, 0, 0],
+}: {
+  modelId: RuntimeModelId;
+  targetSize?: number;
+  position?: [number, number, number];
+  rotation?: [number, number, number];
+}) {
+  const config = getRuntimeModelConfig(modelId);
+  const gltf = useLoader(GLTFLoader, config.path);
+  const normalized = useMemo(() => {
+    const root = cloneSkeleton(gltf.scene);
+    const box = new THREE.Box3().setFromObject(root);
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    box.getSize(size);
+    box.getCenter(center);
+    const maxDimension = Math.max(size.x, size.y, size.z, 0.001);
+    const scale = (targetSize ?? config.scale) / maxDimension;
+    const bottomY = box.min.y;
+
+    root.position.set(-center.x * scale, -bottomY * scale + config.groundOffset, -center.z * scale);
+    root.scale.setScalar(scale);
+    root.rotation.y += config.rotationY;
+    root.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        child.castShadow = false;
+        child.receiveShadow = true;
+        child.frustumCulled = true;
+        child.geometry.computeBoundingSphere();
+      }
+    });
+    return root;
+  }, [config.groundOffset, config.rotationY, config.scale, gltf.scene, targetSize]);
+
+  return (
+    <group position={position} rotation={rotation}>
+      <primitive object={normalized} />
+    </group>
+  );
+}
+
+function RuntimeModel(props: {
+  modelId: RuntimeModelId;
+  targetSize?: number;
+  position?: [number, number, number];
+  rotation?: [number, number, number];
+}) {
+  return (
+    <Suspense fallback={null}>
+      <RuntimeModelAsset {...props} />
+    </Suspense>
+  );
+}
+
 function StationStructure({
   station,
   radius,
   index,
+  modelsEnabled,
 }: {
   station: StationLayout;
   radius: number;
   index: number;
+  modelsEnabled: boolean;
 }) {
   const color = station.kind === "refuel" ? "#64e5ff" : "#b992ff";
   const accent = station.kind === "refuel" ? "#54f0a8" : "#ffd36a";
   const modelId = getStationModelId(station.kind);
+  if (modelsEnabled) {
+    return (
+      <group
+        position={[radius * 0.08, 0.08, radius * -0.04]}
+        rotation={[0, index * 0.72, 0]}
+        userData={{ modelId }}
+      >
+        <RuntimeModel modelId={modelId} targetSize={radius * 1.1} />
+        <RuntimeModel modelId="serviceRobot" targetSize={radius * 0.32} position={[radius * 0.42, 0.08, radius * 0.28]} />
+      </group>
+    );
+  }
   return (
     <group
       position={[radius * 0.08, 0.28, radius * -0.04]}
@@ -1338,7 +1414,7 @@ function CloudIsland({
       </mesh>
       <CloudPuff scale={radius * 0.26} />
       {station ? (
-        <StationStructure station={station} radius={radius} index={index} />
+        <StationStructure station={station} radius={radius} index={index} modelsEnabled={modelsEnabled} />
       ) : null}
       <BillboardGroup position={[0, radius * 0.08 + 2.6, 0]}>
         <BeaconPlaque color={cluster.level === "region" ? "#61d7ff" : "#9b82ff"} />
@@ -1385,6 +1461,10 @@ function DeploymentMarker({
       onPointerOut={() => onHoverEntity(null)}
     >
       {selected ? <pointLight color={colorway.beacon} intensity={1.4} distance={9} /> : null}
+      {modelsEnabled ? (
+        <RuntimeModel modelId="floatingDrone" targetSize={selected ? 3.8 : 3.1} position={[0, -1.15, 0]} />
+      ) : (
+        <>
       <mesh position={[0, -0.9, 0]} rotation={[Math.PI / 2, 0, 0]}>
         <torusGeometry args={[0.82, 0.045, 6, 18]} />
         <meshBasicMaterial color={colorway.beacon} transparent opacity={selected ? 0.9 : 0.62} />
@@ -1401,6 +1481,8 @@ function DeploymentMarker({
         <cylinderGeometry args={[0.92, 1.12, 0.18, 12]} />
         <meshStandardMaterial color="#dff8ff" emissive={colorway.beacon} emissiveIntensity={0.18} roughness={0.5} />
       </mesh>
+        </>
+      )}
       <BillboardGroup position={[0, 2.72, 0]}>
         <BeaconPlaque color={colorway.beacon} compact selected={selected} />
       </BillboardGroup>
@@ -1471,6 +1553,20 @@ function Biplane({
 }) {
   const palette = selectedSkinId === "classic" ? planeSkinPalettes.classic : planeSkinPalettes[selectedSkinId] ?? planeSkinPalettes.classic;
   const position = to3(flight, PLANE_ALTITUDE);
+  if (modelsEnabled) {
+    return (
+      <group position={position} rotation={[0, -flight.heading + Math.PI / 2, 0]}>
+        <RuntimeModel modelId="biplane" />
+        {playerMode !== "onFoot" && playerMode !== "shop" ? (
+          <RuntimeModel modelId="serviceRobot" targetSize={0.72} position={[0, 0.42, -0.35]} />
+        ) : null}
+        {playerMode === "onFoot" || playerMode === "shop" ? (
+          <RuntimeModel modelId="serviceRobot" targetSize={0.96} position={[2.1, -0.24, -0.65]} />
+        ) : null}
+        <pointLight color="#ff9170" intensity={0.55} distance={7} position={[0, 0.5, -1.5]} />
+      </group>
+    );
+  }
   return (
     <group position={position} rotation={[0, -flight.heading + Math.PI / 2, 0]} scale={1.42}>
       <pointLight color={palette.bodyHi} intensity={0.35} distance={6} position={[0, 0.8, -0.3]} />
