@@ -1,0 +1,30 @@
+import {
+  RUNTIME_MODEL_CONFIGS,
+  getModelInstanceBudget,
+  getRuntimeModelConfig,
+  getStationModelId,
+} from "./modelAssets";
+
+describe("modelAssets", () => {
+  it("maps every runtime model to a public GLB path and fallback label", () => {
+    for (const config of Object.values(RUNTIME_MODEL_CONFIGS)) {
+      expect(config.path).toMatch(/^\/models\/.+\.glb$/);
+      expect(config.fallbackLabel.length).toBeGreaterThan(0);
+      expect(config.maxInstances.low).toBeLessThanOrEqual(config.maxInstances.medium);
+      expect(config.maxInstances.medium).toBeLessThanOrEqual(config.maxInstances.high);
+    }
+  });
+
+  it("returns quality-aware model budgets", () => {
+    expect(getModelInstanceBudget("floatingDrone", "low")).toBe(0);
+    expect(getModelInstanceBudget("floatingDrone", "high")).toBeGreaterThan(
+      getModelInstanceBudget("floatingDrone", "medium"),
+    );
+  });
+
+  it("resolves station kinds to model IDs", () => {
+    expect(getStationModelId("refuel")).toBe("refuelStation");
+    expect(getStationModelId("upgrade")).toBe("floatingUpgradeLab");
+    expect(getRuntimeModelConfig(getStationModelId("refuel")).path).toContain("refuelstation");
+  });
+});

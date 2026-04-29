@@ -58,11 +58,24 @@ import {
   accumulateDistanceFlown,
   createGameState,
   createSessionSnapshot,
-  discoverDeployment,
   syncGameScore,
   toRunRecord,
   updateRunResources,
 } from "../../lib/game/session";
+import {
+  discoverNearbyDeployments,
+  resolveLandingAttempt,
+} from "../../lib/game/collision";
+import {
+  buildDeploymentDocks,
+  buildStationLayout,
+  type LandingStation,
+  type StationLayout,
+} from "../../lib/game/worldLayout";
+import {
+  getModelInstanceBudget,
+  getStationModelId,
+} from "../../lib/game/modelAssets";
 import type {
   Collectible,
   DebugHudSnapshot,
@@ -135,42 +148,20 @@ type SceneRuntime = {
 
 type PlayerMode = "flying" | "landed" | "onFoot" | "shop";
 
-type LandingStation = {
-  id: string;
-  kind: "refuel" | "upgrade";
-  label: string;
-  x: number;
-  y: number;
-  radius: number;
-};
-
-type StationLayout = LandingStation & {
-  cluster: Cluster;
-};
-
 const GAME_STATE_EMIT_INTERVAL_MS = 80;
 const WORLD_SCALE = 0.024;
 const PLANE_ALTITUDE = 6.4;
 const ISLAND_ALTITUDE = 1.2;
-const LANDING_RADIUS_WORLD = 520;
-const LANDING_MAX_SPEED = 145;
-const DEPLOYMENT_DOCK_RADIUS_WORLD = GAME_CONFIG.discoveryRadius * 1.18;
-const DEPLOYMENT_CREDIT_VALUE = 12;
 const UPGRADE_COST_BASE = 24;
-const MAX_DEPLOYMENT_GLB_MODELS = {
-  low: 0,
-  medium: 4,
-  high: 7,
-} as const;
-const MAX_STATION_GLB_MODELS = {
-  low: 0,
-  medium: 3,
-  high: 5,
-} as const;
 const MAX_STAR_MARKERS = {
-  low: 40,
-  medium: 70,
-  high: 100,
+  low: 18,
+  medium: 32,
+  high: 48,
+} as const;
+const MAX_ISLAND_MARKERS = {
+  low: 14,
+  medium: 24,
+  high: 34,
 } as const;
 const RUNTIME_GLB_MODELS_ENABLED = false;
 const EMPTY_VISIBILITY: DeploymentVisibilityState = {
@@ -190,12 +181,6 @@ const IDLE_FLIGHT_INPUT: FlightInputState = {
 
 const to3 = (point: { x: number; y: number }, altitude = 0) =>
   new THREE.Vector3(point.x * WORLD_SCALE, altitude, point.y * WORLD_SCALE);
-
-const getStationKind = (index: number): LandingStation["kind"] =>
-  index % 2 === 0 ? "refuel" : "upgrade";
-
-const getStationLabel = (kind: LandingStation["kind"]) =>
-  kind === "refuel" ? "Refuel station" : "Upgrade lab";
 
 const getRefuelAmount = (discoveries: number, fuelMax: number) =>
   clamp(fuelMax * (0.28 + discoveries * 0.035), fuelMax * 0.28, fuelMax);
@@ -329,19 +314,7 @@ export function ThreeScene({
     [clusters],
   );
   const stationLayout = useMemo<StationLayout[]>(
-    () =>
-      regionClusters.map((cluster, index) => {
-        const kind = getStationKind(index);
-        return {
-          id: cluster.clusterId,
-          kind,
-          label: getStationLabel(kind),
-          x: cluster.centroid.x,
-          y: cluster.centroid.y,
-          radius: Math.max(LANDING_RADIUS_WORLD, cluster.radius * 0.28),
-          cluster,
-        };
-      }),
+    () => buildStationLayout(regionClusters),
     [regionClusters],
   );
   const stationByClusterId = useMemo(
@@ -443,35 +416,24 @@ export function ThreeScene({
             })
           : runtime.flight;
 
-      const nearbyStation = stationLayout
-        .map((station) => ({
-          ...station,
-          distance: Math.hypot(station.x - nextFlight.x, station.y - nextFlight.y),
-        }))
-        .filter((station) => station.distance <= station.radius)
-        .sort((left, right) => left.distance - right.distance)[0] ?? null;
-      runtime.nearbyStation = nearbyStation;
+      const landingAttempt = resolveLandingAttempt({
+        game,
+        plane: nextFlight,
+        stations: stationLayout,
+        brakePressed: inputSample.flightInput.brake,
+        getRefuelAmount,
+      });
+      runtime.nearbyStation = landingAttempt.station;
 
-      if (inputSample.flightInput.brake && nextFlight.speed <= LANDING_MAX_SPEED) {
-        if (nearbyStation) {
-          runtime.landedStation = {
-            id: nearbyStation.id,
-            kind: nearbyStation.kind,
-            label: nearbyStation.label,
-            x: nearbyStation.x,
-            y: nearbyStation.y,
-            radius: nearbyStation.radius,
-          };
-          runtime.playerMode = "landed";
-          nextFlight.speed = 0;
-          nextFlight.angVel = 0;
-          if (nearbyStation.kind === "refuel") {
-            const refuelAmount = getRefuelAmount(game.discoveries.size, game.fuelMax);
-            game.fuel = clamp(game.fuel + refuelAmount, 0, game.fuelMax);
-          }
-          setPickupNotice(nearbyStation.kind === "refuel" ? "Landed: refueled" : "Landed: upgrade bank");
-          window.setTimeout(() => setPickupNotice(null), 1400);
-        }
+      if (landingAttempt.landed) {
+        runtime.landedStation = landingAttempt.station;
+        runtime.playerMode = "landed";
+        nextFlight.speed = 0;
+        nextFlight.angVel = 0;
+        setPickupNotice(
+          landingAttempt.station.kind === "refuel" ? "Landed: refueled" : "Landed: upgrade bank",
+        );
+        window.setTimeout(() => setPickupNotice(null), 1400);
       }
 
       accumulateDistanceFlown({ game, from: previousFlight, to: nextFlight });
@@ -546,20 +508,11 @@ export function ThreeScene({
       game.fuelTanksCollected = pickupOutcome.fuelTanksCollected;
       game.speedBoostsCollected = pickupOutcome.speedBoostsCollected;
 
-      let nearestDeployment: { id: string; appName: string; distance: number } | null = null;
-      for (const system of visibility.visibleSystems) {
-        const distance = Math.hypot(system.x - nextFlight.x, system.y - nextFlight.y);
-        if (distance <= DEPLOYMENT_DOCK_RADIUS_WORLD) {
-          if (!nearestDeployment || distance < nearestDeployment.distance) {
-            nearestDeployment = { id: system.systemId, appName: system.appName, distance };
-          }
-          if (distance <= GAME_CONFIG.discoveryRadius) {
-            if (discoverDeployment(game, system.systemId)) {
-              game.upgradeCredits += DEPLOYMENT_CREDIT_VALUE;
-            }
-          }
-        }
-      }
+      const nearestDeployment = discoverNearbyDeployments({
+        game,
+        plane: nextFlight,
+        deployments: buildDeploymentDocks(visibility.visibleSystems),
+      });
       runtime.nearbyDeploymentId = nearestDeployment?.id ?? null;
       syncGameScore(game);
       game.effects = updateEffects({ effects: game.effects, dtMs });
@@ -824,7 +777,7 @@ export function ThreeScene({
           </button>
         </div>
         <span className="scene-zoom-label scene-zoom-label--wrap">
-          3D chase view | build {BUILD_STAMP} | GLBs safe mode
+            3D chase view | build {BUILD_STAMP} | performance mode
         </span>
       </div>
 
@@ -861,9 +814,9 @@ export function ThreeScene({
           className="scene-canvas scene-canvas--three"
           shadows={false}
           camera={{ position: [0, 18, 32], fov: 50, near: 0.1, far: 1800 }}
-          dpr={qualityMode === "high" ? [1, 1.25] : 1}
+          dpr={1}
           gl={{
-            antialias: qualityMode === "high",
+            antialias: false,
             alpha: false,
             powerPreference: "high-performance",
           }}
@@ -1072,11 +1025,31 @@ function ThreeWorld({
         .slice(0, MAX_STAR_MARKERS[qualityMode]),
     [qualityMode, runtime.visibility.detailSystemIds, stars],
   );
+  const visibleClusters = useMemo(
+    () =>
+      [...clusters]
+        .map((cluster) => ({
+          cluster,
+          distance: Math.hypot(cluster.centroid.x - runtime.flight.x, cluster.centroid.y - runtime.flight.y),
+        }))
+        .sort((left, right) => {
+          if (left.cluster.level !== right.cluster.level) {
+            return left.cluster.level === "region" ? -1 : 1;
+          }
+          return left.distance - right.distance;
+        })
+        .slice(0, MAX_ISLAND_MARKERS[qualityMode])
+        .map((item) => item.cluster),
+    [clusters, qualityMode, runtime.flight.x, runtime.flight.y],
+  );
   const activeStationModelIds = useMemo(() => {
-    if (!modelsEnabled || MAX_STATION_GLB_MODELS[qualityMode] <= 0) {
+    const maxModels = Math.max(
+      getModelInstanceBudget("refuelStation", qualityMode),
+      getModelInstanceBudget("floatingUpgradeLab", qualityMode),
+    );
+    if (!modelsEnabled || maxModels <= 0) {
       return new Set<string>();
     }
-    const maxModels = MAX_STATION_GLB_MODELS[qualityMode];
     return new Set(
       [...stations.values()]
         .map((station) => ({
@@ -1102,7 +1075,7 @@ function ThreeWorld({
       <SkyDome />
       {cloudsEnabled ? <CloudFields clusters={regionClusters} /> : null}
       <group>
-        {clusters.map((cluster, index) => (
+        {visibleClusters.map((cluster, index) => (
           <CloudIsland
             key={cluster.clusterId}
             cluster={cluster}
@@ -1120,7 +1093,7 @@ function ThreeWorld({
             system={system}
             selected={system.appName === selectedAppName || searchMatches.has(system.appName)}
             index={index}
-            modelsEnabled={modelsEnabled && index < MAX_DEPLOYMENT_GLB_MODELS[qualityMode]}
+            modelsEnabled={modelsEnabled && index < getModelInstanceBudget("floatingDrone", qualityMode)}
             onSelectApp={onSelectApp}
             onHoverEntity={onHoverEntity}
           />
@@ -1241,7 +1214,7 @@ function StationDockPanel({
 function SkyDome() {
   return (
     <mesh scale={[1, 1, 1]} position={[0, -80, 0]}>
-      <sphereGeometry args={[520, 32, 16]} />
+      <sphereGeometry args={[520, 16, 8]} />
       <meshBasicMaterial side={THREE.BackSide} color="#46b8ff" transparent opacity={0.76} />
     </mesh>
   );
@@ -1250,7 +1223,7 @@ function SkyDome() {
 function CloudFields({ clusters }: { clusters: Cluster[] }) {
   return (
     <group>
-      {clusters.slice(0, 34).map((cluster, index) => {
+      {clusters.slice(0, 16).map((cluster, index) => {
         const position = to3(cluster.centroid, -2 - (index % 4) * 0.25);
         return (
           <group key={cluster.clusterId} position={position}>
@@ -1272,7 +1245,7 @@ function CloudPuff({ scale = 1 }: { scale?: number }) {
         [1.45, -0.05, 0.1],
       ].map(([x, y, z], index) => (
         <mesh key={index} position={[x, y, z]}>
-          <sphereGeometry args={[1.25 - index * 0.08, 16, 10]} />
+          <sphereGeometry args={[1.25 - index * 0.08, 8, 6]} />
           <meshStandardMaterial color="#ffffff" transparent opacity={0.48} roughness={0.9} />
         </mesh>
       ))}
@@ -1291,8 +1264,13 @@ function StationStructure({
 }) {
   const color = station.kind === "refuel" ? "#64e5ff" : "#b992ff";
   const accent = station.kind === "refuel" ? "#54f0a8" : "#ffd36a";
+  const modelId = getStationModelId(station.kind);
   return (
-    <group position={[radius * 0.08, 0.28, radius * -0.04]} rotation={[0, index * 0.72, 0]}>
+    <group
+      position={[radius * 0.08, 0.28, radius * -0.04]}
+      rotation={[0, index * 0.72, 0]}
+      userData={{ modelId }}
+    >
       <mesh position={[0, 0.22, 0]}>
         <cylinderGeometry args={[radius * 0.28, radius * 0.36, 0.42, 28]} />
         <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.18} roughness={0.42} />
@@ -1406,14 +1384,21 @@ function DeploymentMarker({
       }}
       onPointerOut={() => onHoverEntity(null)}
     >
-      <pointLight color={colorway.beacon} intensity={selected ? 2.9 : 1.35} distance={12} />
+      {selected ? <pointLight color={colorway.beacon} intensity={1.4} distance={9} /> : null}
       <mesh position={[0, -0.9, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[0.82, 0.045, 8, 36]} />
+        <torusGeometry args={[0.82, 0.045, 6, 18]} />
         <meshBasicMaterial color={colorway.beacon} transparent opacity={selected ? 0.9 : 0.62} />
       </mesh>
-      <RobotAvatar color={colorway.main} accent={colorway.beacon} scale={1.02} position={[0, -0.72, 0]} />
+      {selected ? (
+        <RobotAvatar color={colorway.main} accent={colorway.beacon} scale={0.82} position={[0, -0.72, 0]} />
+      ) : (
+        <mesh position={[0, -0.44, 0]}>
+          <sphereGeometry args={[0.62, 10, 8]} />
+          <meshStandardMaterial color={colorway.main} emissive={colorway.beacon} emissiveIntensity={0.22} roughness={0.5} />
+        </mesh>
+      )}
       <mesh position={[0, -1.08, 0]}>
-        <cylinderGeometry args={[0.92, 1.12, 0.18, 24]} />
+        <cylinderGeometry args={[0.92, 1.12, 0.18, 12]} />
         <meshStandardMaterial color="#dff8ff" emissive={colorway.beacon} emissiveIntensity={0.18} roughness={0.5} />
       </mesh>
       <BillboardGroup position={[0, 2.72, 0]}>
@@ -1453,7 +1438,6 @@ function CollectibleMesh({ collectible, nowMs }: { collectible: Collectible; now
       ) : (
         <RobotAvatar color="#f7d56d" scale={0.42} position={[0, 0, 0]} />
       )}
-      <pointLight color={color} intensity={1.1} distance={8} />
     </group>
   );
 }
@@ -1565,7 +1549,7 @@ function RobotAvatar({
   return (
     <group position={position} scale={scale} visible={visible}>
       <mesh castShadow position={[0, 1.22, 0]}>
-        <sphereGeometry args={[0.68, 28, 18]} />
+        <sphereGeometry args={[0.68, 14, 10]} />
         <meshStandardMaterial color="#f4fbff" roughness={0.28} metalness={0.04} />
       </mesh>
       <mesh castShadow position={[0, 1.13, -0.08]}>
@@ -1573,11 +1557,11 @@ function RobotAvatar({
         <meshStandardMaterial color="#18395f" emissive={accent} emissiveIntensity={0.18} roughness={0.32} />
       </mesh>
       <mesh position={[-0.24, 1.2, -0.2]}>
-        <sphereGeometry args={[0.14, 14, 10]} />
+        <sphereGeometry args={[0.14, 8, 6]} />
         <meshStandardMaterial color="#7df2ff" emissive={accent} emissiveIntensity={1.2} />
       </mesh>
       <mesh position={[0.24, 1.2, -0.2]}>
-        <sphereGeometry args={[0.14, 14, 10]} />
+        <sphereGeometry args={[0.14, 8, 6]} />
         <meshStandardMaterial color="#7df2ff" emissive={accent} emissiveIntensity={1.2} />
       </mesh>
       <mesh castShadow position={[0, 0.42, 0]}>

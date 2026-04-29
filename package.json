@@ -6,6 +6,9 @@
     "dev": "next dev",
     "build": "next build --experimental-build-mode compile",
     "start": "next start",
+    "ci": "npm run typecheck && npm test && npm run asset:audit && npm run build",
+    "asset:audit": "node scripts/audit-assets.mjs",
+    "asset:optimize": "node scripts/optimize-assets.mjs",
     "typecheck": "tsc --noEmit",
     "test": "jest --runInBand"
   },

@@ -157,7 +157,7 @@ export const resolveQualityMode = ({
     return "medium";
   }
 
-  if ((deviceMemory ?? 8) <= 4 || (hardwareConcurrency ?? 8) <= 4) {
+  if ((deviceMemory ?? 8) < 16 || (hardwareConcurrency ?? 8) < 12) {
     return "medium";
   }
 
