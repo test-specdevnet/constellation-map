@@ -23,8 +23,7 @@ describe("modelAssets", () => {
   });
 
   it("resolves station kinds to model IDs", () => {
-    expect(getStationModelId("refuel")).toBe("refuelStation");
-    expect(getStationModelId("upgrade")).toBe("floatingUpgradeLab");
-    expect(getRuntimeModelConfig(getStationModelId("refuel")).path).toContain("refuelstation");
+    expect(getStationModelId()).toBe("refuelStation");
+    expect(getRuntimeModelConfig(getStationModelId()).path).toContain("refuelstation");
   });
 });

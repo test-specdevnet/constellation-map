@@ -1,7 +1,7 @@
 import type { AppSystem, Cluster } from "../types/star";
 import { GAME_CONFIG } from "./config";
 
-export type StationKind = "refuel" | "upgrade";
+export type StationKind = "refuel";
 
 export type LandingStation = {
   id: string;
@@ -25,30 +25,44 @@ export type DeploymentDock = {
   dockRadius: number;
 };
 
-export const LANDING_RADIUS_WORLD = 520;
+export const LANDING_RADIUS_WORLD = 780;
 export const LANDING_MAX_SPEED = 145;
 export const DEPLOYMENT_DOCK_RADIUS_WORLD = GAME_CONFIG.discoveryRadius * 1.18;
 export const DEPLOYMENT_CREDIT_VALUE = 12;
+export const REFUEL_STATION_MIN_SPACING_WORLD = 2_200;
 
-export const getStationKind = (index: number): StationKind =>
-  index % 2 === 0 ? "refuel" : "upgrade";
+const distanceBetween = (left: { x: number; y: number }, right: { x: number; y: number }) =>
+  Math.hypot(left.x - right.x, left.y - right.y);
 
-export const getStationLabel = (kind: StationKind) =>
-  kind === "refuel" ? "Refuel station" : "Upgrade lab";
+export const getStationKind = (): StationKind => "refuel";
 
-export const buildStationLayout = (regionClusters: Cluster[]): StationLayout[] =>
-  regionClusters.map((cluster, index) => {
-    const kind = getStationKind(index);
-    return {
+export const getStationLabel = () => "Refuel station";
+
+export const buildStationLayout = (regionClusters: Cluster[]): StationLayout[] => {
+  const stations: StationLayout[] = [];
+
+  for (const cluster of regionClusters) {
+    if (
+      stations.some(
+        (station) => distanceBetween(station, cluster.centroid) < REFUEL_STATION_MIN_SPACING_WORLD,
+      )
+    ) {
+      continue;
+    }
+
+    stations.push({
       id: cluster.clusterId,
-      kind,
-      label: getStationLabel(kind),
+      kind: "refuel",
+      label: getStationLabel(),
       x: cluster.centroid.x,
       y: cluster.centroid.y,
-      radius: Math.max(LANDING_RADIUS_WORLD, cluster.radius * 0.28),
+      radius: Math.max(LANDING_RADIUS_WORLD, cluster.radius * 0.34),
       cluster,
-    };
-  });
+    });
+  }
+
+  return stations;
+};
 
 export const buildDeploymentDocks = (systems: AppSystem[]): DeploymentDock[] =>
   systems.map((system) => ({

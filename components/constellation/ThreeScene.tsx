@@ -150,13 +150,12 @@ type SceneRuntime = {
   playerMode: PlayerMode;
 };
 
-type PlayerMode = "flying" | "landed" | "onFoot" | "shop";
+type PlayerMode = "flying" | "landed" | "onFoot";
 
 const GAME_STATE_EMIT_INTERVAL_MS = 80;
 const WORLD_SCALE = 0.024;
 const PLANE_ALTITUDE = 6.4;
 const ISLAND_ALTITUDE = 1.2;
-const UPGRADE_COST_BASE = 24;
 const MAX_STAR_MARKERS = {
   low: 18,
   medium: 32,
@@ -166,6 +165,11 @@ const MAX_ISLAND_MARKERS = {
   low: 14,
   medium: 24,
   high: 34,
+} as const;
+const CLOUD_FIELD_MARKERS = {
+  low: 18,
+  medium: 30,
+  high: 42,
 } as const;
 const RUNTIME_GLB_MODELS_ENABLED = true;
 const EMPTY_VISIBILITY: DeploymentVisibilityState = {
@@ -188,8 +192,6 @@ const to3 = (point: { x: number; y: number }, altitude = 0) =>
 
 const getRefuelAmount = (discoveries: number, fuelMax: number) =>
   clamp(fuelMax * (0.28 + discoveries * 0.035), fuelMax * 0.28, fuelMax);
-
-const getUpgradeCost = (level: number) => UPGRADE_COST_BASE * (level + 1);
 
 const scheduleSceneAction = (action: () => void) => {
   window.requestAnimationFrame(() => {
@@ -390,13 +392,9 @@ export function ThreeScene({
         runtime.nowMs = nowMs;
         runtime.nearbyStation = runtime.landedStation;
         runtime.pickupNotice =
-          runtime.playerMode === "shop"
-            ? "Upgrade shop open"
-            : runtime.playerMode === "onFoot"
+          runtime.playerMode === "onFoot"
               ? "Robot avatar active"
-              : runtime.landedStation.kind === "refuel"
-                ? "Refuel station docked"
-                : "Upgrade lab docked";
+              : "Refuel station docked";
         if (inputSample.flightInput.accelerate) {
           runtime.landedStation = null;
           runtime.playerMode = "flying";
@@ -434,9 +432,7 @@ export function ThreeScene({
         runtime.playerMode = "landed";
         nextFlight.speed = 0;
         nextFlight.angVel = 0;
-        setPickupNotice(
-          landingAttempt.station.kind === "refuel" ? "Landed: refueled" : "Landed: upgrade bank",
-        );
+        setPickupNotice("Landed: refueled");
         window.setTimeout(() => setPickupNotice(null), 1400);
       }
 
@@ -706,29 +702,6 @@ export function ThreeScene({
     runtimeRef.current.playerMode = mode;
     setRuntimeVersion((value) => value + 1);
   };
-  const buyUpgrade = (kind: "thruster" | "fuel") => {
-    const game = runtimeRef.current.game;
-    const level = kind === "thruster" ? game.thrusterLevel : game.fuelEfficiencyLevel;
-    const cost = getUpgradeCost(level);
-    if (game.upgradeCredits < cost) {
-      setPickupNotice("Need more deployment data");
-      window.setTimeout(() => setPickupNotice(null), 1200);
-      return;
-    }
-    game.upgradeCredits -= cost;
-    if (kind === "thruster") {
-      game.thrusterLevel += 1;
-      runtimeRef.current.flight.speed = Math.max(runtimeRef.current.flight.speed, 210 + game.thrusterLevel * 18);
-      setPickupNotice("Thrusters upgraded");
-    } else {
-      game.fuelEfficiencyLevel += 1;
-      game.fuelMax = Math.min(GAME_CONFIG.fuelMax * 1.45, game.fuelMax + 12);
-      game.fuel = game.fuelMax;
-      setPickupNotice("Fuel system upgraded");
-    }
-    window.setTimeout(() => setPickupNotice(null), 1200);
-    setRuntimeVersion((value) => value + 1);
-  };
   useEffect(() => {
     const kickoff = window.setTimeout(() => {
       boostLaunchSpeed();
@@ -878,9 +851,6 @@ export function ThreeScene({
               game={snapshot.game}
               onExitPlane={() => setLandedMode("onFoot")}
               onEnterPlane={() => setLandedMode("landed")}
-              onOpenShop={() => setLandedMode("shop")}
-              onCloseShop={() => setLandedMode("onFoot")}
-              onBuyUpgrade={buyUpgrade}
               onTakeOff={() => {
                 runtimeRef.current.landedStation = null;
                 runtimeRef.current.playerMode = "flying";
@@ -1047,10 +1017,7 @@ function ThreeWorld({
     [clusters, qualityMode, runtime.flight.x, runtime.flight.y],
   );
   const activeStationModelIds = useMemo(() => {
-    const maxModels = Math.max(
-      getModelInstanceBudget("refuelStation", qualityMode),
-      getModelInstanceBudget("floatingUpgradeLab", qualityMode),
-    );
+    const maxModels = getModelInstanceBudget("refuelStation", qualityMode);
     if (!modelsEnabled || maxModels <= 0) {
       return new Set<string>();
     }
@@ -1077,7 +1044,7 @@ function ThreeWorld({
       />
       <ambientLight intensity={0.48} />
       <SkyDome />
-      {cloudsEnabled ? <CloudFields clusters={regionClusters} /> : null}
+      {cloudsEnabled ? <CloudFields clusters={regionClusters} qualityMode={qualityMode} /> : null}
       <group>
         {visibleClusters.map((cluster, index) => (
           <CloudIsland
@@ -1139,9 +1106,6 @@ function StationDockPanel({
   game,
   onExitPlane,
   onEnterPlane,
-  onOpenShop,
-  onCloseShop,
-  onBuyUpgrade,
   onTakeOff,
 }: {
   station: LandingStation;
@@ -1149,15 +1113,9 @@ function StationDockPanel({
   game: GameState;
   onExitPlane: () => void;
   onEnterPlane: () => void;
-  onOpenShop: () => void;
-  onCloseShop: () => void;
-  onBuyUpgrade: (kind: "thruster" | "fuel") => void;
   onTakeOff: () => void;
 }) {
   const refuelAmount = Math.round(getRefuelAmount(game.discoveries.size, game.fuelMax));
-  const thrusterCost = getUpgradeCost(game.thrusterLevel);
-  const fuelCost = getUpgradeCost(game.fuelEfficiencyLevel);
-  const isShop = playerMode === "shop";
   return (
     <div className={`station-dock station-dock--${station.kind}`} role="dialog" aria-label={station.label}>
       <div className="station-dock__header">
@@ -1178,35 +1136,13 @@ function StationDockPanel({
           <strong>+{refuelAmount}</strong>
         </div>
       </div>
-      {station.kind === "upgrade" && isShop ? (
-        <div className="station-shop">
-          <button type="button" onClick={() => onBuyUpgrade("thruster")}>
-            <span>Thrusters Mk {game.thrusterLevel + 1}</span>
-            <strong>{thrusterCost} data</strong>
-          </button>
-          <button type="button" onClick={() => onBuyUpgrade("fuel")}>
-            <span>Fuel system Mk {game.fuelEfficiencyLevel + 1}</span>
-            <strong>{fuelCost} data</strong>
-          </button>
-        </div>
-      ) : (
-        <p className="station-dock__copy">
-          {station.kind === "refuel"
-            ? "Refuelling scales with confirmed deployments."
-            : "Bank deployment data and fit new parts before takeoff."}
-        </p>
-      )}
+      <p className="station-dock__copy">Refuelling scales with confirmed deployments.</p>
       <div className="station-dock__actions">
         {playerMode === "landed" ? (
           <button type="button" onClick={onExitPlane}>Exit plane</button>
         ) : (
           <button type="button" onClick={onEnterPlane}>Enter plane</button>
         )}
-        {station.kind === "upgrade" ? (
-          <button type="button" onClick={isShop ? onCloseShop : onOpenShop}>
-            {isShop ? "Close shop" : "Open shop"}
-          </button>
-        ) : null}
         <button type="button" className="station-dock__takeoff" onClick={onTakeOff}>
           Take off
         </button>
@@ -1224,35 +1160,84 @@ function SkyDome() {
   );
 }
 
-function CloudFields({ clusters }: { clusters: Cluster[] }) {
+function CloudFields({
+  clusters,
+  qualityMode,
+}: {
+  clusters: Cluster[];
+  qualityMode: "low" | "medium" | "high";
+}) {
+  const layeredOffsets =
+    qualityMode === "low"
+      ? [[0, 0, 1]]
+      : qualityMode === "medium"
+        ? [
+            [0, 0, 1],
+            [8.5, -5.5, 0.72],
+          ]
+        : [
+            [0, 0, 1],
+            [8.5, -5.5, 0.72],
+            [-9.2, 6.4, 0.62],
+          ];
   return (
     <group>
-      {clusters.slice(0, 16).map((cluster, index) => {
-        const position = to3(cluster.centroid, -2 - (index % 4) * 0.25);
-        return (
-          <group key={cluster.clusterId} position={position}>
-            <CloudPuff scale={2.2 + Math.min(5.2, cluster.radius * WORLD_SCALE * 0.06)} />
-          </group>
-        );
-      })}
+      {clusters.slice(0, CLOUD_FIELD_MARKERS[qualityMode]).flatMap((cluster, index) =>
+        layeredOffsets.map(([offsetX, offsetY, scaleFactor], layerIndex) => {
+          const position = to3(
+            {
+              x: cluster.centroid.x + offsetX * 70,
+              y: cluster.centroid.y + offsetY * 70,
+            },
+            -3.4 - ((index + layerIndex) % 5) * 0.32,
+          );
+          return (
+            <group key={`${cluster.clusterId}:${layerIndex}`} position={position}>
+              <CloudPuff
+                scale={(2.6 + Math.min(6.4, cluster.radius * WORLD_SCALE * 0.07)) * scaleFactor}
+                variant={(index + layerIndex) % 4}
+              />
+            </group>
+          );
+        }),
+      )}
     </group>
   );
 }
 
-function CloudPuff({ scale = 1 }: { scale?: number }) {
+function CloudPuff({ scale = 1, variant = 0 }: { scale?: number; variant?: number }) {
+  const lobes = [
+    [-1.85, -0.18, 0, 1.45, 0.58, 0.92, "#d3e5f7", 0.58],
+    [-1.15, 0.1, 0.08, 1.2, 0.72, 1.02, "#f8fbff", 0.72],
+    [-0.46, 0.42, -0.04, 1.34, 1.02, 1.12, "#ffffff", 0.78],
+    [0.34, 0.34, 0.05, 1.52, 1.04, 1.08, "#f5f9ff", 0.76],
+    [1.15, 0.1, -0.08, 1.22, 0.74, 0.98, "#e7f2ff", 0.68],
+    [1.82, -0.18, 0.02, 1.36, 0.54, 0.86, "#c9ddf3", 0.54],
+    [-0.72, -0.34, 0.12, 1.65, 0.48, 0.76, "#b9d2eb", 0.42],
+    [0.78, -0.36, 0.14, 1.8, 0.5, 0.78, "#b4cde8", 0.42],
+    [-0.08, 0.02, 0.22, 2.55, 0.42, 0.72, "#dcebfb", 0.38],
+  ] as const;
+  const rotation = variant * 0.34;
   return (
-    <group scale={scale}>
-      {[
-        [-1.4, 0, 0],
-        [-0.4, 0.35, 0.1],
-        [0.7, 0.15, -0.2],
-        [1.45, -0.05, 0.1],
-      ].map(([x, y, z], index) => (
-        <mesh key={index} position={[x, y, z]}>
-          <sphereGeometry args={[1.25 - index * 0.08, 8, 6]} />
-          <meshStandardMaterial color="#ffffff" transparent opacity={0.48} roughness={0.9} />
+    <group scale={scale} rotation={[0.08, rotation, 0]}>
+      {lobes.map(([x, y, z, width, height, depth, color, opacity], index) => (
+        <mesh key={index} position={[x, y, z]} scale={[width, height, depth]}>
+          <sphereGeometry args={[1, 10, 7]} />
+          <meshStandardMaterial
+            color={color}
+            emissive="#d9ecff"
+            emissiveIntensity={0.06}
+            transparent
+            opacity={opacity}
+            roughness={0.96}
+            depthWrite={false}
+          />
         </mesh>
       ))}
+      <mesh position={[0, -0.72, 0.05]} scale={[4.2, 0.18, 1.12]}>
+        <sphereGeometry args={[1, 12, 5]} />
+        <meshStandardMaterial color="#9fbddd" transparent opacity={0.28} roughness={1} depthWrite={false} />
+      </mesh>
     </group>
   );
 }
@@ -1335,9 +1320,9 @@ function StationStructure({
   index: number;
   modelsEnabled: boolean;
 }) {
-  const color = station.kind === "refuel" ? "#64e5ff" : "#b992ff";
-  const accent = station.kind === "refuel" ? "#54f0a8" : "#ffd36a";
-  const modelId = getStationModelId(station.kind);
+  const color = "#64e5ff";
+  const accent = "#54f0a8";
+  const modelId = getStationModelId();
   if (modelsEnabled) {
     return (
       <group
@@ -1345,8 +1330,8 @@ function StationStructure({
         rotation={[0, index * 0.72, 0]}
         userData={{ modelId }}
       >
-        <RuntimeModel modelId={modelId} targetSize={radius * 1.1} />
-        <RuntimeModel modelId="serviceRobot" targetSize={radius * 0.32} position={[radius * 0.42, 0.08, radius * 0.28]} />
+        <RuntimeModel modelId={modelId} targetSize={radius * 2.05} />
+        <RuntimeModel modelId="serviceRobot" targetSize={radius * 0.42} position={[radius * 0.72, 0.08, radius * 0.42]} />
       </group>
     );
   }
@@ -1357,40 +1342,27 @@ function StationStructure({
       userData={{ modelId }}
     >
       <mesh position={[0, 0.22, 0]}>
-        <cylinderGeometry args={[radius * 0.28, radius * 0.36, 0.42, 28]} />
+        <cylinderGeometry args={[radius * 0.38, radius * 0.48, 0.42, 28]} />
         <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.18} roughness={0.42} />
       </mesh>
       <mesh position={[0, 0.82, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[radius * 0.28, 0.055, 8, 36]} />
+        <torusGeometry args={[radius * 0.38, 0.07, 8, 36]} />
         <meshStandardMaterial color={accent} emissive={accent} emissiveIntensity={0.32} roughness={0.34} />
       </mesh>
-      {station.kind === "upgrade" ? (
-        <group position={[0, 1.38, 0]}>
-          <mesh>
-            <boxGeometry args={[radius * 0.55, radius * 0.18, radius * 0.55]} />
-            <meshStandardMaterial color="#efe8ff" emissive="#7f5cff" emissiveIntensity={0.12} roughness={0.35} />
-          </mesh>
-          <mesh position={[0, 0.28, 0]}>
-            <octahedronGeometry args={[radius * 0.18, 0]} />
-            <meshStandardMaterial color="#ffe28a" emissive="#f5ad31" emissiveIntensity={0.45} roughness={0.28} />
-          </mesh>
-        </group>
-      ) : (
-        <group position={[0, 1.14, 0]}>
-          <mesh rotation={[0, 0, Math.PI / 2]}>
-            <capsuleGeometry args={[radius * 0.14, radius * 0.42, 8, 16]} />
-            <meshStandardMaterial color="#e9fbff" emissive="#45d4ff" emissiveIntensity={0.18} roughness={0.32} />
-          </mesh>
-          <mesh position={[radius * 0.28, 0, 0]}>
-            <sphereGeometry args={[radius * 0.13, 16, 10]} />
-            <meshStandardMaterial color="#54f0a8" emissive="#54f0a8" emissiveIntensity={0.35} roughness={0.3} />
-          </mesh>
-        </group>
-      )}
+      <group position={[0, 1.14, 0]}>
+        <mesh rotation={[0, 0, Math.PI / 2]}>
+          <capsuleGeometry args={[radius * 0.17, radius * 0.56, 8, 16]} />
+          <meshStandardMaterial color="#e9fbff" emissive="#45d4ff" emissiveIntensity={0.18} roughness={0.32} />
+        </mesh>
+        <mesh position={[radius * 0.36, 0, 0]}>
+          <sphereGeometry args={[radius * 0.16, 16, 10]} />
+          <meshStandardMaterial color="#54f0a8" emissive="#54f0a8" emissiveIntensity={0.35} roughness={0.3} />
+        </mesh>
+      </group>
       <RobotAvatar
-        position={[radius * 0.42, 0.1, radius * 0.28]}
+        position={[radius * 0.72, 0.1, radius * 0.42]}
         color={["#8f6df2", "#44c887", "#f0a33a", "#3fa7f5", "#ec6dc6"][index % 5]}
-        scale={radius * 0.16}
+        scale={radius * 0.2}
       />
     </group>
   );
@@ -1410,7 +1382,8 @@ function CloudIsland({
   onFocusCluster: (cluster: Cluster) => void;
 }) {
   const position = to3(cluster.centroid, ISLAND_ALTITUDE + (index % 5) * 0.12);
-  const radius = clamp(cluster.radius * WORLD_SCALE * 0.38, 3.4, cluster.level === "region" ? 10 : 6.5);
+  const baseRadius = clamp(cluster.radius * WORLD_SCALE * 0.38, 3.4, cluster.level === "region" ? 10 : 6.5);
+  const radius = station ? Math.max(baseRadius, 6.8) : baseRadius;
   return (
     <group position={position} onClick={() => scheduleSceneAction(() => onFocusCluster(cluster))}>
       <mesh receiveShadow position={[0, -0.08, 0]}>
@@ -1605,10 +1578,10 @@ function Biplane({
     return (
       <group position={position} rotation={[0, -flight.heading + Math.PI / 2, 0]}>
         <RuntimeModel modelId="biplane" />
-        {playerMode !== "onFoot" && playerMode !== "shop" ? (
+        {playerMode !== "onFoot" ? (
           <RuntimeModel modelId="serviceRobot" targetSize={0.72} position={[0, 0.42, -0.35]} />
         ) : null}
-        {playerMode === "onFoot" || playerMode === "shop" ? (
+        {playerMode === "onFoot" ? (
           <RuntimeModel modelId="serviceRobot" targetSize={0.96} position={[2.1, -0.24, -0.65]} />
         ) : null}
         <pointLight color="#ff9170" intensity={0.55} distance={7} position={[0, 0.5, -1.5]} />
@@ -1619,7 +1592,7 @@ function Biplane({
     <group position={position} rotation={[0, -flight.heading + Math.PI / 2, 0]} scale={1.42}>
       <pointLight color={palette.bodyHi} intensity={0.35} distance={6} position={[0, 0.8, -0.3]} />
       <group>
-      <RobotAvatar color={palette.bodyHi} scale={0.36} position={[0, 0.8, -0.45]} visible={playerMode !== "onFoot" && playerMode !== "shop"} />
+      <RobotAvatar color={palette.bodyHi} scale={0.36} position={[0, 0.8, -0.45]} visible={playerMode !== "onFoot"} />
       <mesh castShadow rotation={[0, 0, Math.PI / 2]}>
         <cylinderGeometry args={[0.38, 0.48, 2.8, 20]} />
         <meshStandardMaterial color={palette.body} roughness={0.35} metalness={0.08} />
@@ -1669,7 +1642,7 @@ function Biplane({
         <meshStandardMaterial color="#fff2ba" transparent opacity={0.56} />
       </mesh>
       </group>
-      {playerMode === "onFoot" || playerMode === "shop" ? (
+      {playerMode === "onFoot" ? (
         <RobotAvatar color={palette.bodyHi} scale={0.48} position={[2.1, -0.24, -0.65]} />
       ) : null}
       <pointLight color="#ff9170" intensity={0.85} distance={8} position={[0, 0.5, -1.5]} />
