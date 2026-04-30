@@ -1290,10 +1290,19 @@ function RuntimeModelAsset({
         child.receiveShadow = true;
         child.frustumCulled = true;
         child.geometry.computeBoundingSphere();
+        if (modelId === "floatingDrone") {
+          child.material = new THREE.MeshStandardMaterial({
+            color: "#d9e1e7",
+            metalness: 0.92,
+            roughness: 0.28,
+            emissive: "#8fb4ca",
+            emissiveIntensity: 0.06,
+          });
+        }
       }
     });
     return root;
-  }, [config.groundOffset, config.rotationY, config.scale, gltf.scene, targetSize]);
+  }, [config.groundOffset, config.rotationY, config.scale, gltf.scene, modelId, targetSize]);
 
   return (
     <group position={position} rotation={rotation}>
@@ -1440,8 +1449,30 @@ function DeploymentMarker({
 }) {
   const colorway = getBuoyColorway(system);
   const position = to3(system, ISLAND_ALTITUDE + 6.1 + (index % 4) * 0.08);
+  const groupRef = useRef<THREE.Group>(null);
+  const beaconRef = useRef<THREE.Mesh>(null);
+  const lightRef = useRef<THREE.PointLight>(null);
+  useFrame((state) => {
+    const bob = Math.sin(state.clock.elapsedTime * 1.25 + index * 0.83) * 0.24;
+    const spin = Math.sin(state.clock.elapsedTime * 0.34 + index) * 0.08;
+    if (groupRef.current) {
+      groupRef.current.position.y = position.y + bob;
+      groupRef.current.rotation.y = spin;
+    }
+    const flash = 0.45 + Math.max(0, Math.sin(state.clock.elapsedTime * 5.6 + index)) * 0.95;
+    if (beaconRef.current) {
+      const material = beaconRef.current.material;
+      if (material instanceof THREE.MeshStandardMaterial) {
+        material.emissiveIntensity = flash;
+      }
+    }
+    if (lightRef.current) {
+      lightRef.current.intensity = selected ? 1.8 + flash : 0.55 + flash * 0.55;
+    }
+  });
   return (
     <group
+      ref={groupRef}
       position={position}
       onClick={(event: ThreeEvent<MouseEvent>) => {
         event.stopPropagation();
@@ -1449,6 +1480,7 @@ function DeploymentMarker({
       }}
       onPointerOver={(event: ThreeEvent<PointerEvent>) => {
         event.stopPropagation();
+        document.body.style.cursor = "pointer";
         onHoverEntity({
           kind: "system",
           id: system.systemId,
@@ -1458,9 +1490,12 @@ function DeploymentMarker({
           appName: system.appName,
         });
       }}
-      onPointerOut={() => onHoverEntity(null)}
+      onPointerOut={() => {
+        document.body.style.cursor = "";
+        onHoverEntity(null);
+      }}
     >
-      {selected ? <pointLight color={colorway.beacon} intensity={1.4} distance={9} /> : null}
+      <pointLight ref={lightRef} color="#fff2a8" intensity={selected ? 1.8 : 0.65} distance={10} />
       {modelsEnabled ? (
         <RuntimeModel modelId="floatingDrone" targetSize={selected ? 3.8 : 3.1} position={[0, -1.15, 0]} />
       ) : (
@@ -1483,6 +1518,16 @@ function DeploymentMarker({
       </mesh>
         </>
       )}
+      <mesh ref={beaconRef} position={[0, 1.68, 0]}>
+        <sphereGeometry args={[0.14, 10, 8]} />
+        <meshStandardMaterial
+          color="#fff4a8"
+          emissive="#ffd84a"
+          emissiveIntensity={1.1}
+          metalness={0.15}
+          roughness={0.22}
+        />
+      </mesh>
       <BillboardGroup position={[0, 2.72, 0]}>
         <BeaconPlaque color={colorway.beacon} compact selected={selected} />
       </BillboardGroup>

@@ -82,11 +82,11 @@ export function DetailDrawer({
             <h3>Deployment profile</h3>
             <dl className="definition-grid">
               <div>
-                <dt>Runtime family</dt>
+                <dt>App type</dt>
                 <dd>{detail.app.runtimeFamily}</dd>
               </div>
               <div>
-                <dt>Project category</dt>
+                <dt>FluxCloud category</dt>
                 <dd>{detail.app.projectCategory}</dd>
               </div>
               <div>
@@ -112,7 +112,7 @@ export function DetailDrawer({
 
             <dl className="definition-grid">
               <div>
-                <dt>Estimated CPU usage</dt>
+                <dt>CPU requested</dt>
                 <dd>
                   {detail.summary.runtimeUsage.estimatedCpuCores !== null
                     ? `${detail.summary.runtimeUsage.estimatedCpuCores} cores`
@@ -120,7 +120,7 @@ export function DetailDrawer({
                 </dd>
               </div>
               <div>
-                <dt>Estimated memory usage</dt>
+                <dt>Memory requested</dt>
                 <dd>
                   {detail.summary.runtimeUsage.estimatedMemoryMb !== null
                     ? `${detail.summary.runtimeUsage.estimatedMemoryMb} MB`
@@ -128,7 +128,7 @@ export function DetailDrawer({
                 </dd>
               </div>
               <div>
-                <dt>Estimated storage usage</dt>
+                <dt>Storage requested</dt>
                 <dd>
                   {detail.summary.runtimeUsage.estimatedStorageGb !== null
                     ? `${detail.summary.runtimeUsage.estimatedStorageGb} GB`
@@ -140,7 +140,7 @@ export function DetailDrawer({
                 <dd>{detail.summary.runtimeUsage.activeNodes}</dd>
               </div>
               <div>
-                <dt>Observed regions</dt>
+                <dt>Region of origin</dt>
                 <dd>
                   {detail.summary.regions.length > 0
                     ? detail.summary.regions.slice(0, 6).join(", ")
