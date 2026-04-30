@@ -185,6 +185,8 @@ const IDLE_FLIGHT_INPUT: FlightInputState = {
   turnLeft: false,
   turnRight: false,
   mouseTurn: 0,
+  moveX: 0,
+  moveY: 0,
 };
 
 const to3 = (point: { x: number; y: number }, altitude = 0) =>

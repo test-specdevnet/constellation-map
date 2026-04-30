@@ -96,6 +96,8 @@ export const sampleInputController = ({
       turnLeft: turnAxis < 0,
       turnRight: turnAxis > 0,
       mouseTurn,
+      moveX: turnAxis,
+      moveY: throttleAxis,
     },
     turnAxis,
     throttleAxis,

@@ -71,6 +71,8 @@ describe("inputController", () => {
     });
     expect(sample.throttleAxis).toBe(1);
     expect(sample.turnAxis).toBeLessThan(0);
+    expect(sample.flightInput.moveY).toBe(1);
+    expect(sample.flightInput.moveX).toBeLessThan(0);
 
     releaseControlKey(controller, "ArrowLeft");
     sample = sampleInputController({

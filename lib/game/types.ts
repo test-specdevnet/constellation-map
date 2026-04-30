@@ -34,6 +34,8 @@ export type FlightInputState = {
   turnLeft: boolean;
   turnRight: boolean;
   mouseTurn: number;
+  moveX: number;
+  moveY: number;
 };
 
 export type Collectible = {

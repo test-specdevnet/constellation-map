@@ -208,6 +208,8 @@ const IDLE_FLIGHT_INPUT: FlightInputState = {
   turnLeft: false,
   turnRight: false,
   mouseTurn: 0,
+  moveX: 0,
+  moveY: 0,
 };
 
 function SceneIcon({ children }: { children: ReactNode }) {
