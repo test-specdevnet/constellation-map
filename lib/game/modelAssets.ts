@@ -26,7 +26,7 @@ export const RUNTIME_MODEL_CONFIGS: Record<RuntimeModelId, RuntimeModelConfig> =
     fallbackLabel: "procedural biplane",
     scale: 6.4,
     groundOffset: 0,
-    rotationY: -Math.PI / 2,
+    rotationY: 0,
     maxInstances: { low: 1, medium: 1, high: 1 },
   },
   floatingDrone: {
