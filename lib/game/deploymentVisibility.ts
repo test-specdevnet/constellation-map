@@ -8,10 +8,69 @@ export type VisibilityZoomBucket = "overview" | "mid" | "detail";
 const distance = (left: { x: number; y: number }, right: { x: number; y: number }) =>
   Math.hypot(left.x - right.x, left.y - right.y);
 
+const VISIBILITY_ANCHOR_GRID = 420;
+const SYSTEM_SPACING_BY_QUALITY: Record<QualityMode, number> = {
+  low: 360,
+  medium: 300,
+  high: 240,
+};
+
 const byPriorityThenDistance = (
-  left: { priority: number; distance: number },
-  right: { priority: number; distance: number },
-) => right.priority - left.priority || left.distance - right.distance;
+  left: { system: AppSystem; priority: number; distance: number },
+  right: { system: AppSystem; priority: number; distance: number },
+) =>
+  right.priority - left.priority ||
+  left.distance - right.distance ||
+  left.system.systemId.localeCompare(right.system.systemId);
+
+const getVisibilityAnchor = (flight: FlightState) => ({
+  x: Math.round(flight.x / VISIBILITY_ANCHOR_GRID) * VISIBILITY_ANCHOR_GRID,
+  y: Math.round(flight.y / VISIBILITY_ANCHOR_GRID) * VISIBILITY_ANCHOR_GRID,
+});
+
+const selectSpacedSystems = ({
+  candidates,
+  maxVisibleSystems,
+  minSpacing,
+}: {
+  candidates: Array<{ system: AppSystem; distance: number; priority: number }>;
+  maxVisibleSystems: number;
+  minSpacing: number;
+}) => {
+  const selected: Array<{ system: AppSystem; distance: number; priority: number }> = [];
+  const selectedIds = new Set<string>();
+  const shouldForceKeep = (candidate: { priority: number }) => candidate.priority >= 70;
+
+  for (const candidate of candidates) {
+    if (selected.length >= maxVisibleSystems) {
+      break;
+    }
+
+    const spacedEnough = selected.every(
+      (existing) => distance(existing.system, candidate.system) >= minSpacing,
+    );
+    if (spacedEnough || shouldForceKeep(candidate)) {
+      selected.push(candidate);
+      selectedIds.add(candidate.system.systemId);
+    }
+  }
+
+  if (selected.length < maxVisibleSystems) {
+    for (const candidate of candidates) {
+      if (selected.length >= maxVisibleSystems) {
+        break;
+      }
+      if (!selectedIds.has(candidate.system.systemId)) {
+        selected.push(candidate);
+        selectedIds.add(candidate.system.systemId);
+      }
+    }
+  }
+
+  return selected;
+};
+
+export const getDeploymentVisibilityAnchor = getVisibilityAnchor;
 
 export const resolveVisibilityZoomBucket = ({
   zoom,
@@ -75,6 +134,7 @@ export const buildDeploymentVisibilityState = ({
   const maxDetailSystems = GAME_CONFIG.maxDetailSystems[qualityMode];
   const maxStarsPerSystem = densityLimitsEnabled ? GAME_CONFIG.maxStarsPerSystem[qualityMode] : Number.MAX_SAFE_INTEGER;
   const clusterMarkerCap = GAME_CONFIG.maxClusterMarkers[qualityMode];
+  const visibilityAnchor = getVisibilityAnchor(flight);
   const regionIds = disclosure.activeRegionId
     ? new Set(
         systems
@@ -92,7 +152,7 @@ export const buildDeploymentVisibilityState = ({
 
   const prioritizedSystems = systems
     .map((system) => {
-      const systemDistance = distance(system, flight);
+      const systemDistance = distance(system, visibilityAnchor);
       let priority = 0;
       if (system.appName === selectedAppName) priority += 100;
       if (searchMatches.has(system.appName)) priority += 70;
@@ -111,11 +171,16 @@ export const buildDeploymentVisibilityState = ({
       ({ priority, distance: systemDistance }) =>
         priority > 0 || systemDistance <= GAME_CONFIG.localSystemRadius,
     )
-    .sort(byPriorityThenDistance)
-    .slice(0, maxVisibleSystems);
+    .sort(byPriorityThenDistance);
 
-  const visibleSystems = prioritizedSystems.map(({ system }) => system);
-  const detailSystems = prioritizedSystems
+  const spacedSystems = selectSpacedSystems({
+    candidates: prioritizedSystems,
+    maxVisibleSystems,
+    minSpacing: SYSTEM_SPACING_BY_QUALITY[qualityMode],
+  });
+
+  const visibleSystems = spacedSystems.map(({ system }) => system);
+  const detailSystems = spacedSystems
     .filter(
       ({ system, distance: systemDistance }) =>
         system.appName === selectedAppName ||

@@ -1,4 +1,8 @@
-import { buildDeploymentVisibilityState, resolveVisibilityZoomBucket } from "./deploymentVisibility";
+import {
+  buildDeploymentVisibilityState,
+  getDeploymentVisibilityAnchor,
+  resolveVisibilityZoomBucket,
+} from "./deploymentVisibility";
 import { GAME_CONFIG } from "./config";
 import type { AppSystem, Cluster, Star } from "../types/star";
 
@@ -59,6 +63,17 @@ const makeStar = (systemId: string, index: number): Star => ({
 });
 
 describe("buildDeploymentVisibilityState", () => {
+  it("quantizes the visibility anchor so small flight movement does not churn buoy sets", () => {
+    expect(getDeploymentVisibilityAnchor({ x: 102, y: 199, heading: 0, speed: 100, angVel: 0 })).toEqual({
+      x: 0,
+      y: 0,
+    });
+    expect(getDeploymentVisibilityAnchor({ x: 214, y: 211, heading: 0, speed: 100, angVel: 0 })).toEqual({
+      x: 420,
+      y: 420,
+    });
+  });
+
   it("uses hysteresis for zoom buckets so cluster bands do not flap", () => {
     expect(resolveVisibilityZoomBucket({ zoom: 0.28, currentBucket: "mid" })).toBe("mid");
     expect(resolveVisibilityZoomBucket({ zoom: 0.3, currentBucket: "mid" })).toBe("detail");
@@ -156,5 +171,33 @@ describe("buildDeploymentVisibilityState", () => {
         }),
       ]),
     );
+  });
+
+  it("keeps spaced deployment systems visible instead of filling the cap from one tight cluster", () => {
+    const tightSystems = Array.from({ length: 34 }, (_, index) =>
+      makeSystem(`tight:${index.toString().padStart(2, "0")}`, index * 8, 0),
+    );
+    const spacedSystems = Array.from({ length: 4 }, (_, index) =>
+      makeSystem(`spaced:${index}`, 700 + index * 260, 0),
+    );
+
+    const result = buildDeploymentVisibilityState({
+      systems: [...tightSystems, ...spacedSystems],
+      starsBySystem: new Map(),
+      clusters: [],
+      flight: { x: 0, y: 0, heading: 0, speed: 220, angVel: 0 },
+      disclosure: {
+        band: "mid",
+        activeRegionId: null,
+        activeRuntimeId: null,
+      },
+      selectedAppName: null,
+      searchMatches: new Set<string>(),
+      qualityMode: "medium",
+      densityLimitsEnabled: true,
+    });
+
+    expect(result.visibleSystems).toHaveLength(GAME_CONFIG.maxVisibleSystems.medium);
+    expect(result.visibleSystems.some((system) => system.systemId.startsWith("spaced:"))).toBe(true);
   });
 });

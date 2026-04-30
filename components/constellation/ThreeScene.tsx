@@ -1452,12 +1452,15 @@ function DeploymentMarker({
   const groupRef = useRef<THREE.Group>(null);
   const beaconRef = useRef<THREE.Mesh>(null);
   const lightRef = useRef<THREE.PointLight>(null);
-  useFrame((state) => {
+  const mountProgressRef = useRef(0);
+  useFrame((state, delta) => {
     const bob = Math.sin(state.clock.elapsedTime * 1.25 + index * 0.83) * 0.24;
     const spin = Math.sin(state.clock.elapsedTime * 0.34 + index) * 0.08;
+    mountProgressRef.current = Math.min(1, mountProgressRef.current + delta * 2.8);
     if (groupRef.current) {
       groupRef.current.position.y = position.y + bob;
       groupRef.current.rotation.y = spin;
+      groupRef.current.scale.setScalar(0.62 + mountProgressRef.current * 0.38);
     }
     const flash = 0.45 + Math.max(0, Math.sin(state.clock.elapsedTime * 5.6 + index)) * 0.95;
     if (beaconRef.current) {
