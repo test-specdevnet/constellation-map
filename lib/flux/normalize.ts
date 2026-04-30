@@ -12,6 +12,7 @@ import type {
   AppSystem,
   ConstellationSnapshot,
   FilterMetadata,
+  SnapshotSourceMetadata,
 } from "../types/star";
 import {
   getBenchmarkTier,
@@ -29,6 +30,17 @@ const snapshotCacheKey = "snapshot:global";
 const detailCachePrefix = "detail:";
 const snapshotTtlMs = 1000 * 60 * 5;
 const detailTtlMs = 1000 * 60 * 15;
+
+const snapshotSource: SnapshotSourceMetadata = {
+  coverage: "flux-public-global-snapshot",
+  cacheTtlMs: snapshotTtlMs,
+  endpoints: {
+    appSpecifications: fluxEndpoints.globalAppSpecifications,
+    locations: fluxEndpoints.locations,
+    runningApps: fluxEndpoints.listRunningApps,
+    benchmarks: fluxEndpoints.benchmarks,
+  },
+};
 
 const toString = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
 const toNumber = (value: unknown): number | null => {
@@ -583,6 +595,7 @@ export const getSceneSummary = async (force = false) => {
     bounds: snapshot.bounds,
     rareArchetypes: snapshot.rareArchetypes,
     counts: snapshot.counts,
+    source: snapshotSource,
     filters,
   };
 };

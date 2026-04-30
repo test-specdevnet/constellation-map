@@ -140,6 +140,17 @@ export type ConstellationSnapshot = {
   };
 };
 
+export type SnapshotSourceMetadata = {
+  coverage: "flux-public-global-snapshot";
+  cacheTtlMs: number;
+  endpoints: {
+    appSpecifications: string;
+    locations: string;
+    runningApps: string;
+    benchmarks: string;
+  };
+};
+
 export type FilterMetadata = {
   runtimeFamilies: Array<{ value: RuntimeFamily; count: number }>;
   projectCategories: Array<{ value: ProjectCategory; count: number }>;

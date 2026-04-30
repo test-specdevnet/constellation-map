@@ -28,6 +28,7 @@ import type {
   Cluster,
   FilterMetadata,
   SceneBounds,
+  SnapshotSourceMetadata,
   Star,
 } from "../../lib/types/star";
 
@@ -62,6 +63,7 @@ type InitialScene = {
     locations: number;
     stars: number;
   };
+  source?: SnapshotSourceMetadata;
   filters: FilterMetadata;
 };
 
@@ -71,6 +73,9 @@ const initialFilters: FilterState = {
   resourceTier: "all",
   status: "all",
 };
+
+const sceneRefreshIntervalMs = 60_000;
+const sceneRefreshTimeoutMs = 18_000;
 
 const emptyScene: InitialScene = {
   generatedAt: new Date(0).toISOString(),
@@ -170,20 +175,27 @@ function TrophyIcon() {
 export function ConstellationExperience() {
   const [scene, setScene] = useState<InitialScene | null>(null);
   const [sceneLoading, setSceneLoading] = useState(true);
+  const [sceneRefreshing, setSceneRefreshing] = useState(false);
   const [sceneError, setSceneError] = useState("");
   const [sceneReloadNonce, setSceneReloadNonce] = useState(0);
+  const [lastSceneRefreshAt, setLastSceneRefreshAt] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    let refreshIntervalId: number | null = null;
 
-    const loadScene = async () => {
-      setSceneLoading(true);
-      setSceneError("");
+    const loadScene = async ({ force, quiet }: { force: boolean; quiet: boolean }) => {
+      if (quiet) {
+        setSceneRefreshing(true);
+      } else {
+        setSceneLoading(true);
+        setSceneError("");
+      }
       const controller = new AbortController();
-      const timeoutId = window.setTimeout(() => controller.abort(), 12_000);
+      const timeoutId = window.setTimeout(() => controller.abort(), sceneRefreshTimeoutMs);
 
       try {
-        const response = await fetch("/api/stars", {
+        const response = await fetch(`/api/stars${force ? "?force=1" : ""}`, {
           cache: "no-store",
           signal: controller.signal,
         });
@@ -193,10 +205,19 @@ export function ConstellationExperience() {
 
         const payload = (await response.json()) as InitialScene;
         if (!cancelled) {
-          setScene(payload);
+          const applyScene = () => {
+            setScene(payload);
+            setLastSceneRefreshAt(new Date().toISOString());
+          };
+
+          if (quiet) {
+            startTransition(applyScene);
+          } else {
+            applyScene();
+          }
         }
       } catch (error) {
-        if (!cancelled) {
+        if (!cancelled && !quiet) {
           setSceneError(
             error instanceof DOMException && error.name === "AbortError"
               ? "FluxCloud snapshot is taking too long. The flight simulator is available with an empty training sky."
@@ -208,14 +229,25 @@ export function ConstellationExperience() {
       } finally {
         window.clearTimeout(timeoutId);
         if (!cancelled) {
-          setSceneLoading(false);
+          if (quiet) {
+            setSceneRefreshing(false);
+          } else {
+            setSceneLoading(false);
+          }
         }
       }
     };
 
-    void loadScene();
+    void loadScene({ force: sceneReloadNonce > 0, quiet: false });
+    refreshIntervalId = window.setInterval(() => {
+      void loadScene({ force: false, quiet: true });
+    }, sceneRefreshIntervalMs);
+
     return () => {
       cancelled = true;
+      if (refreshIntervalId !== null) {
+        window.clearInterval(refreshIntervalId);
+      }
     };
   }, [sceneReloadNonce]);
 
@@ -229,7 +261,9 @@ export function ConstellationExperience() {
       <ConstellationExperienceBody
         activeScene={activeScene}
         sceneLoading={sceneLoading}
+        sceneRefreshing={sceneRefreshing}
         sceneError={sceneError}
+        lastSceneRefreshAt={lastSceneRefreshAt}
         onRetryScene={() => {
           setSceneError("");
           setSceneReloadNonce((current) => current + 1);
@@ -242,12 +276,16 @@ export function ConstellationExperience() {
 function ConstellationExperienceBody({
   activeScene,
   sceneLoading,
+  sceneRefreshing,
   sceneError,
+  lastSceneRefreshAt,
   onRetryScene,
 }: {
   activeScene: InitialScene;
   sceneLoading: boolean;
+  sceneRefreshing: boolean;
   sceneError: string;
+  lastSceneRefreshAt: string | null;
   onRetryScene: () => void;
 }) {
   const isTabletLayout = useMediaQuery("(max-width: 768px)");
@@ -363,6 +401,22 @@ function ConstellationExperienceBody({
       ),
     [visibleSystems],
   );
+  const dataSnapshotLabel = useMemo(() => {
+    if (!lastSceneRefreshAt) {
+      return "Flux snapshot loading";
+    }
+
+    const refreshedAt = lastSceneRefreshAt;
+    const parsed = new Date(refreshedAt);
+    const timeLabel = Number.isNaN(parsed.getTime())
+      ? "pending"
+      : parsed.toLocaleTimeString([], {
+          hour: "numeric",
+          minute: "2-digit",
+        });
+
+    return sceneRefreshing ? "Refreshing Flux snapshot..." : `Flux snapshot ${timeLabel}`;
+  }, [lastSceneRefreshAt, sceneRefreshing]);
   const searchMatchAppNames = useMemo(
     () => searchResults.map((item) => item.appName),
     [searchResults],
@@ -662,6 +716,9 @@ function ConstellationExperienceBody({
               </strong>
             </article>
           </div>
+          <p className="hero-live-status" aria-live="polite">
+            {dataSnapshotLabel}
+          </p>
         </div>
       </section>
 

@@ -1629,6 +1629,12 @@ h3 {
   font-size: 1.1rem;
 }
 
+.hero-live-status {
+  margin: 10px 0 0;
+  color: rgba(232, 242, 255, 0.72);
+  font-size: 0.78rem;
+}
+
 h1 {
   max-width: none;
   font-size: clamp(2.5rem, 4vw, 4.1rem);
