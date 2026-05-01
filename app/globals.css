@@ -874,6 +874,128 @@ h3 {
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.32);
 }
 
+.scene-customize-panel {
+  position: absolute;
+  top: 72px;
+  left: 18px;
+  z-index: 4;
+  width: min(360px, calc(100% - 36px));
+  max-height: min(620px, calc(100% - 96px));
+  overflow: auto;
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(184, 228, 255, 0.26);
+  background: rgba(8, 20, 42, 0.9);
+  color: #f4fbff;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.32);
+  pointer-events: auto;
+}
+
+.scene-customize-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.scene-deployment-panel {
+  position: absolute;
+  z-index: 5;
+  right: 18px;
+  top: 112px;
+  width: min(390px, calc(100% - 36px));
+  max-height: min(640px, calc(100% - 132px));
+  overflow: auto;
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(184, 228, 255, 0.3);
+  background: rgba(8, 20, 42, 0.92);
+  color: #f4fbff;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.34);
+  pointer-events: auto;
+}
+
+.scene-deployment-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.scene-deployment-panel__header span,
+.scene-deployment-panel dt,
+.scene-deployment-panel__message,
+.scene-deployment-panel__copy,
+.scene-deployment-panel__regions {
+  color: rgba(221, 238, 255, 0.78);
+}
+
+.scene-deployment-panel__header strong {
+  display: block;
+  margin-top: 2px;
+  font-size: 1.05rem;
+}
+
+.scene-deployment-panel__status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.scene-deployment-panel__status span {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(101, 208, 255, 0.18);
+  border: 1px solid rgba(165, 230, 255, 0.24);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.scene-deployment-panel__copy {
+  margin: 0 0 12px;
+  line-height: 1.45;
+}
+
+.scene-deployment-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.scene-deployment-panel__grid div {
+  min-width: 0;
+  padding: 9px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.scene-deployment-panel dt {
+  font-size: 0.72rem;
+}
+
+.scene-deployment-panel dd {
+  margin: 3px 0 0;
+  font-weight: 800;
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+
+.scene-deployment-panel__regions {
+  margin: 12px 0 0;
+  font-size: 0.82rem;
+}
+
+.scene-deployment-panel__message--error {
+  color: #ffc2c2;
+}
+
 .flight-settings-panel__header {
   display: flex;
   justify-content: space-between;
@@ -2855,6 +2977,8 @@ h1 {
 .scene-run-end,
 .station-dock,
 .flight-settings-panel,
+.scene-customize-panel,
+.scene-deployment-panel,
 .debug-hud,
 .pickup-notice,
 .achievement-toast,
@@ -3038,5 +3162,12 @@ h1 {
 
   .scene-shell--three .scene-flight-pad {
     bottom: 110px;
+  }
+
+  .scene-deployment-panel {
+    top: 104px;
+    right: 12px;
+    width: min(380px, calc(100% - 24px));
+    max-height: calc(100% - 128px);
   }
 }

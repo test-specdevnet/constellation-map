@@ -23,36 +23,37 @@ const input = (overrides: Partial<FlightInputState>): FlightInputState => ({
 });
 
 describe("integrateFlightState", () => {
-  it("moves freely upward and downward on the world plane", () => {
+  it("accelerates forward and brakes without reversing", () => {
     const start = createFlightState(0, 0);
     const up = integrateFlightState({
       flight: start,
       input: input({ accelerate: true, moveY: 1 }),
       bounds,
-      dtMs: 1_000,
+      dtMs: 250,
       qualityMode: "medium",
       boostActive: false,
     });
     const down = integrateFlightState({
-      flight: start,
+      flight: { ...up, speed: 120 },
       input: input({ brake: true, moveY: -1 }),
       bounds,
-      dtMs: 1_000,
+      dtMs: 250,
       qualityMode: "medium",
       boostActive: false,
     });
 
     expect(up.y).toBeLessThan(0);
-    expect(down.y).toBeGreaterThan(0);
+    expect(down.speed).toBeLessThan(120);
+    expect(down.y).toBeLessThanOrEqual(up.y);
   });
 
-  it("moves freely left and right instead of only rotating in place", () => {
-    const start = createFlightState(0, 0);
+  it("turns by changing heading instead of building sticky lateral drift", () => {
+    const start = { ...createFlightState(0, 0), speed: 260 };
     const right = integrateFlightState({
       flight: start,
       input: input({ turnRight: true, moveX: 1 }),
       bounds,
-      dtMs: 1_000,
+      dtMs: 250,
       qualityMode: "medium",
       boostActive: false,
     });
@@ -60,12 +61,28 @@ describe("integrateFlightState", () => {
       flight: start,
       input: input({ turnLeft: true, moveX: -1 }),
       bounds,
-      dtMs: 1_000,
+      dtMs: 250,
       qualityMode: "medium",
       boostActive: false,
     });
 
     expect(right.x).toBeGreaterThan(0);
     expect(left.x).toBeLessThan(0);
+    expect(right.heading).toBeGreaterThan(start.heading);
+    expect(left.heading).toBeLessThan(start.heading);
+  });
+
+  it("damps angular velocity when turn input is released", () => {
+    const turning = { ...createFlightState(0, 0), speed: 260, angVel: 2 };
+    const released = integrateFlightState({
+      flight: turning,
+      input: input({}),
+      bounds,
+      dtMs: 100,
+      qualityMode: "medium",
+      boostActive: false,
+    });
+
+    expect(Math.abs(released.angVel)).toBeLessThan(Math.abs(turning.angVel));
   });
 });

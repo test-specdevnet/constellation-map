@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -9,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Canvas, useFrame, useLoader, useThree, type ThreeEvent } from "@react-three/fiber";
+import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
@@ -25,6 +24,7 @@ import {
   type FlightTelemetry,
 } from "../../lib/layout/focusContext";
 import type { AppSystem, Cluster, SceneBounds, Star } from "../../lib/types/star";
+import type { AppDetail } from "../../lib/types/star";
 import {
   GAME_CONFIG,
   clamp,
@@ -75,9 +75,7 @@ import {
   type StationLayout,
 } from "../../lib/game/worldLayout";
 import {
-  getModelInstanceBudget,
   getRuntimeModelConfig,
-  getStationModelId,
   type RuntimeModelId,
 } from "../../lib/game/modelAssets";
 import type {
@@ -116,6 +114,9 @@ type ThreeSceneProps = {
   systems: AppSystem[];
   bounds: SceneBounds;
   selectedAppName: string | null;
+  selectedAppDetail: AppDetail | null;
+  selectedAppDetailLoading: boolean;
+  selectedAppDetailError: string;
   selectedSkinId: PlaneSkinId;
   searchMatches: string[];
   focusTarget: CameraTarget | null;
@@ -123,8 +124,9 @@ type ThreeSceneProps = {
   snapshotError: boolean;
   flightSettings: FlightSettings;
   featureFlags: FeatureFlags;
-  overlay?: ReactNode;
+  customizePanel?: ReactNode;
   onSelectApp: (appName: string) => void;
+  onClearSelectedApp: () => void;
   onFocusCluster: (cluster: Cluster) => void;
   onHoverEntity: (entity: HoveredEntity | null) => void;
   onTelemetry: (telemetry: FlightTelemetry) => void;
@@ -151,6 +153,9 @@ type SceneRuntime = {
 };
 
 type PlayerMode = "flying" | "landed" | "onFoot";
+type RuntimeModelLoadState =
+  | { status: "idle" | "loading" | "error"; scene: null }
+  | { status: "ready"; scene: THREE.Group };
 
 const GAME_STATE_EMIT_INTERVAL_MS = 80;
 const WORLD_SCALE = 0.024;
@@ -167,9 +172,9 @@ const MAX_ISLAND_MARKERS = {
   high: 34,
 } as const;
 const CLOUD_FIELD_MARKERS = {
-  low: 18,
-  medium: 30,
-  high: 42,
+  low: 20,
+  medium: 38,
+  high: 62,
 } as const;
 const RUNTIME_GLB_MODELS_ENABLED = true;
 const EMPTY_VISIBILITY: DeploymentVisibilityState = {
@@ -188,6 +193,12 @@ const IDLE_FLIGHT_INPUT: FlightInputState = {
   moveX: 0,
   moveY: 0,
 };
+const runtimeModelCache = new Map<
+  RuntimeModelId,
+  { status: "loading"; promise: Promise<THREE.Group> } | { status: "ready"; scene: THREE.Group } | { status: "error" }
+>();
+let runtimeModelLoader: GLTFLoader | null = null;
+let softCloudTexture: THREE.CanvasTexture | null = null;
 
 const to3 = (point: { x: number; y: number }, altitude = 0) =>
   new THREE.Vector3(point.x * WORLD_SCALE, altitude, point.y * WORLD_SCALE);
@@ -199,6 +210,69 @@ const scheduleSceneAction = (action: () => void) => {
   window.requestAnimationFrame(() => {
     void Promise.resolve().then(action);
   });
+};
+
+const getRuntimeModelLoader = () => {
+  runtimeModelLoader ??= new GLTFLoader();
+  return runtimeModelLoader;
+};
+
+const getSoftCloudTexture = () => {
+  if (softCloudTexture) return softCloudTexture;
+  const canvas = document.createElement("canvas");
+  canvas.width = 192;
+  canvas.height = 192;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    softCloudTexture = new THREE.CanvasTexture(canvas);
+    return softCloudTexture;
+  }
+  const gradient = context.createRadialGradient(96, 90, 8, 96, 96, 92);
+  gradient.addColorStop(0, "rgba(255, 255, 255, 0.98)");
+  gradient.addColorStop(0.34, "rgba(255, 255, 255, 0.94)");
+  gradient.addColorStop(0.58, "rgba(246, 252, 255, 0.68)");
+  gradient.addColorStop(0.78, "rgba(217, 239, 252, 0.28)");
+  gradient.addColorStop(1, "rgba(190, 224, 244, 0)");
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, 192, 192);
+  softCloudTexture = new THREE.CanvasTexture(canvas);
+  softCloudTexture.colorSpace = THREE.SRGBColorSpace;
+  softCloudTexture.needsUpdate = true;
+  return softCloudTexture;
+};
+
+const scheduleIdleModelLoad = (callback: () => void) => {
+  const idleCallback = (window as Window & {
+    requestIdleCallback?: (cb: IdleRequestCallback, options?: IdleRequestOptions) => number;
+  }).requestIdleCallback;
+  if (idleCallback) {
+    idleCallback(callback, { timeout: 900 });
+    return;
+  }
+  window.setTimeout(callback, 16);
+};
+
+const requestRuntimeModel = (modelId: RuntimeModelId) => {
+  const cached = runtimeModelCache.get(modelId);
+  if (cached) return cached;
+  const config = getRuntimeModelConfig(modelId);
+  const entry = {
+    status: "loading" as const,
+    promise: getRuntimeModelLoader()
+      .loadAsync(config.path)
+      .then((gltf) => {
+        const scene = gltf.scene;
+        runtimeModelCache.set(modelId, { status: "ready", scene });
+        return scene;
+      })
+      .catch((error) => {
+        console.warn(`Failed to load ${config.fallbackLabel}`, error);
+        runtimeModelCache.set(modelId, { status: "error" });
+        throw error;
+      }),
+  };
+  runtimeModelCache.set(modelId, entry);
+  return entry;
 };
 
 const shouldIgnoreFlightPointer = (target: EventTarget | null) =>
@@ -246,6 +320,9 @@ export function ThreeScene({
   systems,
   bounds,
   selectedAppName,
+  selectedAppDetail,
+  selectedAppDetailLoading,
+  selectedAppDetailError,
   selectedSkinId,
   searchMatches,
   focusTarget,
@@ -253,8 +330,9 @@ export function ThreeScene({
   snapshotError,
   flightSettings,
   featureFlags,
-  overlay,
+  customizePanel,
   onSelectApp,
+  onClearSelectedApp,
   onFocusCluster,
   onHoverEntity,
   onTelemetry,
@@ -285,8 +363,8 @@ export function ThreeScene({
   const debugPerfRef = useRef({ lastSampleAtMs: 0, frames: 0, ticks: 0 });
   const [runtimeVersion, setRuntimeVersion] = useState(0);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  const [showCustomizePanel, setShowCustomizePanel] = useState(false);
   const [showActionMenu, setShowActionMenu] = useState(false);
-  const [hudVisible, setHudVisible] = useState(true);
   const [debugHudHotkey, setDebugHudHotkey] = useState(false);
   const [debugStats, setDebugStats] = useState(createInitialDebugHudSnapshot);
   const [pickupNotice, setPickupNotice] = useState<string | null>(null);
@@ -368,13 +446,18 @@ export function ThreeScene({
       if (mapped) releaseControlKey(controller, mapped);
     };
     const blur = () => resetInputController({ controller, blur: true });
+    const pointerRelease = () => setMouseSteerActive(controller, false);
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
     window.addEventListener("blur", blur);
+    window.addEventListener("pointerup", pointerRelease);
+    window.addEventListener("pointercancel", pointerRelease);
     return () => {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
       window.removeEventListener("blur", blur);
+      window.removeEventListener("pointerup", pointerRelease);
+      window.removeEventListener("pointercancel", pointerRelease);
     };
   }, []);
 
@@ -720,7 +803,10 @@ export function ThreeScene({
           <button
             type="button"
             className="secondary-action"
-            onClick={() => setShowSettingsPanel((value) => !value)}
+            onClick={() => {
+              setShowCustomizePanel(false);
+              setShowSettingsPanel((value) => !value);
+            }}
           >
             Flight settings
           </button>
@@ -743,14 +829,10 @@ export function ThreeScene({
           <button
             type="button"
             className="secondary-action"
-            onClick={() => setHudVisible((value) => !value)}
-          >
-            {hudVisible ? "Hide HUD" : "Show HUD"}
-          </button>
-          <button
-            type="button"
-            className="secondary-action"
-            onClick={() => setShowSettingsPanel(true)}
+            onClick={() => {
+              setShowSettingsPanel(false);
+              setShowCustomizePanel((value) => !value);
+            }}
           >
             Customize
           </button>
@@ -800,28 +882,27 @@ export function ThreeScene({
             powerPreference: "high-performance",
           }}
         >
-          <Suspense fallback={null}>
-            <ThreeWorld
-              runtime={snapshot}
-              runtimeVersion={runtimeVersion}
-              clusters={activeClusters}
-              regionClusters={regionClusters}
-              systems={systems}
-              stars={stars}
-              selectedAppName={selectedAppName}
-              selectedSkinId={selectedSkinId}
-              searchMatches={matchSet}
-              stations={stationByClusterId}
-              focusTarget={focusTarget}
-              cloudsEnabled={featureFlags.clouds}
-              modelsEnabled={RUNTIME_GLB_MODELS_ENABLED}
-              qualityMode={qualityMode}
-              onSelectApp={onSelectApp}
-              onFocusCluster={onFocusCluster}
-              onHoverEntity={onHoverEntity}
-              onTick={handleRuntimeTick}
-            />
-          </Suspense>
+          <ThreeWorld
+            runtime={snapshot}
+            runtimeVersion={runtimeVersion}
+            clusters={activeClusters}
+            regionClusters={regionClusters}
+            bounds={bounds}
+            systems={systems}
+            stars={stars}
+            selectedAppName={selectedAppName}
+            selectedSkinId={selectedSkinId}
+            searchMatches={matchSet}
+            stations={stationByClusterId}
+            focusTarget={focusTarget}
+            cloudsEnabled={featureFlags.clouds}
+            modelsEnabled={RUNTIME_GLB_MODELS_ENABLED}
+            qualityMode={qualityMode}
+            onSelectApp={onSelectApp}
+            onFocusCluster={onFocusCluster}
+            onHoverEntity={onHoverEntity}
+            onTick={handleRuntimeTick}
+          />
         </Canvas>
 
         <div
@@ -832,7 +913,6 @@ export function ThreeScene({
           onPointerMove={(event) => event.stopPropagation()}
           onWheel={(event) => event.stopPropagation()}
         >
-          {hudVisible ? overlay : null}
           {showSettingsPanel ? (
             <FlightSettingsPanel
               open={showSettingsPanel}
@@ -842,6 +922,26 @@ export function ThreeScene({
               onUpdateSettings={onUpdateFlightSettings}
               onUpdateFeatureFlags={onUpdateFeatureFlags}
               onClose={() => setShowSettingsPanel(false)}
+            />
+          ) : null}
+          {showCustomizePanel && customizePanel ? (
+            <section className="scene-customize-panel" aria-label="Plane customization">
+              <div className="scene-customize-panel__header">
+                <strong>Customize aircraft</strong>
+                <button type="button" className="secondary-action" onClick={() => setShowCustomizePanel(false)}>
+                  Close
+                </button>
+              </div>
+              {customizePanel}
+            </section>
+          ) : null}
+          {selectedAppName ? (
+            <SceneDeploymentPanel
+              appName={selectedAppName}
+              detail={selectedAppDetail}
+              loading={selectedAppDetailLoading}
+              error={selectedAppDetailError}
+              onClose={onClearSelectedApp}
             />
           ) : null}
           <DebugHud visible={debugHudVisible} stats={debugStats} />
@@ -882,7 +982,7 @@ export function ThreeScene({
           ) : null}
         </div>
 
-        <TouchFlightPad controllerRef={inputControllerRef} />
+        {isCompactLayout ? <TouchFlightPad controllerRef={inputControllerRef} /> : null}
       </div>
 
       {isCompactLayout ? (
@@ -921,6 +1021,7 @@ function ThreeWorld({
   runtime,
   clusters,
   regionClusters,
+  bounds,
   systems,
   stars,
   selectedAppName,
@@ -940,6 +1041,7 @@ function ThreeWorld({
   runtimeVersion: number;
   clusters: Cluster[];
   regionClusters: Cluster[];
+  bounds: SceneBounds;
   systems: AppSystem[];
   stars: Star[];
   selectedAppName: string | null;
@@ -1018,28 +1120,11 @@ function ThreeWorld({
         .map((item) => item.cluster),
     [clusters, qualityMode, runtime.flight.x, runtime.flight.y],
   );
-  const activeStationModelIds = useMemo(() => {
-    const maxModels = getModelInstanceBudget("refuelStation", qualityMode);
-    if (!modelsEnabled || maxModels <= 0) {
-      return new Set<string>();
-    }
-    return new Set(
-      [...stations.values()]
-        .map((station) => ({
-          id: station.id,
-          distance: Math.hypot(station.x - runtime.flight.x, station.y - runtime.flight.y),
-        }))
-        .sort((left, right) => left.distance - right.distance)
-        .slice(0, maxModels)
-        .map((station) => station.id),
-    );
-  }, [modelsEnabled, qualityMode, runtime.flight.x, runtime.flight.y, stations]);
-
   return (
     <>
-      <color attach="background" args={["#54b9ff"]} />
-      <fog attach="fog" args={["#b7e7ff", 70, 260]} />
-      <hemisphereLight args={["#ffffff", "#6ab1df", 1.45]} />
+      <color attach="background" args={["#238ce8"]} />
+      <fog attach="fog" args={["#79c9ff", 90, 330]} />
+      <hemisphereLight args={["#ffffff", "#2988d3", 1.5]} />
       <directionalLight
         position={[30, 48, 28]}
         intensity={1.85}
@@ -1047,6 +1132,7 @@ function ThreeWorld({
       <ambientLight intensity={0.48} />
       <SkyDome />
       {cloudsEnabled ? <CloudFields clusters={regionClusters} qualityMode={qualityMode} /> : null}
+      {cloudsEnabled ? <AmbientCloudLayer bounds={bounds} qualityMode={qualityMode} /> : null}
       <group>
         {visibleClusters.map((cluster, index) => (
           <CloudIsland
@@ -1054,7 +1140,6 @@ function ThreeWorld({
             cluster={cluster}
             index={index}
             station={stations.get(cluster.clusterId) ?? null}
-            modelsEnabled={modelsEnabled && activeStationModelIds.has(cluster.clusterId)}
             onFocusCluster={onFocusCluster}
           />
         ))}
@@ -1066,7 +1151,6 @@ function ThreeWorld({
             system={system}
             selected={system.appName === selectedAppName || searchMatches.has(system.appName)}
             index={index}
-            modelsEnabled={modelsEnabled && index < getModelInstanceBudget("floatingDrone", qualityMode)}
             onSelectApp={onSelectApp}
             onHoverEntity={onHoverEntity}
           />
@@ -1083,20 +1167,10 @@ function ThreeWorld({
           ))}
       </group>
       <Effects effects={runtime.effects} />
-      {runtime.pickupNotice || selectedAppName ? (
-        <HologramPanel
-          flight={runtime.flight}
-          selectedAppName={selectedAppName}
-          notice={runtime.pickupNotice}
-        />
-      ) : (
-        <HologramPanel flight={runtime.flight} selectedAppName={selectedAppName} notice="Find a deployment" />
-      )}
       <Biplane
         flight={runtime.flight}
         selectedSkinId={selectedSkinId}
         modelsEnabled={modelsEnabled}
-        playerMode={runtime.playerMode}
       />
     </>
   );
@@ -1153,11 +1227,94 @@ function StationDockPanel({
   );
 }
 
+function SceneDeploymentPanel({
+  appName,
+  detail,
+  loading,
+  error,
+  onClose,
+}: {
+  appName: string;
+  detail: AppDetail | null;
+  loading: boolean;
+  error: string;
+  onClose: () => void;
+}) {
+  return (
+    <aside className="scene-deployment-panel" aria-label="Deployment detail" aria-live="polite">
+      <div className="scene-deployment-panel__header">
+        <div>
+          <span>Deployment</span>
+          <strong>{appName}</strong>
+        </div>
+        <button type="button" className="secondary-action" onClick={onClose}>
+          Close
+        </button>
+      </div>
+
+      {loading ? <p className="scene-deployment-panel__message">Loading deployment data...</p> : null}
+      {error ? <p className="scene-deployment-panel__message scene-deployment-panel__message--error">{error}</p> : null}
+
+      {detail ? (
+        <>
+          <div className="scene-deployment-panel__status">
+            <span>{detail.summary.liveStatus}</span>
+            <span>{detail.app.runtimeFamily}</span>
+            <span>{detail.app.projectCategory}</span>
+          </div>
+          <p className="scene-deployment-panel__copy">
+            {detail.app.description || "No public description was available for this deployment."}
+          </p>
+          <dl className="scene-deployment-panel__grid">
+            <div>
+              <dt>Owner</dt>
+              <dd>{detail.summary.owner}</dd>
+            </div>
+            <div>
+              <dt>Instances</dt>
+              <dd>{detail.summary.instanceCount}</dd>
+            </div>
+            <div>
+              <dt>Resource tier</dt>
+              <dd>{detail.app.resourceTier}</dd>
+            </div>
+            <div>
+              <dt>Active nodes</dt>
+              <dd>{detail.summary.runtimeUsage.activeNodes}</dd>
+            </div>
+            <div>
+              <dt>CPU</dt>
+              <dd>
+                {detail.summary.runtimeUsage.estimatedCpuCores !== null
+                  ? `${detail.summary.runtimeUsage.estimatedCpuCores} cores`
+                  : "Unknown"}
+              </dd>
+            </div>
+            <div>
+              <dt>Memory</dt>
+              <dd>
+                {detail.summary.runtimeUsage.estimatedMemoryMb !== null
+                  ? `${detail.summary.runtimeUsage.estimatedMemoryMb} MB`
+                  : "Unknown"}
+              </dd>
+            </div>
+          </dl>
+          {detail.summary.regions.length > 0 ? (
+            <p className="scene-deployment-panel__regions">
+              {detail.summary.regions.slice(0, 5).join(", ")}
+            </p>
+          ) : null}
+        </>
+      ) : null}
+    </aside>
+  );
+}
+
 function SkyDome() {
   return (
     <mesh scale={[1, 1, 1]} position={[0, -80, 0]}>
       <sphereGeometry args={[520, 16, 8]} />
-      <meshBasicMaterial side={THREE.BackSide} color="#46b8ff" transparent opacity={0.76} />
+      <meshBasicMaterial side={THREE.BackSide} color="#1688ea" transparent opacity={0.9} />
     </mesh>
   );
 }
@@ -1171,16 +1328,23 @@ function CloudFields({
 }) {
   const layeredOffsets =
     qualityMode === "low"
-      ? [[0, 0, 1]]
+      ? [
+          [0, 0, 1],
+          [7.5, -4.5, 0.72],
+        ]
       : qualityMode === "medium"
         ? [
             [0, 0, 1],
-            [8.5, -5.5, 0.72],
+            [7.5, -4.5, 0.76],
+            [-6.25, 5.75, 0.64],
+            [13, 4.25, 0.5],
           ]
         : [
             [0, 0, 1],
-            [8.5, -5.5, 0.72],
-            [-9.2, 6.4, 0.62],
+            [7.5, -4.5, 0.78],
+            [-6.25, 5.75, 0.68],
+            [13, 4.25, 0.54],
+            [-12, -7.5, 0.48],
           ];
   return (
     <group>
@@ -1191,12 +1355,12 @@ function CloudFields({
               x: cluster.centroid.x + offsetX * 70,
               y: cluster.centroid.y + offsetY * 70,
             },
-            -3.4 - ((index + layerIndex) % 5) * 0.32,
+            -4.4 - ((index + layerIndex) % 6) * 0.28,
           );
           return (
             <group key={`${cluster.clusterId}:${layerIndex}`} position={position}>
               <CloudPuff
-                scale={(2.6 + Math.min(6.4, cluster.radius * WORLD_SCALE * 0.07)) * scaleFactor}
+                scale={(3.2 + Math.min(8.4, cluster.radius * WORLD_SCALE * 0.09)) * scaleFactor}
                 variant={(index + layerIndex) % 4}
               />
             </group>
@@ -1207,40 +1371,102 @@ function CloudFields({
   );
 }
 
+function AmbientCloudLayer({
+  bounds,
+  qualityMode,
+}: {
+  bounds: SceneBounds;
+  qualityMode: "low" | "medium" | "high";
+}) {
+  const count = qualityMode === "low" ? 42 : qualityMode === "medium" ? 78 : 118;
+  const clouds = useMemo(
+    () => {
+      const centerX = bounds.minX + bounds.width / 2;
+      const centerY = bounds.minY + bounds.height / 2;
+      const width = Math.min(Math.max(bounds.width * 0.52, 1_850), 2_950);
+      const height = Math.min(Math.max(bounds.height * 0.52, 1_350), 2_300);
+      const columns = Math.max(8, Math.ceil(Math.sqrt(count * (width / height))));
+      const rows = Math.max(5, Math.ceil(count / columns));
+      return Array.from({ length: count }, (_, index) => {
+        const column = index % columns;
+        const row = Math.floor(index / columns);
+        const jitterX = (((index * 73) % 100) - 50) / 100;
+        const jitterY = (((index * 47) % 100) - 50) / 100;
+        return {
+          x: centerX - width / 2 + ((column + 0.5 + jitterX * 0.56) / columns) * width,
+          y: centerY - height / 2 + ((row + 0.5 + jitterY * 0.5) / rows) * height,
+          scale: 1.18 + ((index * 37) % 100) / 105,
+          variant: index % 4,
+        };
+      });
+    },
+    [bounds.height, bounds.minX, bounds.minY, bounds.width, count],
+  );
+
+  return (
+    <group>
+      {clouds.map((cloud, index) => {
+        const position = to3(
+          {
+            x: cloud.x,
+            y: cloud.y,
+          },
+          -3.3 - (index % 6) * 0.2,
+        );
+        return (
+          <group key={index} position={position}>
+            <CloudPuff scale={cloud.scale} variant={cloud.variant} />
+            {index % 3 === 0 ? (
+              <group position={[2.4, 4.7, -0.2]}>
+                <CloudPuff scale={cloud.scale * 1.28} variant={(cloud.variant + 2) % 4} />
+              </group>
+            ) : null}
+            {index % 5 === 0 ? (
+              <group position={[-3.8, 2.2, 0.34]}>
+                <CloudPuff scale={cloud.scale * 0.86} variant={(cloud.variant + 1) % 4} />
+              </group>
+            ) : null}
+          </group>
+        );
+      })}
+    </group>
+  );
+}
+
 function CloudPuff({ scale = 1, variant = 0 }: { scale?: number; variant?: number }) {
   const lobes = [
-    [-1.85, -0.18, 0, 1.45, 0.58, 0.92, "#d3e5f7", 0.58],
-    [-1.15, 0.1, 0.08, 1.2, 0.72, 1.02, "#f8fbff", 0.72],
-    [-0.46, 0.42, -0.04, 1.34, 1.02, 1.12, "#ffffff", 0.78],
-    [0.34, 0.34, 0.05, 1.52, 1.04, 1.08, "#f5f9ff", 0.76],
-    [1.15, 0.1, -0.08, 1.22, 0.74, 0.98, "#e7f2ff", 0.68],
-    [1.82, -0.18, 0.02, 1.36, 0.54, 0.86, "#c9ddf3", 0.54],
-    [-0.72, -0.34, 0.12, 1.65, 0.48, 0.76, "#b9d2eb", 0.42],
-    [0.78, -0.36, 0.14, 1.8, 0.5, 0.78, "#b4cde8", 0.42],
-    [-0.08, 0.02, 0.22, 2.55, 0.42, 0.72, "#dcebfb", 0.38],
+    [-2.35, -0.22, 0.02, 2.4, 1.42, "#ffffff", 0.72],
+    [-1.42, 0.22, 0.05, 2.25, 1.55, "#ffffff", 0.9],
+    [-0.26, 0.44, 0.08, 2.76, 1.82, "#ffffff", 0.96],
+    [1.18, 0.22, 0.04, 2.46, 1.55, "#ffffff", 0.92],
+    [2.36, -0.14, 0.02, 2.08, 1.22, "#ffffff", 0.76],
+    [-0.92, -0.56, 0.1, 3.35, 1.18, "#ffffff", 0.72],
+    [0.95, -0.58, 0.1, 3.55, 1.16, "#ffffff", 0.68],
+    [0.08, -0.08, 0.16, 4.65, 1.42, "#ffffff", 0.48],
   ] as const;
-  const rotation = variant * 0.34;
+  const cloudMap = useMemo(() => getSoftCloudTexture(), []);
+  const rotation = variant * 0.18;
   return (
-    <group scale={scale} rotation={[0.08, rotation, 0]}>
-      {lobes.map(([x, y, z, width, height, depth, color, opacity], index) => (
-        <mesh key={index} position={[x, y, z]} scale={[width, height, depth]}>
-          <sphereGeometry args={[1, 10, 7]} />
-          <meshStandardMaterial
+    <BillboardGroup position={[0, 0, 0]}>
+      <group scale={scale} rotation={[0, 0, rotation]}>
+        {lobes.map(([x, y, z, width, height, color, opacity], index) => (
+          <mesh key={index} position={[x, y, z]} renderOrder={-20 + index}>
+            <planeGeometry args={[width, height]} />
+            <meshBasicMaterial
+              map={cloudMap}
+              alphaMap={cloudMap}
             color={color}
-            emissive="#d9ecff"
-            emissiveIntensity={0.06}
-            transparent
-            opacity={opacity}
-            roughness={0.96}
-            depthWrite={false}
-          />
-        </mesh>
-      ))}
-      <mesh position={[0, -0.72, 0.05]} scale={[4.2, 0.18, 1.12]}>
-        <sphereGeometry args={[1, 12, 5]} />
-        <meshStandardMaterial color="#9fbddd" transparent opacity={0.28} roughness={1} depthWrite={false} />
-      </mesh>
-    </group>
+              transparent
+              opacity={opacity}
+              depthWrite={false}
+              depthTest
+              side={THREE.DoubleSide}
+              toneMapped={false}
+            />
+          </mesh>
+        ))}
+      </group>
+    </BillboardGroup>
   );
 }
 
@@ -1249,16 +1475,65 @@ function RuntimeModelAsset({
   targetSize,
   position = [0, 0, 0],
   rotation = [0, 0, 0],
+  fallback,
 }: {
   modelId: RuntimeModelId;
   targetSize?: number;
   position?: [number, number, number];
   rotation?: [number, number, number];
+  fallback?: ReactNode;
 }) {
   const config = getRuntimeModelConfig(modelId);
-  const gltf = useLoader(GLTFLoader, config.path);
+  const [asset, setAsset] = useState<RuntimeModelLoadState>(() => {
+    const cached = runtimeModelCache.get(modelId);
+    return cached?.status === "ready"
+      ? { status: "ready", scene: cached.scene }
+      : cached?.status === "error"
+        ? { status: "error", scene: null }
+        : { status: "idle", scene: null };
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    const cached = runtimeModelCache.get(modelId);
+    if (cached?.status === "ready") {
+      setAsset({ status: "ready", scene: cached.scene });
+      return;
+    }
+    if (cached?.status === "error") {
+      setAsset({ status: "error", scene: null });
+      return;
+    }
+
+    setAsset({ status: "loading", scene: null });
+    scheduleIdleModelLoad(() => {
+      if (cancelled) return;
+      const entry = requestRuntimeModel(modelId);
+      if (entry.status === "ready") {
+        setAsset({ status: "ready", scene: entry.scene });
+        return;
+      }
+      if (entry.status === "error") {
+        setAsset({ status: "error", scene: null });
+        return;
+      }
+      entry.promise
+        .then((scene) => {
+          if (!cancelled) setAsset({ status: "ready", scene });
+        })
+        .catch(() => {
+          if (!cancelled) setAsset({ status: "error", scene: null });
+        });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [modelId]);
+
   const normalized = useMemo(() => {
-    const root = cloneSkeleton(gltf.scene);
+    if (asset.status !== "ready") return null;
+    const root = cloneSkeleton(asset.scene);
     const box = new THREE.Box3().setFromObject(root);
     const size = new THREE.Vector3();
     const center = new THREE.Vector3();
@@ -1277,19 +1552,14 @@ function RuntimeModelAsset({
         child.receiveShadow = true;
         child.frustumCulled = true;
         child.geometry.computeBoundingSphere();
-        if (modelId === "floatingDrone") {
-          child.material = new THREE.MeshStandardMaterial({
-            color: "#d9e1e7",
-            metalness: 0.92,
-            roughness: 0.28,
-            emissive: "#8fb4ca",
-            emissiveIntensity: 0.06,
-          });
-        }
       }
     });
     return root;
-  }, [config.groundOffset, config.rotationY, config.scale, gltf.scene, modelId, targetSize]);
+  }, [asset, config.groundOffset, config.rotationY, config.scale, modelId, targetSize]);
+
+  if (!normalized) {
+    return <>{fallback}</>;
+  }
 
   return (
     <group position={position} rotation={rotation}>
@@ -1303,46 +1573,34 @@ function RuntimeModel(props: {
   targetSize?: number;
   position?: [number, number, number];
   rotation?: [number, number, number];
+  fallback?: ReactNode;
 }) {
-  return (
-    <Suspense fallback={null}>
-      <RuntimeModelAsset {...props} />
-    </Suspense>
-  );
+  return <RuntimeModelAsset {...props} />;
 }
 
 function StationStructure({
-  station,
   radius,
   index,
-  modelsEnabled,
 }: {
-  station: StationLayout;
   radius: number;
   index: number;
-  modelsEnabled: boolean;
 }) {
   const color = "#64e5ff";
   const accent = "#54f0a8";
-  const modelId = getStationModelId();
-  if (modelsEnabled) {
-    return (
-      <group
-        position={[radius * 0.08, 0.08, radius * -0.04]}
-        rotation={[0, index * 0.72, 0]}
-        userData={{ modelId }}
-      >
-        <RuntimeModel modelId={modelId} targetSize={radius * 2.05} />
-        <RuntimeModel modelId="serviceRobot" targetSize={radius * 0.42} position={[radius * 0.72, 0.08, radius * 0.42]} />
-      </group>
-    );
-  }
   return (
     <group
-      position={[radius * 0.08, 0.28, radius * -0.04]}
+      position={[radius * 0.08, 0.38, radius * -0.04]}
       rotation={[0, index * 0.72, 0]}
-      userData={{ modelId }}
+      userData={{ modelId: "proceduralStation" }}
     >
+      <StationFallback radius={radius} color={color} accent={accent} />
+    </group>
+  );
+}
+
+function StationFallback({ radius, color, accent }: { radius: number; color: string; accent: string }) {
+  return (
+    <>
       <mesh position={[0, 0.22, 0]}>
         <cylinderGeometry args={[radius * 0.38, radius * 0.48, 0.42, 28]} />
         <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.18} roughness={0.42} />
@@ -1361,12 +1619,7 @@ function StationStructure({
           <meshStandardMaterial color="#54f0a8" emissive="#54f0a8" emissiveIntensity={0.35} roughness={0.3} />
         </mesh>
       </group>
-      <RobotAvatar
-        position={[radius * 0.72, 0.1, radius * 0.42]}
-        color={["#8f6df2", "#44c887", "#f0a33a", "#3fa7f5", "#ec6dc6"][index % 5]}
-        scale={radius * 0.2}
-      />
-    </group>
+    </>
   );
 }
 
@@ -1374,13 +1627,11 @@ function CloudIsland({
   cluster,
   index,
   station,
-  modelsEnabled,
   onFocusCluster,
 }: {
   cluster: Cluster;
   index: number;
   station: StationLayout | null;
-  modelsEnabled: boolean;
   onFocusCluster: (cluster: Cluster) => void;
 }) {
   const position = to3(cluster.centroid, ISLAND_ALTITUDE + (index % 5) * 0.12);
@@ -1388,17 +1639,18 @@ function CloudIsland({
   const radius = station ? Math.max(baseRadius, 6.8) : baseRadius;
   return (
     <group position={position} onClick={() => scheduleSceneAction(() => onFocusCluster(cluster))}>
-      <mesh receiveShadow position={[0, -0.08, 0]}>
-        <cylinderGeometry args={[radius * 0.88, radius * 0.96, 0.22, 40]} />
-        <meshStandardMaterial color="#dff8ff" emissive="#78e5ff" emissiveIntensity={0.1} roughness={0.48} />
-      </mesh>
-      <mesh position={[0, 0.08, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[radius * 0.72, 0.08, 8, 48]} />
-        <meshStandardMaterial color="#b9f28f" emissive="#62d973" emissiveIntensity={0.18} roughness={0.5} />
-      </mesh>
-      <CloudPuff scale={radius * 0.26} />
+      <CloudPuff scale={radius * 0.32} variant={index % 4} />
+      <group position={[radius * 0.28, -0.06, radius * -0.14]}>
+        <CloudPuff scale={radius * 0.18} variant={(index + 1) % 4} />
+      </group>
+      <group position={[radius * -0.22, -0.1, radius * 0.16]}>
+        <CloudPuff scale={radius * 0.16} variant={(index + 2) % 4} />
+      </group>
       {station ? (
-        <StationStructure station={station} radius={radius} index={index} modelsEnabled={modelsEnabled} />
+        <StationStructure
+          radius={radius}
+          index={index}
+        />
       ) : null}
       <BillboardGroup position={[0, radius * 0.08 + 2.6, 0]}>
         <BeaconPlaque color={cluster.level === "region" ? "#61d7ff" : "#9b82ff"} />
@@ -1411,14 +1663,12 @@ function DeploymentMarker({
   system,
   selected,
   index,
-  modelsEnabled,
   onSelectApp,
   onHoverEntity,
 }: {
   system: AppSystem;
   selected: boolean;
   index: number;
-  modelsEnabled: boolean;
   onSelectApp: (appName: string) => void;
   onHoverEntity: (entity: HoveredEntity | null) => void;
 }) {
@@ -1473,29 +1723,12 @@ function DeploymentMarker({
         onHoverEntity(null);
       }}
     >
+      <mesh>
+        <sphereGeometry args={[2.35, 12, 8]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
       <pointLight ref={lightRef} color="#fff2a8" intensity={selected ? 1.8 : 0.65} distance={10} />
-      {modelsEnabled ? (
-        <RuntimeModel modelId="floatingDrone" targetSize={selected ? 3.8 : 3.1} position={[0, -1.15, 0]} />
-      ) : (
-        <>
-      <mesh position={[0, -0.9, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[0.82, 0.045, 6, 18]} />
-        <meshBasicMaterial color={colorway.beacon} transparent opacity={selected ? 0.9 : 0.62} />
-      </mesh>
-      {selected ? (
-        <RobotAvatar color={colorway.main} accent={colorway.beacon} scale={0.82} position={[0, -0.72, 0]} />
-      ) : (
-        <mesh position={[0, -0.44, 0]}>
-          <sphereGeometry args={[0.62, 10, 8]} />
-          <meshStandardMaterial color={colorway.main} emissive={colorway.beacon} emissiveIntensity={0.22} roughness={0.5} />
-        </mesh>
-      )}
-      <mesh position={[0, -1.08, 0]}>
-        <cylinderGeometry args={[0.92, 1.12, 0.18, 12]} />
-        <meshStandardMaterial color="#dff8ff" emissive={colorway.beacon} emissiveIntensity={0.18} roughness={0.5} />
-      </mesh>
-        </>
-      )}
+      <DeploymentFallback selected={selected} colorway={colorway} />
       <mesh ref={beaconRef} position={[0, 1.68, 0]}>
         <sphereGeometry args={[0.14, 10, 8]} />
         <meshStandardMaterial
@@ -1510,6 +1743,50 @@ function DeploymentMarker({
         <BeaconPlaque color={colorway.beacon} compact selected={selected} />
       </BillboardGroup>
     </group>
+  );
+}
+
+function DeploymentFallback({
+  selected,
+  colorway,
+}: {
+  selected: boolean;
+  colorway: ReturnType<typeof getBuoyColorway>;
+}) {
+  return (
+    <>
+      <mesh position={[0, -0.9, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[0.82, 0.045, 6, 18]} />
+        <meshBasicMaterial color="#f4fbff" transparent opacity={selected ? 0.92 : 0.7} />
+      </mesh>
+      {selected ? (
+        <mesh position={[0, -0.42, 0]}>
+          <sphereGeometry args={[0.76, 12, 9]} />
+          <meshStandardMaterial
+            color="#f7fbff"
+            emissive={colorway.beacon}
+            emissiveIntensity={0.22}
+            metalness={0.72}
+            roughness={0.25}
+          />
+        </mesh>
+      ) : (
+        <mesh position={[0, -0.44, 0]}>
+          <sphereGeometry args={[0.62, 10, 8]} />
+          <meshStandardMaterial
+            color="#d9e1e7"
+            emissive="#8fb4ca"
+            emissiveIntensity={0.12}
+            metalness={0.78}
+            roughness={0.3}
+          />
+        </mesh>
+      )}
+      <mesh position={[0, -1.08, 0]}>
+        <cylinderGeometry args={[0.92, 1.12, 0.18, 12]} />
+        <meshStandardMaterial color="#dff8ff" emissive={colorway.beacon} emissiveIntensity={0.18} roughness={0.5} />
+      </mesh>
+    </>
   );
 }
 
@@ -1541,7 +1818,10 @@ function CollectibleMesh({ collectible, nowMs }: { collectible: Collectible; now
           <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.72} />
         </mesh>
       ) : (
-        <RobotAvatar color="#f7d56d" scale={0.42} position={[0, 0, 0]} />
+        <mesh>
+          <dodecahedronGeometry args={[0.62, 0]} />
+          <meshStandardMaterial color={color} emissive="#ffe680" emissiveIntensity={0.62} roughness={0.3} />
+        </mesh>
       )}
     </group>
   );
@@ -1567,34 +1847,40 @@ function Biplane({
   flight,
   selectedSkinId,
   modelsEnabled,
-  playerMode,
 }: {
   flight: FlightState;
   selectedSkinId: PlaneSkinId;
   modelsEnabled: boolean;
-  playerMode?: PlayerMode;
 }) {
   const palette = selectedSkinId === "classic" ? planeSkinPalettes.classic : planeSkinPalettes[selectedSkinId] ?? planeSkinPalettes.classic;
   const position = to3(flight, PLANE_ALTITUDE);
   if (modelsEnabled) {
     return (
       <group position={position} rotation={[0, -flight.heading + Math.PI / 2, 0]}>
-        <RuntimeModel modelId="biplane" />
-        {playerMode !== "onFoot" ? (
-          <RuntimeModel modelId="serviceRobot" targetSize={0.72} position={[0, 0.42, -0.35]} />
-        ) : null}
-        {playerMode === "onFoot" ? (
-          <RuntimeModel modelId="serviceRobot" targetSize={0.96} position={[2.1, -0.24, -0.65]} />
-        ) : null}
+        <RuntimeModel
+          modelId="biplane"
+          fallback={<BiplaneFallback palette={palette} />}
+        />
         <pointLight color="#ff9170" intensity={0.55} distance={7} position={[0, 0.5, -1.5]} />
       </group>
     );
   }
   return (
-    <group position={position} rotation={[0, -flight.heading + Math.PI / 2, 0]} scale={1.42}>
+    <group position={position} rotation={[0, -flight.heading + Math.PI / 2, 0]}>
+      <BiplaneFallback palette={palette} />
+    </group>
+  );
+}
+
+function BiplaneFallback({
+  palette,
+}: {
+  palette: (typeof planeSkinPalettes)[keyof typeof planeSkinPalettes];
+}) {
+  return (
+    <group scale={1.42}>
       <pointLight color={palette.bodyHi} intensity={0.35} distance={6} position={[0, 0.8, -0.3]} />
       <group>
-      <RobotAvatar color={palette.bodyHi} scale={0.36} position={[0, 0.8, -0.45]} visible={playerMode !== "onFoot"} />
       <mesh castShadow rotation={[0, 0, Math.PI / 2]}>
         <cylinderGeometry args={[0.38, 0.48, 2.8, 20]} />
         <meshStandardMaterial color={palette.body} roughness={0.35} metalness={0.08} />
@@ -1644,57 +1930,7 @@ function Biplane({
         <meshStandardMaterial color="#fff2ba" transparent opacity={0.56} />
       </mesh>
       </group>
-      {playerMode === "onFoot" ? (
-        <RobotAvatar color={palette.bodyHi} scale={0.48} position={[2.1, -0.24, -0.65]} />
-      ) : null}
       <pointLight color="#ff9170" intensity={0.85} distance={8} position={[0, 0.5, -1.5]} />
-    </group>
-  );
-}
-
-function RobotAvatar({
-  color,
-  accent = "#4edfff",
-  position,
-  scale = 1,
-  visible = true,
-}: {
-  color: string;
-  accent?: string;
-  position: [number, number, number];
-  scale?: number;
-  visible?: boolean;
-}) {
-  return (
-    <group position={position} scale={scale} visible={visible}>
-      <mesh castShadow position={[0, 1.22, 0]}>
-        <sphereGeometry args={[0.68, 14, 10]} />
-        <meshStandardMaterial color="#f4fbff" roughness={0.28} metalness={0.04} />
-      </mesh>
-      <mesh castShadow position={[0, 1.13, -0.08]}>
-        <boxGeometry args={[1.04, 0.48, 0.16]} />
-        <meshStandardMaterial color="#18395f" emissive={accent} emissiveIntensity={0.18} roughness={0.32} />
-      </mesh>
-      <mesh position={[-0.24, 1.2, -0.2]}>
-        <sphereGeometry args={[0.14, 8, 6]} />
-        <meshStandardMaterial color="#7df2ff" emissive={accent} emissiveIntensity={1.2} />
-      </mesh>
-      <mesh position={[0.24, 1.2, -0.2]}>
-        <sphereGeometry args={[0.14, 8, 6]} />
-        <meshStandardMaterial color="#7df2ff" emissive={accent} emissiveIntensity={1.2} />
-      </mesh>
-      <mesh castShadow position={[0, 0.42, 0]}>
-        <capsuleGeometry args={[0.46, 0.68, 8, 18]} />
-        <meshStandardMaterial color={color} roughness={0.38} />
-      </mesh>
-      <mesh position={[0, 0.46, -0.36]}>
-        <sphereGeometry args={[0.12, 12, 8]} />
-        <meshStandardMaterial color={accent} emissive={accent} emissiveIntensity={0.9} />
-      </mesh>
-      <mesh position={[0, 1.92, 0]}>
-        <torusGeometry args={[0.18, 0.025, 8, 18]} />
-        <meshStandardMaterial color="#d7f1ff" metalness={0.2} />
-      </mesh>
     </group>
   );
 }

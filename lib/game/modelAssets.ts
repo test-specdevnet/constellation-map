@@ -35,7 +35,7 @@ export const RUNTIME_MODEL_CONFIGS: Record<RuntimeModelId, RuntimeModelConfig> =
     scale: 3.2,
     groundOffset: 0,
     rotationY: 0,
-    maxInstances: { low: 4, medium: 8, high: 12 },
+    maxInstances: { low: 0, medium: 0, high: 0 },
   },
   refuelStation: {
     id: "refuelStation",
@@ -44,7 +44,7 @@ export const RUNTIME_MODEL_CONFIGS: Record<RuntimeModelId, RuntimeModelConfig> =
     scale: 9.5,
     groundOffset: 0,
     rotationY: 0,
-    maxInstances: { low: 1, medium: 1, high: 2 },
+    maxInstances: { low: 0, medium: 0, high: 0 },
   },
   serviceRobot: {
     id: "serviceRobot",
@@ -53,7 +53,7 @@ export const RUNTIME_MODEL_CONFIGS: Record<RuntimeModelId, RuntimeModelConfig> =
     scale: 2.2,
     groundOffset: 0,
     rotationY: 0,
-    maxInstances: { low: 1, medium: 2, high: 3 },
+    maxInstances: { low: 0, medium: 0, high: 0 },
   },
 };
 

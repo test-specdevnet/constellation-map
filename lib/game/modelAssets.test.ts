@@ -16,10 +16,11 @@ describe("modelAssets", () => {
   });
 
   it("returns quality-aware model budgets", () => {
-    expect(getModelInstanceBudget("floatingDrone", "low")).toBeGreaterThan(0);
-    expect(getModelInstanceBudget("floatingDrone", "high")).toBeGreaterThan(
-      getModelInstanceBudget("floatingDrone", "medium"),
-    );
+    expect(getModelInstanceBudget("floatingDrone", "low")).toBe(0);
+    expect(getModelInstanceBudget("floatingDrone", "high")).toBe(0);
+    expect(getModelInstanceBudget("refuelStation", "high")).toBe(0);
+    expect(getModelInstanceBudget("serviceRobot", "high")).toBe(0);
+    expect(getModelInstanceBudget("biplane", "high")).toBeGreaterThan(0);
   });
 
   it("resolves station kinds to model IDs", () => {

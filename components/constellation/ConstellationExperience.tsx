@@ -767,6 +767,9 @@ function ConstellationExperienceBody({
             systems={visibleSystems}
             bounds={activeScene.bounds}
             selectedAppName={selectedAppName}
+            selectedAppDetail={detail}
+            selectedAppDetailLoading={detailLoading}
+            selectedAppDetailError={detailError}
             selectedSkinId={progress.selectedSkinId}
             searchMatches={searchMatchAppNames}
             focusTarget={focusTarget}
@@ -776,35 +779,15 @@ function ConstellationExperienceBody({
             featureFlags={featureFlags}
             onUpdateFlightSettings={updateFlightSettings}
             onUpdateFeatureFlags={updateFeatureFlags}
-            overlay={
-              <>
-                <div className="scene-mobile-status-stack">
-                  <DiegeticHud
-                    telemetry={telemetry}
-                    snapshot={gameSnapshot}
-                    selectedSkinLabel={selectedSkin?.label ?? "Classic"}
-                    unlockedSkinCount={summary.unlockedSkins}
-                    totalSkinCount={skins.length}
-                    mode={flightSettings.hudDensity}
-                  />
-                  <FuelGauge snapshot={gameSnapshot} />
-                  <MiniMap
-                    bounds={activeScene.bounds}
-                    regionClusters={visibleClusters.filter(
-                      (cluster) => cluster.level === "region",
-                    )}
-                    telemetry={telemetry}
-                    snapshot={gameSnapshot}
-                    visitedRegionIds={progress.visitedRegionIds}
-                    mode={flightSettings.hudDensity}
-                    onSelectCluster={handleFocusCluster}
-                  />
-                </div>
-                <div className="flight-disclaimer">Tip: Click deployments to discover them.</div>
-                <AchievementToast toast={activeToast} onDismiss={dismissToast} />
-              </>
+            customizePanel={
+              <HangarCustomizationPanel
+                skins={skins}
+                onSelectSkin={selectSkin}
+                onResetProgress={handleResetProgress}
+              />
             }
             onSelectApp={handleSelectApp}
+            onClearSelectedApp={() => setSelectedAppName(null)}
             onFocusCluster={handleFocusCluster}
             onHoverEntity={() => {
               // Hover copy stays inside the canvas tooltip.

@@ -28,13 +28,12 @@ export const integrateFlightState = ({
   const dt = dtMs / 1000;
   const highQuality = qualityMode === "high";
   const lowQuality = qualityMode === "low";
-  const baseTurnRate = lowQuality ? 2.7 : highQuality ? 5.2 : 4.2;
-  const turnResponse = lowQuality ? 12 : highQuality ? 24 : 18;
-  const accel = (lowQuality ? 430 : highQuality ? 1_120 : 860) * (boostActive ? 1.7 : 1);
-  const brake = lowQuality ? 620 : highQuality ? 1_240 : 960;
-  const passiveDrag = lowQuality ? 360 : highQuality ? 520 : 440;
+  const baseTurnRate = lowQuality ? 2.15 : highQuality ? 3.4 : 2.8;
+  const turnResponse = lowQuality ? 14 : highQuality ? 22 : 18;
+  const accel = (lowQuality ? 430 : highQuality ? 980 : 760) * (boostActive ? 1.55 : 1);
+  const brake = lowQuality ? 680 : highQuality ? 1_360 : 1_080;
+  const passiveDrag = lowQuality ? 210 : highQuality ? 310 : 260;
   const maxSpeed = (lowQuality ? 260 : highQuality ? 760 : 620) * (boostActive ? 1.45 : 1);
-  const headingResponse = lowQuality ? 9 : highQuality ? 18 : 14;
   const turnInput = clamp(
     input.moveX || (input.turnLeft ? -1 : 0) + (input.turnRight ? 1 : 0) + input.mouseTurn,
     -1,
@@ -43,51 +42,28 @@ export const integrateFlightState = ({
   const verticalInput = clamp(input.moveY || (input.accelerate ? 1 : 0) - (input.brake ? 1 : 0), -1, 1);
 
   const nextFlight = { ...flight };
-  let velocityX = Math.cos(flight.heading) * flight.speed;
-  let velocityY = Math.sin(flight.heading) * flight.speed;
-  const inputMagnitude = Math.hypot(turnInput, verticalInput);
 
-  if (inputMagnitude > 0.001) {
-    const inputX = turnInput / inputMagnitude;
-    const inputY = -verticalInput / inputMagnitude;
-    velocityX += inputX * accel * dt;
-    velocityY += inputY * accel * dt;
+  const targetAngVel = turnInput * baseTurnRate * (0.55 + Math.min(flight.speed / Math.max(maxSpeed, 1), 1) * 0.45);
+  nextFlight.angVel += (targetAngVel - nextFlight.angVel) * Math.min(1, turnResponse * dt);
+  nextFlight.heading += nextFlight.angVel * dt;
+  while (nextFlight.heading > Math.PI) nextFlight.heading -= Math.PI * 2;
+  while (nextFlight.heading < -Math.PI) nextFlight.heading += Math.PI * 2;
+
+  if (verticalInput > 0.001) {
+    nextFlight.speed += accel * verticalInput * dt;
+  } else if (verticalInput < -0.001 || input.brake) {
+    nextFlight.speed -= brake * Math.max(Math.abs(verticalInput), 1) * dt;
   } else {
-    const speed = Math.hypot(velocityX, velocityY);
-    const nextSpeed = Math.max(0, speed - passiveDrag * dt);
-    const dragScale = speed > 0.001 ? nextSpeed / speed : 0;
-    velocityX *= dragScale;
-    velocityY *= dragScale;
+    nextFlight.speed -= passiveDrag * dt;
   }
 
-  if (input.brake && Math.abs(verticalInput) < 0.001) {
-    const speed = Math.hypot(velocityX, velocityY);
-    const nextSpeed = Math.max(0, speed - brake * dt);
-    const brakeScale = speed > 0.001 ? nextSpeed / speed : 0;
-    velocityX *= brakeScale;
-    velocityY *= brakeScale;
-  }
-
-  const rawSpeed = Math.hypot(velocityX, velocityY);
-  if (rawSpeed > maxSpeed) {
-    const speedScale = maxSpeed / rawSpeed;
-    velocityX *= speedScale;
-    velocityY *= speedScale;
-  }
-
-  nextFlight.speed = clamp(Math.hypot(velocityX, velocityY), 0, maxSpeed);
-  if (nextFlight.speed > 1) {
-    const targetHeading = Math.atan2(velocityY, velocityX);
-    let headingDelta = targetHeading - nextFlight.heading;
-    while (headingDelta > Math.PI) headingDelta -= Math.PI * 2;
-    while (headingDelta < -Math.PI) headingDelta += Math.PI * 2;
-    const headingBlend = Math.min(1, headingResponse * dt);
-    nextFlight.angVel += ((headingDelta / Math.max(dt, 0.001)) - nextFlight.angVel) * Math.min(1, turnResponse * dt);
-    nextFlight.heading += headingDelta * headingBlend;
-  } else {
+  nextFlight.speed = clamp(nextFlight.speed, 0, maxSpeed);
+  if (Math.abs(turnInput) < 0.001) {
     nextFlight.angVel *= Math.max(0, 1 - turnResponse * dt);
   }
 
+  const velocityX = Math.cos(nextFlight.heading) * nextFlight.speed;
+  const velocityY = Math.sin(nextFlight.heading) * nextFlight.speed;
   nextFlight.x += velocityX * dt;
   nextFlight.y += velocityY * dt;
   nextFlight.x = clamp(nextFlight.x, bounds.minX, bounds.maxX);

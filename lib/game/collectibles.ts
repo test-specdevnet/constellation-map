@@ -496,7 +496,7 @@ export const collectNearbyCollectibles = ({
           y: collectible.y,
           ttlMs: 260,
           size: 30,
-          color: "rgba(255, 116, 112, 0.92)",
+          color: "#ff7470",
         }),
       );
     } else if (collectible.kind === "boost") {
@@ -509,7 +509,7 @@ export const collectNearbyCollectibles = ({
           y: collectible.y,
           ttlMs: 220,
           size: 22,
-          color: "rgba(255, 225, 104, 0.94)",
+          color: "#ffe168",
           vx: 0,
           vy: -24,
         }),
@@ -519,7 +519,7 @@ export const collectNearbyCollectibles = ({
           y: collectible.y,
           ttlMs: 240,
           size: 26,
-          color: "rgba(255, 225, 104, 0.88)",
+          color: "#ffe168",
         }),
       );
     } else {
@@ -531,7 +531,7 @@ export const collectNearbyCollectibles = ({
           y: collectible.y,
           ttlMs: 420,
           size: 34,
-          color: "rgba(255, 255, 255, 0.96)",
+          color: "#ffffff",
         }),
         createEffect({
           kind: "trail",
@@ -539,7 +539,7 @@ export const collectNearbyCollectibles = ({
           y: collectible.y,
           ttlMs: 260,
           size: 24,
-          color: "rgba(120, 228, 255, 0.92)",
+          color: "#78e4ff",
           vx: 0,
           vy: -36,
         }),
