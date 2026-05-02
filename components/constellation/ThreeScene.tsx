@@ -10,6 +10,8 @@ import {
 } from "react";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { DebugHud } from "./DebugHud";
 import { FlightSettingsPanel } from "./FlightSettingsPanel";
 import { MobileDrawer } from "./MobileDrawer";
@@ -73,6 +75,11 @@ import {
   type LandingStation,
   type StationLayout,
 } from "../../lib/game/worldLayout";
+import {
+  getBiplaneMaterialRole,
+  getRuntimeModelConfig,
+  type RuntimeModelId,
+} from "../../lib/game/modelAssets";
 import type {
   Collectible,
   DebugHudSnapshot,
@@ -149,6 +156,9 @@ type SceneRuntime = {
 };
 
 type PlayerMode = "flying" | "landed" | "onFoot";
+type RuntimeModelLoadState =
+  | { status: "idle" | "loading" | "error"; scene: null }
+  | { status: "ready"; scene: THREE.Group };
 type DisclosureSnapshot = Pick<
   FlightTelemetry,
   | "band"
@@ -159,8 +169,9 @@ type DisclosureSnapshot = Pick<
   | "nearestSystemDistance"
 >;
 
-const GAME_STATE_EMIT_INTERVAL_MS = 220;
+const GAME_STATE_EMIT_INTERVAL_MS = 420;
 const TELEMETRY_EMIT_INTERVAL_MS = 160;
+const SCENE_REACT_SYNC_INTERVAL_MS = 420;
 const VISIBILITY_UPDATE_INTERVAL_MS = 180;
 const VISIBILITY_UPDATE_DISTANCE_WORLD = 260;
 const WORLD_SCALE = 0.024;
@@ -181,6 +192,7 @@ const CLOUD_FIELD_MARKERS = {
   medium: 38,
   high: 62,
 } as const;
+const RUNTIME_GLB_MODELS_ENABLED = true;
 const EMPTY_VISIBILITY: DeploymentVisibilityState = {
   visibleSystems: [],
   detailSystems: [],
@@ -197,6 +209,11 @@ const IDLE_FLIGHT_INPUT: FlightInputState = {
   moveX: 0,
   moveY: 0,
 };
+const runtimeModelCache = new Map<
+  RuntimeModelId,
+  { status: "loading"; promise: Promise<THREE.Group> } | { status: "ready"; scene: THREE.Group } | { status: "error" }
+>();
+let runtimeModelLoader: GLTFLoader | null = null;
 let softCloudTexture: THREE.CanvasTexture | null = null;
 
 const to3 = (point: { x: number; y: number }, altitude = 0) =>
@@ -209,6 +226,11 @@ const scheduleSceneAction = (action: () => void) => {
   window.requestAnimationFrame(() => {
     void Promise.resolve().then(action);
   });
+};
+
+const getRuntimeModelLoader = () => {
+  runtimeModelLoader ??= new GLTFLoader();
+  return runtimeModelLoader;
 };
 
 const getSoftCloudTexture = () => {
@@ -233,6 +255,40 @@ const getSoftCloudTexture = () => {
   softCloudTexture.colorSpace = THREE.SRGBColorSpace;
   softCloudTexture.needsUpdate = true;
   return softCloudTexture;
+};
+
+const scheduleIdleModelLoad = (callback: () => void) => {
+  const idleCallback = (window as Window & {
+    requestIdleCallback?: (cb: IdleRequestCallback, options?: IdleRequestOptions) => number;
+  }).requestIdleCallback;
+  if (idleCallback) {
+    idleCallback(callback, { timeout: 900 });
+    return;
+  }
+  window.setTimeout(callback, 16);
+};
+
+const requestRuntimeModel = (modelId: RuntimeModelId) => {
+  const cached = runtimeModelCache.get(modelId);
+  if (cached) return cached;
+  const config = getRuntimeModelConfig(modelId);
+  const entry = {
+    status: "loading" as const,
+    promise: getRuntimeModelLoader()
+      .loadAsync(config.path)
+      .then((gltf) => {
+        const scene = gltf.scene;
+        runtimeModelCache.set(modelId, { status: "ready", scene });
+        return scene;
+      })
+      .catch((error) => {
+        console.warn(`Failed to load ${config.fallbackLabel}`, error);
+        runtimeModelCache.set(modelId, { status: "error" });
+        throw error;
+      }),
+  };
+  runtimeModelCache.set(modelId, entry);
+  return entry;
 };
 
 const shouldIgnoreFlightPointer = (target: EventTarget | null) =>
@@ -321,6 +377,7 @@ export function ThreeScene({
     playerMode: "flying",
   });
   const gameEmitTsRef = useRef(0);
+  const sceneSyncTsRef = useRef(0);
   const telemetryEmitTsRef = useRef(0);
   const disclosureRef = useRef<DisclosureSnapshot>({
     band: "overview",
@@ -419,6 +476,7 @@ export function ThreeScene({
     runtimeRef.current.visibility = EMPTY_VISIBILITY;
     visibilityUpdateRef.current.lastAtMs = 0;
     telemetryEmitTsRef.current = 0;
+    sceneSyncTsRef.current = 0;
     setRunEndSnapshot(null);
     setRuntimeVersion((value) => value + 1);
   }, [bounds]);
@@ -677,7 +735,14 @@ export function ThreeScene({
           setRunEndSnapshot(snapshot);
           onRunComplete?.(toRunRecord(game, nowMs));
         }
-        setRuntimeVersion((value) => value + 1);
+        if (
+          shouldRefreshVisibility ||
+          game.state !== "flying" ||
+          nowMs - sceneSyncTsRef.current >= SCENE_REACT_SYNC_INTERVAL_MS
+        ) {
+          sceneSyncTsRef.current = nowMs;
+          setRuntimeVersion((value) => value + 1);
+        }
       }
 
       debugPerfRef.current.frames += 1;
@@ -810,6 +875,7 @@ export function ThreeScene({
     runtimeRef.current.flight.speed = 180;
     visibilityUpdateRef.current.lastAtMs = 0;
     telemetryEmitTsRef.current = 0;
+    sceneSyncTsRef.current = 0;
     setRunEndSnapshot(null);
     setRuntimeVersion((value) => value + 1);
   }, [bounds]);
@@ -927,6 +993,7 @@ export function ThreeScene({
             stations={stationByClusterId}
             focusTarget={focusTarget}
             cloudsEnabled={featureFlags.clouds}
+            modelsEnabled={RUNTIME_GLB_MODELS_ENABLED}
             qualityMode={qualityMode}
             onSelectApp={onSelectApp}
             onFocusCluster={onFocusCluster}
@@ -1061,6 +1128,7 @@ function ThreeWorld({
   stations,
   focusTarget,
   cloudsEnabled,
+  modelsEnabled,
   qualityMode,
   onSelectApp,
   onFocusCluster,
@@ -1080,6 +1148,7 @@ function ThreeWorld({
   stations: Map<string, StationLayout>;
   focusTarget: CameraTarget | null;
   cloudsEnabled: boolean;
+  modelsEnabled: boolean;
   qualityMode: "low" | "medium" | "high";
   onSelectApp: (appName: string) => void;
   onFocusCluster: (cluster: Cluster) => void;
@@ -1196,7 +1265,7 @@ function ThreeWorld({
           ))}
       </group>
       <Effects effects={runtime.effects} />
-      <Biplane runtime={runtime} selectedSkinId={selectedSkinId} />
+      <Biplane runtime={runtime} selectedSkinId={selectedSkinId} modelsEnabled={modelsEnabled} />
     </>
   );
 }
@@ -1495,6 +1564,118 @@ function CloudPuff({ scale = 1, variant = 0 }: { scale?: number; variant?: numbe
   );
 }
 
+function RuntimeModelAsset({
+  modelId,
+  targetSize,
+  position = [0, 0, 0],
+  rotation = [0, 0, 0],
+  fallback,
+  customize,
+}: {
+  modelId: RuntimeModelId;
+  targetSize?: number;
+  position?: [number, number, number];
+  rotation?: [number, number, number];
+  fallback?: ReactNode;
+  customize?: (root: THREE.Object3D) => void;
+}) {
+  const config = getRuntimeModelConfig(modelId);
+  const [asset, setAsset] = useState<RuntimeModelLoadState>(() => {
+    const cached = runtimeModelCache.get(modelId);
+    return cached?.status === "ready"
+      ? { status: "ready", scene: cached.scene }
+      : cached?.status === "error"
+        ? { status: "error", scene: null }
+        : { status: "idle", scene: null };
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    const cached = runtimeModelCache.get(modelId);
+    if (cached?.status === "ready") {
+      setAsset({ status: "ready", scene: cached.scene });
+      return;
+    }
+    if (cached?.status === "error") {
+      setAsset({ status: "error", scene: null });
+      return;
+    }
+
+    setAsset({ status: "loading", scene: null });
+    scheduleIdleModelLoad(() => {
+      if (cancelled) return;
+      const entry = requestRuntimeModel(modelId);
+      if (entry.status === "ready") {
+        setAsset({ status: "ready", scene: entry.scene });
+        return;
+      }
+      if (entry.status === "error") {
+        setAsset({ status: "error", scene: null });
+        return;
+      }
+      entry.promise
+        .then((scene) => {
+          if (!cancelled) setAsset({ status: "ready", scene });
+        })
+        .catch(() => {
+          if (!cancelled) setAsset({ status: "error", scene: null });
+        });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [modelId]);
+
+  const normalized = useMemo(() => {
+    if (asset.status !== "ready") return null;
+    const root = cloneSkeleton(asset.scene);
+    const box = new THREE.Box3().setFromObject(root);
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    box.getSize(size);
+    box.getCenter(center);
+    const maxDimension = Math.max(size.x, size.y, size.z, 0.001);
+    const scale = (targetSize ?? config.scale) / maxDimension;
+    const bottomY = box.min.y;
+
+    root.position.set(-center.x * scale, -bottomY * scale + config.groundOffset, -center.z * scale);
+    root.scale.setScalar(scale);
+    root.rotation.y += config.rotationY;
+    root.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        child.castShadow = false;
+        child.receiveShadow = true;
+        child.frustumCulled = true;
+        child.geometry.computeBoundingSphere();
+      }
+    });
+    customize?.(root);
+    return root;
+  }, [asset, config.groundOffset, config.rotationY, config.scale, customize, targetSize]);
+
+  if (!normalized) {
+    return <>{fallback}</>;
+  }
+
+  return (
+    <group position={position} rotation={rotation}>
+      <primitive object={normalized} />
+    </group>
+  );
+}
+
+function RuntimeModel(props: {
+  modelId: RuntimeModelId;
+  targetSize?: number;
+  position?: [number, number, number];
+  rotation?: [number, number, number];
+  fallback?: ReactNode;
+  customize?: (root: THREE.Object3D) => void;
+}) {
+  return <RuntimeModelAsset {...props} />;
+}
+
 function StationStructure({
   radius,
   index,
@@ -1763,13 +1944,50 @@ function Effects({ effects }: { effects: VisualEffect[] }) {
 function Biplane({
   runtime,
   selectedSkinId,
+  modelsEnabled,
 }: {
   runtime: SceneRuntime;
   selectedSkinId: PlaneSkinId;
+  modelsEnabled: boolean;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const flight = runtime.flight;
   const palette = selectedSkinId === "classic" ? planeSkinPalettes.classic : planeSkinPalettes[selectedSkinId] ?? planeSkinPalettes.classic;
+  const tintBiplaneModel = useCallback(
+    (root: THREE.Object3D) => {
+      root.traverse((child) => {
+        if (!(child instanceof THREE.Mesh)) return;
+
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        const tintedMaterials = materials.map((material) => {
+          if (!(material instanceof THREE.MeshStandardMaterial)) return material;
+
+          const role = getBiplaneMaterialRole(child.name, material.name);
+          const tint =
+            role === "cockpit"
+              ? "#eef6ff"
+              : role === "prop"
+                ? palette.prop
+                : palette[role];
+          const nextMaterial = material.clone();
+          nextMaterial.color = new THREE.Color(tint);
+          if (role === "cockpit") {
+            nextMaterial.transparent = true;
+            nextMaterial.opacity = 0.72;
+            nextMaterial.roughness = 0.18;
+            nextMaterial.metalness = 0.05;
+          } else {
+            nextMaterial.roughness = role === "trim" ? 0.5 : 0.34;
+            nextMaterial.metalness = role === "trim" ? 0.08 : 0.04;
+          }
+          return nextMaterial;
+        });
+
+        child.material = Array.isArray(child.material) ? tintedMaterials : tintedMaterials[0];
+      });
+    },
+    [palette],
+  );
   useFrame(() => {
     const group = groupRef.current;
     if (!group) return;
@@ -1781,6 +1999,23 @@ function Biplane({
     );
     group.rotation.y = -latestFlight.heading + Math.PI / 2;
   });
+
+  if (modelsEnabled) {
+    return (
+      <group
+        ref={groupRef}
+        position={[flight.x * WORLD_SCALE, PLANE_ALTITUDE, flight.y * WORLD_SCALE]}
+        rotation={[0, -flight.heading + Math.PI / 2, 0]}
+      >
+        <RuntimeModel
+          modelId="biplane"
+          fallback={<BiplaneFallback palette={palette} />}
+          customize={tintBiplaneModel}
+        />
+        <pointLight color="#ff9170" intensity={0.55} distance={7} position={[0, 0.5, -1.5]} />
+      </group>
+    );
+  }
 
   return (
     <group
