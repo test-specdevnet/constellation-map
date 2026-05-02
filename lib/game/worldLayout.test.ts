@@ -2,8 +2,6 @@ import { GAME_CONFIG } from "./config";
 import {
   buildDeploymentDocks,
   buildStationLayout,
-  LANDING_RADIUS_WORLD,
-  REFUEL_STATION_MIN_SPACING_WORLD,
 } from "./worldLayout";
 import type { AppSystem, Cluster } from "../types/star";
 
@@ -47,48 +45,31 @@ const makeSystem = (overrides: Partial<AppSystem>): AppSystem => ({
 });
 
 describe("worldLayout", () => {
-  it("builds deterministic refuel-only station layouts from spaced region clusters", () => {
+  it("does not build refuel stations for the flight world", () => {
     const stations = buildStationLayout([
       makeCluster({ clusterId: "region:a", centroid: { x: 10, y: 20 }, radius: 200 }),
       makeCluster({
         clusterId: "region:b",
-        centroid: { x: REFUEL_STATION_MIN_SPACING_WORLD + 10, y: 90 },
+        centroid: { x: 2_210, y: 90 },
         radius: 4_000,
       }),
     ]);
 
-    expect(stations).toEqual([
-      expect.objectContaining({
-        id: "region:a",
-        kind: "refuel",
-        label: "Refuel station",
-        x: 10,
-        y: 20,
-        radius: LANDING_RADIUS_WORLD,
-      }),
-      expect.objectContaining({
-        id: "region:b",
-        kind: "refuel",
-        label: "Refuel station",
-        x: REFUEL_STATION_MIN_SPACING_WORLD + 10,
-        y: 90,
-        radius: 1_360,
-      }),
-    ]);
+    expect(stations).toEqual([]);
   });
 
-  it("skips nearby clusters so refuel stations are spread out", () => {
+  it("keeps refuel stations disabled even when clusters are far apart", () => {
     const stations = buildStationLayout([
       makeCluster({ clusterId: "region:a", centroid: { x: 0, y: 0 }, radius: 200 }),
       makeCluster({ clusterId: "region:b", centroid: { x: 400, y: 0 }, radius: 200 }),
       makeCluster({
         clusterId: "region:c",
-        centroid: { x: REFUEL_STATION_MIN_SPACING_WORLD + 100, y: 0 },
+        centroid: { x: 2_300, y: 0 },
         radius: 200,
       }),
     ]);
 
-    expect(stations.map((station) => station.id)).toEqual(["region:a", "region:c"]);
+    expect(stations).toEqual([]);
   });
 
   it("creates deployment docks from visible systems", () => {

@@ -38,31 +38,7 @@ export const getStationKind = (): StationKind => "refuel";
 
 export const getStationLabel = () => "Refuel station";
 
-export const buildStationLayout = (regionClusters: Cluster[]): StationLayout[] => {
-  const stations: StationLayout[] = [];
-
-  for (const cluster of regionClusters) {
-    if (
-      stations.some(
-        (station) => distanceBetween(station, cluster.centroid) < REFUEL_STATION_MIN_SPACING_WORLD,
-      )
-    ) {
-      continue;
-    }
-
-    stations.push({
-      id: cluster.clusterId,
-      kind: "refuel",
-      label: getStationLabel(),
-      x: cluster.centroid.x,
-      y: cluster.centroid.y,
-      radius: Math.max(LANDING_RADIUS_WORLD, cluster.radius * 0.34),
-      cluster,
-    });
-  }
-
-  return stations;
-};
+export const buildStationLayout = (_regionClusters: Cluster[]): StationLayout[] => [];
 
 export const buildDeploymentDocks = (systems: AppSystem[]): DeploymentDock[] =>
   systems.map((system) => ({

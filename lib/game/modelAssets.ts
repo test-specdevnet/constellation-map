@@ -18,8 +18,6 @@ export type RuntimeModelConfig = {
   };
 };
 
-export type BiplaneMaterialRole = "body" | "bodyHi" | "wing" | "wingHi" | "trim" | "cockpit" | "prop";
-
 export const RUNTIME_MODEL_CONFIGS: Record<RuntimeModelId, RuntimeModelConfig> = {
   biplane: {
     id: "biplane",
@@ -65,14 +63,3 @@ export const getModelInstanceBudget = (id: RuntimeModelId, qualityMode: "low" | 
   RUNTIME_MODEL_CONFIGS[id].maxInstances[qualityMode];
 
 export const getStationModelId = (): RuntimeModelId => "refuelStation";
-
-export const getBiplaneMaterialRole = (meshName: string, materialName: string): BiplaneMaterialRole => {
-  const name = `${meshName} ${materialName}`.toLowerCase();
-  if (/(glass|canopy|cockpit|window|windshield)/.test(name)) return "cockpit";
-  if (/(prop|spinner|blade)/.test(name)) return "prop";
-  if (/(wheel|tire|tyre|strut|gear|skid|wire|trim|frame|black)/.test(name)) return "trim";
-  if (/(upper|top).*(wing)|wing.*(upper|top)/.test(name)) return "wingHi";
-  if (/wing/.test(name)) return "wing";
-  if (/(nose|engine|cowling|highlight|stripe)/.test(name)) return "bodyHi";
-  return "body";
-};
