@@ -1,5 +1,6 @@
 import {
   RUNTIME_MODEL_CONFIGS,
+  getBiplaneMaterialRole,
   getModelInstanceBudget,
   getRuntimeModelConfig,
   getStationModelId,
@@ -26,5 +27,14 @@ describe("modelAssets", () => {
   it("resolves station kinds to model IDs", () => {
     expect(getStationModelId()).toBe("refuelStation");
     expect(getRuntimeModelConfig(getStationModelId()).path).toContain("refuelstation");
+  });
+
+  it("classifies biplane model materials for skin tinting", () => {
+    expect(getBiplaneMaterialRole("UpperWing_L", "Paint")).toBe("wingHi");
+    expect(getBiplaneMaterialRole("LowerWing_R", "Paint")).toBe("wing");
+    expect(getBiplaneMaterialRole("Canopy", "Glass")).toBe("cockpit");
+    expect(getBiplaneMaterialRole("FrontPropeller", "Wood")).toBe("prop");
+    expect(getBiplaneMaterialRole("LandingGear", "Black")).toBe("trim");
+    expect(getBiplaneMaterialRole("Fuselage", "Paint")).toBe("body");
   });
 });

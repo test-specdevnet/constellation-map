@@ -75,6 +75,7 @@ import {
   type StationLayout,
 } from "../../lib/game/worldLayout";
 import {
+  getBiplaneMaterialRole,
   getRuntimeModelConfig,
   type RuntimeModelId,
 } from "../../lib/game/modelAssets";
@@ -124,6 +125,7 @@ type ThreeSceneProps = {
   snapshotError: boolean;
   flightSettings: FlightSettings;
   featureFlags: FeatureFlags;
+  hudOverlay?: ReactNode;
   customizePanel?: ReactNode;
   onSelectApp: (appName: string) => void;
   onClearSelectedApp: () => void;
@@ -330,6 +332,7 @@ export function ThreeScene({
   snapshotError,
   flightSettings,
   featureFlags,
+  hudOverlay,
   customizePanel,
   onSelectApp,
   onClearSelectedApp,
@@ -913,6 +916,7 @@ export function ThreeScene({
           onPointerMove={(event) => event.stopPropagation()}
           onWheel={(event) => event.stopPropagation()}
         >
+          {hudOverlay}
           {showSettingsPanel ? (
             <FlightSettingsPanel
               open={showSettingsPanel}
@@ -1168,7 +1172,7 @@ function ThreeWorld({
       </group>
       <Effects effects={runtime.effects} />
       <Biplane
-        flight={runtime.flight}
+        runtime={runtime}
         selectedSkinId={selectedSkinId}
         modelsEnabled={modelsEnabled}
       />
@@ -1476,12 +1480,14 @@ function RuntimeModelAsset({
   position = [0, 0, 0],
   rotation = [0, 0, 0],
   fallback,
+  customize,
 }: {
   modelId: RuntimeModelId;
   targetSize?: number;
   position?: [number, number, number];
   rotation?: [number, number, number];
   fallback?: ReactNode;
+  customize?: (root: THREE.Object3D) => void;
 }) {
   const config = getRuntimeModelConfig(modelId);
   const [asset, setAsset] = useState<RuntimeModelLoadState>(() => {
@@ -1554,8 +1560,9 @@ function RuntimeModelAsset({
         child.geometry.computeBoundingSphere();
       }
     });
+    customize?.(root);
     return root;
-  }, [asset, config.groundOffset, config.rotationY, config.scale, modelId, targetSize]);
+  }, [asset, config.groundOffset, config.rotationY, config.scale, customize, modelId, targetSize]);
 
   if (!normalized) {
     return <>{fallback}</>;
@@ -1574,6 +1581,7 @@ function RuntimeModel(props: {
   position?: [number, number, number];
   rotation?: [number, number, number];
   fallback?: ReactNode;
+  customize?: (root: THREE.Object3D) => void;
 }) {
   return <RuntimeModelAsset {...props} />;
 }
@@ -1844,29 +1852,85 @@ function Effects({ effects }: { effects: VisualEffect[] }) {
 }
 
 function Biplane({
-  flight,
+  runtime,
   selectedSkinId,
   modelsEnabled,
 }: {
-  flight: FlightState;
+  runtime: SceneRuntime;
   selectedSkinId: PlaneSkinId;
   modelsEnabled: boolean;
 }) {
+  const groupRef = useRef<THREE.Group>(null);
+  const flight = runtime.flight;
   const palette = selectedSkinId === "classic" ? planeSkinPalettes.classic : planeSkinPalettes[selectedSkinId] ?? planeSkinPalettes.classic;
-  const position = to3(flight, PLANE_ALTITUDE);
+  const tintBiplaneModel = useCallback(
+    (root: THREE.Object3D) => {
+      root.traverse((child) => {
+        if (!(child instanceof THREE.Mesh)) return;
+
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        const tintedMaterials = materials.map((material) => {
+          if (!(material instanceof THREE.MeshStandardMaterial)) return material;
+
+          const role = getBiplaneMaterialRole(child.name, material.name);
+          const tint =
+            role === "cockpit"
+              ? "#eef6ff"
+              : role === "prop"
+                ? palette.prop
+                : palette[role];
+          const nextMaterial = material.clone();
+          nextMaterial.color = new THREE.Color(tint);
+          if (role === "cockpit") {
+            nextMaterial.transparent = true;
+            nextMaterial.opacity = 0.72;
+            nextMaterial.roughness = 0.18;
+            nextMaterial.metalness = 0.05;
+          } else {
+            nextMaterial.roughness = role === "trim" ? 0.5 : 0.34;
+            nextMaterial.metalness = role === "trim" ? 0.08 : 0.04;
+          }
+          return nextMaterial;
+        });
+
+        child.material = Array.isArray(child.material) ? tintedMaterials : tintedMaterials[0];
+      });
+    },
+    [palette],
+  );
+  useFrame(() => {
+    const group = groupRef.current;
+    if (!group) return;
+    const latestFlight = runtime.flight;
+    group.position.set(
+      latestFlight.x * WORLD_SCALE,
+      PLANE_ALTITUDE,
+      latestFlight.y * WORLD_SCALE,
+    );
+    group.rotation.y = -latestFlight.heading + Math.PI / 2;
+  });
   if (modelsEnabled) {
     return (
-      <group position={position} rotation={[0, -flight.heading + Math.PI / 2, 0]}>
+      <group
+        ref={groupRef}
+        position={[flight.x * WORLD_SCALE, PLANE_ALTITUDE, flight.y * WORLD_SCALE]}
+        rotation={[0, -flight.heading + Math.PI / 2, 0]}
+      >
         <RuntimeModel
           modelId="biplane"
           fallback={<BiplaneFallback palette={palette} />}
+          customize={tintBiplaneModel}
         />
         <pointLight color="#ff9170" intensity={0.55} distance={7} position={[0, 0.5, -1.5]} />
       </group>
     );
   }
   return (
-    <group position={position} rotation={[0, -flight.heading + Math.PI / 2, 0]}>
+    <group
+      ref={groupRef}
+      position={[flight.x * WORLD_SCALE, PLANE_ALTITUDE, flight.y * WORLD_SCALE]}
+      rotation={[0, -flight.heading + Math.PI / 2, 0]}
+    >
       <BiplaneFallback palette={palette} />
     </group>
   );
@@ -1945,20 +2009,25 @@ function HologramPanel({
   notice: string | null;
 }) {
   const panelRef = useRef<THREE.Group>(null);
+  const billboardPosition = useRef(
+    new THREE.Vector3(
+      (flight.x + Math.cos(flight.heading) * 360) * WORLD_SCALE,
+      PLANE_ALTITUDE + 6,
+      (flight.y + Math.sin(flight.heading) * 360) * WORLD_SCALE,
+    ),
+  );
   useFrame((state) => {
+    billboardPosition.current.set(
+      (flight.x + Math.cos(flight.heading) * 360) * WORLD_SCALE,
+      PLANE_ALTITUDE + 6,
+      (flight.y + Math.sin(flight.heading) * 360) * WORLD_SCALE,
+    );
     if (panelRef.current) {
-      panelRef.current.position.y += Math.sin(state.clock.elapsedTime * 1.8) * 0.002;
+      panelRef.current.position.y = Math.sin(state.clock.elapsedTime * 1.8) * 0.08;
     }
   });
-  const position = to3(
-    {
-      x: flight.x + Math.cos(flight.heading) * 360,
-      y: flight.y + Math.sin(flight.heading) * 360,
-    },
-    PLANE_ALTITUDE + 6,
-  );
   return (
-    <BillboardGroup position={position}>
+    <BillboardGroup position={billboardPosition.current}>
       <group ref={panelRef}>
         <mesh>
           <planeGeometry args={[8.8, 4.8]} />
@@ -2048,7 +2117,12 @@ function BillboardGroup({
   const ref = useRef<THREE.Group>(null);
   const { camera } = useThree();
   useFrame(() => {
-    ref.current?.quaternion.copy(camera.quaternion);
+    const group = ref.current;
+    if (!group) return;
+    group.quaternion.copy(camera.quaternion);
+    if (position instanceof THREE.Vector3) {
+      group.position.copy(position);
+    }
   });
   return (
     <group ref={ref} position={position}>

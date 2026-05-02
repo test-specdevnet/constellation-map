@@ -469,6 +469,10 @@ function ConstellationExperienceBody({
         .filter((cluster): cluster is Cluster => Boolean(cluster)),
     [activeScene.clusters, systemsById, visibleSystemIds],
   );
+  const regionClusters = useMemo(
+    () => visibleClusters.filter((cluster) => cluster.level === "region"),
+    [visibleClusters],
+  );
 
   useEffect(() => {
     if (!selectedAppName) {
@@ -779,6 +783,33 @@ function ConstellationExperienceBody({
             featureFlags={featureFlags}
             onUpdateFlightSettings={updateFlightSettings}
             onUpdateFeatureFlags={updateFeatureFlags}
+            hudOverlay={
+              <>
+                <div className="scene-mobile-status-stack">
+                  <DiegeticHud
+                    telemetry={telemetry}
+                    snapshot={gameSnapshot}
+                    selectedSkinLabel={selectedSkin?.label ?? "Classic"}
+                    unlockedSkinCount={skins.filter((skin) => skin.unlocked).length}
+                    totalSkinCount={skins.length}
+                    mode={isTabletLayout ? "compact" : "detailed"}
+                  />
+                  <FuelGauge snapshot={gameSnapshot} />
+                  <MiniMap
+                    bounds={activeScene.bounds}
+                    regionClusters={regionClusters}
+                    telemetry={telemetry}
+                    snapshot={gameSnapshot}
+                    visitedRegionIds={progress.visitedRegionIds}
+                    mode={isTabletLayout ? "compact" : "detailed"}
+                    onSelectCluster={handleFocusCluster}
+                  />
+                </div>
+                {activeToast ? (
+                  <AchievementToast toast={activeToast} onDismiss={dismissToast} />
+                ) : null}
+              </>
+            }
             customizePanel={
               <HangarCustomizationPanel
                 skins={skins}
