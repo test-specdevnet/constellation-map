@@ -19,6 +19,7 @@ describe("inputController", () => {
 
     expect(sample.turnAxis).toBe(0);
     expect(sample.throttleAxis).toBe(0);
+    expect(sample.verticalAxis).toBe(0);
   });
 
   it("only applies mouse steering while explicitly active", () => {
@@ -80,5 +81,29 @@ describe("inputController", () => {
       mouseSensitivity: 1,
     });
     expect(sample.turnAxis).toBe(0);
+  });
+
+  it("maps climb and dive keys to the vertical axis", () => {
+    const controller = createInputController();
+    focusInputController(controller);
+    pressControlKey(controller, "Climb");
+
+    let sample = sampleInputController({
+      controller,
+      mouseSensitivity: 1,
+    });
+    expect(sample.verticalAxis).toBe(1);
+    expect(sample.flightInput.climb).toBe(true);
+    expect(sample.flightInput.dive).toBe(false);
+
+    releaseControlKey(controller, "Climb");
+    pressControlKey(controller, "Dive");
+    sample = sampleInputController({
+      controller,
+      mouseSensitivity: 1,
+    });
+    expect(sample.verticalAxis).toBe(-1);
+    expect(sample.flightInput.climb).toBe(false);
+    expect(sample.flightInput.dive).toBe(true);
   });
 });

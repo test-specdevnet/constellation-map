@@ -22,7 +22,16 @@ const bounds = {
   height: 4_000,
 };
 
-const plane: FlightState = { x: 0, y: 0, heading: 0, speed: 220, angVel: 0 };
+const plane: FlightState = {
+  x: 0,
+  y: 0,
+  heading: 0,
+  speed: 220,
+  angVel: 0,
+  altitude: 0,
+  verticalVelocity: 0,
+  pitch: 0,
+};
 
 const fuelCollectible = (overrides: Partial<Collectible> = {}): Collectible => ({
   id: "fuel:existing",
@@ -265,7 +274,7 @@ describe("collectibles", () => {
           active: true,
         },
       ],
-      plane: { x: 0, y: 0, heading: 0, speed: 280, angVel: 0 },
+      plane: { ...plane, speed: 280 },
       nowMs: 5_000,
       fuelRatio: 0.24,
     });

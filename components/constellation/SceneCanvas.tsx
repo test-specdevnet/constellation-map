@@ -192,9 +192,13 @@ const createInitialDebugHudSnapshot = (): DebugHudSnapshot => ({
   input: {
     turnAxis: 0,
     throttleAxis: 0,
+    verticalAxis: 0,
   },
   player: {
     speed: 0,
+    altitude: GAME_CONFIG.altitudeDefault,
+    verticalVelocity: 0,
+    pitch: 0,
     fuel: GAME_CONFIG.fuelMax,
     boostRemainingMs: 0,
     distanceUnits: 0,
@@ -210,6 +214,9 @@ const IDLE_FLIGHT_INPUT: FlightInputState = {
   mouseTurn: 0,
   moveX: 0,
   moveY: 0,
+  climb: false,
+  dive: false,
+  verticalAxis: 0,
 };
 
 function SceneIcon({ children }: { children: ReactNode }) {
@@ -313,7 +320,7 @@ const prefersReducedMotion = () =>
   window.matchMedia &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-const mapToControlKey = (raw: string): string | null => {
+const mapToControlKey = (raw: string): ControlKey | null => {
   if (
     raw === "ArrowUp" ||
     raw === "ArrowDown" ||
@@ -326,6 +333,8 @@ const mapToControlKey = (raw: string): string | null => {
   if (raw === "s" || raw === "S") return "ArrowDown";
   if (raw === "a" || raw === "A") return "ArrowLeft";
   if (raw === "d" || raw === "D") return "ArrowRight";
+  if (raw === "r" || raw === "R" || raw === "q" || raw === "Q") return "Climb";
+  if (raw === "f" || raw === "F" || raw === "e" || raw === "E") return "Dive";
   return null;
 };
 
@@ -686,7 +695,7 @@ export function SceneCanvas({
   const pointerInSceneRef = useRef(false);
   const pickupNoticeTimeoutRef = useRef<number | null>(null);
   const debugPerfRef = useRef({ lastSampleAtMs: 0, frames: 0, ticks: 0 });
-  const debugInputRef = useRef({ turnAxis: 0, throttleAxis: 0 });
+  const debugInputRef = useRef({ turnAxis: 0, throttleAxis: 0, verticalAxis: 0 });
   const lastPickupEventRef = useRef<string | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 760 });
   const [showFlightTip, setShowFlightTip] = useState(false);
@@ -764,6 +773,7 @@ export function SceneCanvas({
     debugInputRef.current = {
       turnAxis: 0,
       throttleAxis: 0,
+      verticalAxis: 0,
     };
   }, []);
   const announcePickup = useCallback((label: string | null) => {
@@ -952,13 +962,13 @@ export function SceneCanvas({
       if (!mapped) return;
       event.preventDefault();
       focusInputController(inputControllerRef.current);
-      pressControlKey(inputControllerRef.current, mapped as ControlKey);
+      pressControlKey(inputControllerRef.current, mapped);
     };
 
     const up = (event: KeyboardEvent) => {
       const mapped = mapToControlKey(event.key);
       if (mapped) {
-        releaseControlKey(inputControllerRef.current, mapped as ControlKey);
+        releaseControlKey(inputControllerRef.current, mapped);
       }
     };
 
@@ -1116,10 +1126,12 @@ export function SceneCanvas({
             ? {
                 turnAxis: sampledInput.turnAxis,
                 throttleAxis: sampledInput.throttleAxis,
+                verticalAxis: sampledInput.verticalAxis,
               }
             : {
                 turnAxis: 0,
                 throttleAxis: 0,
+                verticalAxis: 0,
               };
 
         const nextFlight = integrateFlightState({
@@ -1326,6 +1338,9 @@ export function SceneCanvas({
         heading: lerpAngle(previousFlight.heading, flight.heading, blend),
         speed: lerp(previousFlight.speed, flight.speed, blend),
         angVel: lerp(previousFlight.angVel, flight.angVel, blend),
+        altitude: lerp(previousFlight.altitude, flight.altitude, blend),
+        verticalVelocity: lerp(previousFlight.verticalVelocity, flight.verticalVelocity, blend),
+        pitch: lerp(previousFlight.pitch, flight.pitch, blend),
       };
       const renderCamera: CameraState = {
         x: lerp(previousCamera.x, camera.x, blend),
@@ -1969,6 +1984,9 @@ export function SceneCanvas({
           input: debugInputRef.current,
           player: {
             speed: flight.speed,
+            altitude: flight.altitude,
+            verticalVelocity: flight.verticalVelocity,
+            pitch: flight.pitch,
             fuel: game.fuel,
             boostRemainingMs: Math.max(0, game.boostUntilMs - timestamp),
             distanceUnits: game.distanceUnits,
@@ -1993,6 +2011,8 @@ export function SceneCanvas({
             y: renderFlight.y,
             heading: renderFlight.heading,
             speed: renderFlight.speed,
+            altitude: renderFlight.altitude,
+            pitch: renderFlight.pitch,
           },
           camera: {
             x: renderCamera.x,
@@ -2495,6 +2515,52 @@ export function SceneCanvas({
               onPointerCancel={() => releasePad("ArrowRight")}
             >
               →
+            </button>
+          </div>
+          <div className="scene-flight-pad-row">
+            <button
+              type="button"
+              className="scene-flight-pad-btn"
+              data-label="Climb"
+              aria-label="Climb"
+              onPointerDown={(event) => {
+                event.preventDefault();
+                pressPad("Climb");
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerUp={(event) => {
+                releasePad("Climb");
+                try {
+                  event.currentTarget.releasePointerCapture(event.pointerId);
+                } catch {
+                  // Ignore capture errors.
+                }
+              }}
+              onPointerCancel={() => releasePad("Climb")}
+            >
+              Climb
+            </button>
+            <button
+              type="button"
+              className="scene-flight-pad-btn"
+              data-label="Dive"
+              aria-label="Dive"
+              onPointerDown={(event) => {
+                event.preventDefault();
+                pressPad("Dive");
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerUp={(event) => {
+                releasePad("Dive");
+                try {
+                  event.currentTarget.releasePointerCapture(event.pointerId);
+                } catch {
+                  // Ignore capture errors.
+                }
+              }}
+              onPointerCancel={() => releasePad("Dive")}
+            >
+              Dive
             </button>
           </div>
           </div>

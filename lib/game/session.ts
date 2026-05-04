@@ -106,7 +106,12 @@ export const updateRunResources = ({
         (distanceTravelled / GAME_CONFIG.worldUnitsPerFuelUnit) *
         qualityMultiplier *
         efficiencyMultiplier;
-      game.fuel = clamp(game.fuel - drain, 0, game.fuelMax);
+      const climbPenalty =
+        Math.max(0, flight.verticalVelocity ?? 0) *
+        dt *
+        0.12 /
+        GAME_CONFIG.worldUnitsPerFuelUnit;
+      game.fuel = clamp(game.fuel - drain - climbPenalty, 0, game.fuelMax);
     }
 
     if (game.fuel <= 0) {

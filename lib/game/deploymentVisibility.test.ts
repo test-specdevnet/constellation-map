@@ -5,7 +5,7 @@ import {
 } from "./deploymentVisibility";
 import { GAME_CONFIG } from "./config";
 import type { AppSystem, Cluster, Star } from "../types/star";
-import type { DeploymentVisibilityState } from "./types";
+import type { DeploymentVisibilityState, FlightState } from "./types";
 
 const makeSystem = (systemId: string, x: number, y: number): AppSystem => ({
   systemId,
@@ -74,13 +74,25 @@ const previousVisibility = (
   clusterMarkers: [],
 });
 
+const makeFlight = (overrides: Partial<FlightState> = {}): FlightState => ({
+  x: 0,
+  y: 0,
+  heading: 0,
+  speed: 220,
+  angVel: 0,
+  altitude: 0,
+  verticalVelocity: 0,
+  pitch: 0,
+  ...overrides,
+});
+
 describe("buildDeploymentVisibilityState", () => {
   it("quantizes the visibility anchor so small flight movement does not churn buoy sets", () => {
-    expect(getDeploymentVisibilityAnchor({ x: 102, y: 199, heading: 0, speed: 100, angVel: 0 })).toEqual({
+    expect(getDeploymentVisibilityAnchor(makeFlight({ x: 102, y: 199, speed: 100 }))).toEqual({
       x: 0,
       y: 0,
     });
-    expect(getDeploymentVisibilityAnchor({ x: 214, y: 211, heading: 0, speed: 100, angVel: 0 })).toEqual({
+    expect(getDeploymentVisibilityAnchor(makeFlight({ x: 214, y: 211, speed: 100 }))).toEqual({
       x: 420,
       y: 420,
     });
@@ -102,7 +114,7 @@ describe("buildDeploymentVisibilityState", () => {
       systems: [system],
       starsBySystem,
       clusters: [],
-      flight: { x: 0, y: 0, heading: 0, speed: 220, angVel: 0 },
+      flight: makeFlight(),
       disclosure: {
         band: "overview",
         activeRegionId: "region:east",
@@ -160,7 +172,7 @@ describe("buildDeploymentVisibilityState", () => {
       systems: [system],
       starsBySystem,
       clusters,
-      flight: { x: 0, y: 0, heading: 0, speed: 220, angVel: 0 },
+      flight: makeFlight(),
       disclosure: {
         band: "detail",
         activeRegionId: "region:east",
@@ -197,7 +209,7 @@ describe("buildDeploymentVisibilityState", () => {
       systems: [...tightSystems, ...spacedSystems],
       starsBySystem: new Map(),
       clusters: [],
-      flight: { x: 0, y: 0, heading: 0, speed: 220, angVel: 0 },
+      flight: makeFlight(),
       disclosure: {
         band: "mid",
         activeRegionId: null,
@@ -220,7 +232,7 @@ describe("buildDeploymentVisibilityState", () => {
       systems: [sticky],
       starsBySystem: new Map(),
       clusters: [],
-      flight: { x: 0, y: 0, heading: 0, speed: 220, angVel: 0 },
+      flight: makeFlight(),
       disclosure: {
         band: "mid",
         activeRegionId: null,
@@ -244,7 +256,7 @@ describe("buildDeploymentVisibilityState", () => {
       systems: [stale],
       starsBySystem: new Map(),
       clusters: [],
-      flight: { x: 0, y: 0, heading: 0, speed: 220, angVel: 0 },
+      flight: makeFlight(),
       disclosure: {
         band: "mid",
         activeRegionId: null,
@@ -271,7 +283,7 @@ describe("buildDeploymentVisibilityState", () => {
       systems: [...nearbySystems, selected, searched],
       starsBySystem: new Map(),
       clusters: [],
-      flight: { x: 0, y: 0, heading: 0, speed: 220, angVel: 0 },
+      flight: makeFlight(),
       disclosure: {
         band: "mid",
         activeRegionId: null,

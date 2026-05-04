@@ -17,6 +17,8 @@ export type FlightTelemetry = SceneTelemetry & {
     y: number;
     heading: number;
     speed: number;
+    altitude: number;
+    pitch: number;
   };
   camera: {
     x: number;

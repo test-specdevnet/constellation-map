@@ -13,6 +13,9 @@ const planeAt = (x: number, y: number, speed = 0): FlightState => ({
   speed,
   heading: 0,
   angVel: 0,
+  altitude: 0,
+  verticalVelocity: 0,
+  pitch: 0,
 });
 
 const station = (overrides: Partial<LandingStation> = {}): LandingStation => ({

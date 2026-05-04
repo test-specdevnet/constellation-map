@@ -6,6 +6,19 @@ import {
   discoverDeployment,
   updateRunResources,
 } from "./session";
+import type { FlightState } from "./types";
+
+const flight = (overrides: Partial<FlightState> = {}): FlightState => ({
+  x: 0,
+  y: 0,
+  heading: 0,
+  speed: 0,
+  angVel: 0,
+  altitude: 0,
+  verticalVelocity: 0,
+  pitch: 0,
+  ...overrides,
+});
 
 describe("session", () => {
   it("tracks distance, discoveries, and score for exploration runs", () => {
@@ -13,8 +26,8 @@ describe("session", () => {
 
     accumulateDistanceFlown({
       game,
-      from: { x: 0, y: 0, heading: 0, speed: 200, angVel: 0 },
-      to: { x: 360, y: 0, heading: 0, speed: 200, angVel: 0 },
+      from: flight({ speed: 200 }),
+      to: flight({ x: 360, speed: 200 }),
     });
     const discovered = discoverDeployment(game, "system:alpha");
 
@@ -38,7 +51,7 @@ describe("session", () => {
 
     updateRunResources({
       game,
-      flight: { x: 0, y: 0, heading: 0, speed: 24, angVel: 0 },
+      flight: flight({ speed: 24 }),
       dtMs: 3_000,
       nowMs: 3_000,
       qualityMode: "medium",
@@ -49,6 +62,31 @@ describe("session", () => {
     expect(game.state).toBe("flying");
   });
 
+  it("adds only a small fuel penalty while climbing", () => {
+    const cruise = createGameState();
+    const climbing = createGameState();
+
+    updateRunResources({
+      game: cruise,
+      flight: flight({ speed: 240, verticalVelocity: 0 }),
+      dtMs: 2_000,
+      nowMs: 2_000,
+      qualityMode: "medium",
+      featureFlags: DEFAULT_FEATURE_FLAGS,
+    });
+    updateRunResources({
+      game: climbing,
+      flight: flight({ speed: 240, verticalVelocity: 5 }),
+      dtMs: 2_000,
+      nowMs: 2_000,
+      qualityMode: "medium",
+      featureFlags: DEFAULT_FEATURE_FLAGS,
+    });
+
+    expect(climbing.fuel).toBeLessThan(cruise.fuel);
+    expect(cruise.fuel - climbing.fuel).toBeLessThan(0.01);
+  });
+
   it("lands the run after fuel exhaustion", () => {
     const game = createGameState();
     game.runStartedAtMs = 0;
@@ -56,7 +94,7 @@ describe("session", () => {
 
     updateRunResources({
       game,
-      flight: { x: 0, y: 0, heading: 0, speed: 260, angVel: 0 },
+      flight: flight({ speed: 260 }),
       dtMs: 2_000,
       nowMs: 2_000,
       qualityMode: "high",
@@ -68,7 +106,7 @@ describe("session", () => {
 
     updateRunResources({
       game,
-      flight: { x: 0, y: 0, heading: 0, speed: 90, angVel: 0 },
+      flight: flight({ speed: 90 }),
       dtMs: 2_000,
       nowMs: 4_000,
       qualityMode: "high",

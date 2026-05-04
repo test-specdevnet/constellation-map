@@ -16,6 +16,8 @@ describe("DiegeticHud", () => {
         y: 0,
         heading: 0,
         speed: 310,
+        altitude: 4,
+        pitch: 0.12,
       },
       camera: {
         x: 0,

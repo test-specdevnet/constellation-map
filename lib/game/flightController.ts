@@ -8,6 +8,9 @@ export const createFlightState = (x: number, y: number): FlightState => ({
   heading: -Math.PI / 2,
   speed: 0,
   angVel: 0,
+  altitude: GAME_CONFIG.altitudeDefault,
+  verticalVelocity: 0,
+  pitch: 0,
 });
 
 export const integrateFlightState = ({
@@ -40,8 +43,16 @@ export const integrateFlightState = ({
     1,
   );
   const verticalInput = clamp(input.moveY || (input.accelerate ? 1 : 0) - (input.brake ? 1 : 0), -1, 1);
+  const climbInput = clamp(
+    input.verticalAxis || (input.climb ? 1 : 0) - (input.dive ? 1 : 0),
+    -1,
+    1,
+  );
 
   const nextFlight = { ...flight };
+  nextFlight.altitude = flight.altitude ?? GAME_CONFIG.altitudeDefault;
+  nextFlight.verticalVelocity = flight.verticalVelocity ?? 0;
+  nextFlight.pitch = flight.pitch ?? 0;
 
   const targetAngVel = turnInput * baseTurnRate * (0.55 + Math.min(flight.speed / Math.max(maxSpeed, 1), 1) * 0.45);
   nextFlight.angVel += (targetAngVel - nextFlight.angVel) * Math.min(1, turnResponse * dt);
@@ -68,6 +79,34 @@ export const integrateFlightState = ({
   nextFlight.y += velocityY * dt;
   nextFlight.x = clamp(nextFlight.x, bounds.minX, bounds.maxX);
   nextFlight.y = clamp(nextFlight.y, bounds.minY, bounds.maxY);
+
+  const climbAcceleration = GAME_CONFIG.climbAcceleration * (lowQuality ? 0.82 : highQuality ? 1.08 : 1);
+  nextFlight.verticalVelocity += climbInput * climbAcceleration * dt;
+  nextFlight.verticalVelocity *= Math.exp(-GAME_CONFIG.verticalDrag * dt);
+  nextFlight.verticalVelocity = clamp(
+    nextFlight.verticalVelocity,
+    -GAME_CONFIG.maxVerticalSpeed,
+    GAME_CONFIG.maxVerticalSpeed,
+  );
+  nextFlight.altitude = clamp(
+    nextFlight.altitude + nextFlight.verticalVelocity * dt,
+    GAME_CONFIG.altitudeMin,
+    GAME_CONFIG.altitudeMax,
+  );
+  if (
+    (nextFlight.altitude <= GAME_CONFIG.altitudeMin && nextFlight.verticalVelocity < 0) ||
+    (nextFlight.altitude >= GAME_CONFIG.altitudeMax && nextFlight.verticalVelocity > 0)
+  ) {
+    nextFlight.verticalVelocity = 0;
+  }
+
+  const targetPitch = clamp(
+    climbInput * GAME_CONFIG.maxPitchRadians +
+      (nextFlight.verticalVelocity / Math.max(GAME_CONFIG.maxVerticalSpeed, 1)) * 0.08,
+    -GAME_CONFIG.maxPitchRadians,
+    GAME_CONFIG.maxPitchRadians,
+  );
+  nextFlight.pitch += (targetPitch - nextFlight.pitch) * Math.min(1, 10 * dt);
 
   return nextFlight;
 };

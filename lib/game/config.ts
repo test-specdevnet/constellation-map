@@ -76,6 +76,13 @@ export const GAME_CONFIG = {
   boostPickupTtlMs: 28_000,
   parachuterTtlMs: 32_000,
   playerPickupRadius: 46,
+  altitudeDefault: 0,
+  altitudeMin: 0,
+  altitudeMax: 12,
+  climbAcceleration: 18,
+  verticalDrag: 5.2,
+  maxVerticalSpeed: 7,
+  maxPitchRadians: 0.34,
   localSystemRadius: 1_720,
   detailSystemRadius: 1_050,
   maxVisibleSystems: {

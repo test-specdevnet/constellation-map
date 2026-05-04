@@ -208,6 +208,9 @@ const IDLE_FLIGHT_INPUT: FlightInputState = {
   mouseTurn: 0,
   moveX: 0,
   moveY: 0,
+  climb: false,
+  dive: false,
+  verticalAxis: 0,
 };
 const runtimeModelCache = new Map<
   RuntimeModelId,
@@ -306,6 +309,8 @@ const controlKeyFromEvent = (key: string): ControlKey | null => {
   if (key === "ArrowDown" || normalized === "s") return "ArrowDown";
   if (key === "ArrowLeft" || normalized === "a") return "ArrowLeft";
   if (key === "ArrowRight" || normalized === "d") return "ArrowRight";
+  if (normalized === "r" || normalized === "q") return "Climb";
+  if (normalized === "f" || normalized === "e") return "Dive";
   return null;
 };
 
@@ -314,9 +319,12 @@ const createInitialDebugHudSnapshot = (): DebugHudSnapshot => ({
   frameMs: 0,
   tickRate: 0,
   counts: { deployments: 0, clusters: 0, parachuters: 0, powerUps: 0, clouds: 0 },
-  input: { turnAxis: 0, throttleAxis: 0 },
+  input: { turnAxis: 0, throttleAxis: 0, verticalAxis: 0 },
   player: {
     speed: 0,
+    altitude: GAME_CONFIG.altitudeDefault,
+    verticalVelocity: 0,
+    pitch: 0,
     fuel: GAME_CONFIG.fuelMax,
     boostRemainingMs: 0,
     distanceUnits: 0,
@@ -712,6 +720,8 @@ export function ThreeScene({
             y: nextFlight.y,
             heading: nextFlight.heading,
             speed: nextFlight.speed,
+            altitude: nextFlight.altitude,
+            pitch: nextFlight.pitch,
           },
           camera: {
             x: cameraFollow.x,
@@ -768,6 +778,9 @@ export function ThreeScene({
             input: inputSample,
             player: {
               speed: Math.round(nextFlight.speed),
+              altitude: Math.round(nextFlight.altitude * 10) / 10,
+              verticalVelocity: Math.round(nextFlight.verticalVelocity * 10) / 10,
+              pitch: Math.round(nextFlight.pitch * 100) / 100,
               fuel: Math.round(game.fuel),
               boostRemainingMs: Math.max(0, Math.round(game.boostUntilMs - nowMs)),
               distanceUnits: game.distanceUnits,
@@ -833,6 +846,8 @@ export function ThreeScene({
           y: Math.round(runtime.flight.y),
           heading: Number(runtime.flight.heading.toFixed(3)),
           speed: Math.round(runtime.flight.speed),
+          altitude: Number(runtime.flight.altitude.toFixed(2)),
+          pitch: Number(runtime.flight.pitch.toFixed(3)),
           fuel: Math.round(runtime.game.fuel),
         },
         visibleDeployments: runtime.visibility.visibleSystems.length,
@@ -1169,12 +1184,13 @@ function ThreeWorld({
   useFrame((state, delta) => {
     onTick(Math.min(delta * 1000, GAME_CONFIG.maxFrameMs), state.clock.elapsedTime);
     const flight = runtime.flight;
-    planePosition.current.set(flight.x * WORLD_SCALE, PLANE_ALTITUDE, flight.y * WORLD_SCALE);
+    const flightAltitude = PLANE_ALTITUDE + flight.altitude;
+    planePosition.current.set(flight.x * WORLD_SCALE, flightAltitude, flight.y * WORLD_SCALE);
     const zoomRatio =
       (runtime.zoom - GAME_CONFIG.zoomMin) /
       Math.max(GAME_CONFIG.zoomMax - GAME_CONFIG.zoomMin, 0.001);
     const distance = THREE.MathUtils.lerp(42, 22, zoomRatio);
-    const height = THREE.MathUtils.lerp(22, 12, zoomRatio);
+    const height = THREE.MathUtils.lerp(22, 12, zoomRatio) + flight.altitude * 0.52;
     behindOffset.current.set(
       -Math.cos(flight.heading) * distance,
       height,
@@ -1185,7 +1201,7 @@ function ThreeWorld({
       desiredCamera.current.lerp(
         behindOffset.current.set(
           focusTarget.x * WORLD_SCALE,
-          PLANE_ALTITUDE + 18,
+          flightAltitude + 18,
           focusTarget.y * WORLD_SCALE,
         ),
         0.08,
@@ -1998,18 +2014,18 @@ function Biplane({
     const latestFlight = runtime.flight;
     group.position.set(
       latestFlight.x * WORLD_SCALE,
-      PLANE_ALTITUDE,
+      PLANE_ALTITUDE + latestFlight.altitude,
       latestFlight.y * WORLD_SCALE,
     );
-    group.rotation.y = -latestFlight.heading + Math.PI / 2;
+    group.rotation.set(latestFlight.pitch, -latestFlight.heading + Math.PI / 2, 0);
   });
 
   if (modelsEnabled) {
     return (
       <group
         ref={groupRef}
-        position={[flight.x * WORLD_SCALE, PLANE_ALTITUDE, flight.y * WORLD_SCALE]}
-        rotation={[0, -flight.heading + Math.PI / 2, 0]}
+        position={[flight.x * WORLD_SCALE, PLANE_ALTITUDE + flight.altitude, flight.y * WORLD_SCALE]}
+        rotation={[flight.pitch, -flight.heading + Math.PI / 2, 0]}
       >
         <RuntimeModel
           modelId="biplane"
@@ -2024,8 +2040,8 @@ function Biplane({
   return (
     <group
       ref={groupRef}
-      position={[flight.x * WORLD_SCALE, PLANE_ALTITUDE, flight.y * WORLD_SCALE]}
-      rotation={[0, -flight.heading + Math.PI / 2, 0]}
+      position={[flight.x * WORLD_SCALE, PLANE_ALTITUDE + flight.altitude, flight.y * WORLD_SCALE]}
+      rotation={[flight.pitch, -flight.heading + Math.PI / 2, 0]}
     >
       <BiplaneFallback palette={palette} />
     </group>
@@ -2280,6 +2296,25 @@ function TouchFlightPad({
           ["ArrowLeft", "Left"],
           ["ArrowDown", "Down"],
           ["ArrowRight", "Right"],
+        ].map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            className="scene-flight-pad-btn"
+            data-label={label}
+            onPointerDown={() => press(key as ControlKey)}
+            onPointerUp={() => release(key as ControlKey)}
+            onPointerCancel={() => release(key as ControlKey)}
+            onPointerLeave={() => release(key as ControlKey)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="scene-flight-pad-row">
+        {[
+          ["Climb", "Climb"],
+          ["Dive", "Dive"],
         ].map(([key, label]) => (
           <button
             key={key}

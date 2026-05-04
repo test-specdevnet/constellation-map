@@ -1,7 +1,7 @@
 import { clamp } from "./config";
 import type { FlightInputState } from "./types";
 
-export type ControlKey = "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight";
+export type ControlKey = "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "Climb" | "Dive";
 
 export type InputController = {
   pressed: Set<ControlKey>;
@@ -14,6 +14,7 @@ export type InputSample = {
   flightInput: FlightInputState;
   turnAxis: number;
   throttleAxis: number;
+  verticalAxis: number;
 };
 
 const POINTER_DEADZONE = 0.08;
@@ -88,6 +89,12 @@ export const sampleInputController = ({
     -1,
     1,
   );
+  const verticalAxis = clamp(
+    (controller.pressed.has("Climb") ? 1 : 0) -
+      (controller.pressed.has("Dive") ? 1 : 0),
+    -1,
+    1,
+  );
 
   return {
     flightInput: {
@@ -98,8 +105,12 @@ export const sampleInputController = ({
       mouseTurn,
       moveX: turnAxis,
       moveY: throttleAxis,
+      climb: verticalAxis > 0,
+      dive: verticalAxis < 0,
+      verticalAxis,
     },
     turnAxis,
     throttleAxis,
+    verticalAxis,
   };
 };

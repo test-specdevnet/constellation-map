@@ -26,6 +26,9 @@ export type FlightState = {
   heading: number;
   speed: number;
   angVel: number;
+  altitude: number;
+  verticalVelocity: number;
+  pitch: number;
 };
 
 export type FlightInputState = {
@@ -36,6 +39,9 @@ export type FlightInputState = {
   mouseTurn: number;
   moveX: number;
   moveY: number;
+  climb: boolean;
+  dive: boolean;
+  verticalAxis: number;
 };
 
 export type Collectible = {
@@ -174,9 +180,13 @@ export type DebugHudSnapshot = {
   input: {
     turnAxis: number;
     throttleAxis: number;
+    verticalAxis: number;
   };
   player: {
     speed: number;
+    altitude: number;
+    verticalVelocity: number;
+    pitch: number;
     fuel: number;
     boostRemainingMs: number;
     distanceUnits: number;

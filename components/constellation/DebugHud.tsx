@@ -44,12 +44,16 @@ export function DebugHud({
           <span>Input</span>
           <strong>Turn {formatSigned(stats.input.turnAxis)}</strong>
           <small>Throttle {formatSigned(stats.input.throttleAxis)}</small>
+          <small>Vertical {formatSigned(stats.input.verticalAxis)}</small>
           <small>Mouse-steer smoothing active</small>
         </div>
 
         <div className="debug-hud__card">
           <span>Player</span>
           <strong>{Math.round(stats.player.speed)} kt</strong>
+          <small>
+            Alt {stats.player.altitude.toFixed(1)} - Pitch {formatSigned(stats.player.pitch)}
+          </small>
           <small>Fuel {Math.round(stats.player.fuel)} · Route {stats.player.distanceUnits}</small>
           <small>
             {stats.player.boostRemainingMs > 0

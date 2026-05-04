@@ -19,6 +19,9 @@ const input = (overrides: Partial<FlightInputState>): FlightInputState => ({
   mouseTurn: 0,
   moveX: 0,
   moveY: 0,
+  climb: false,
+  dive: false,
+  verticalAxis: 0,
   ...overrides,
 });
 
@@ -84,5 +87,39 @@ describe("integrateFlightState", () => {
     });
 
     expect(Math.abs(released.angVel)).toBeLessThan(Math.abs(turning.angVel));
+  });
+
+  it("climbs, dives, and clamps altitude without changing map position semantics", () => {
+    const start = { ...createFlightState(0, 0), speed: 260, altitude: 4 };
+    const climbing = integrateFlightState({
+      flight: start,
+      input: input({ climb: true, verticalAxis: 1 }),
+      bounds,
+      dtMs: 500,
+      qualityMode: "medium",
+      boostActive: false,
+    });
+    const diving = integrateFlightState({
+      flight: climbing,
+      input: input({ dive: true, verticalAxis: -1 }),
+      bounds,
+      dtMs: 500,
+      qualityMode: "medium",
+      boostActive: false,
+    });
+    const clamped = integrateFlightState({
+      flight: { ...createFlightState(0, 0), altitude: 0, verticalVelocity: -10 },
+      input: input({ dive: true, verticalAxis: -1 }),
+      bounds,
+      dtMs: 1_000,
+      qualityMode: "medium",
+      boostActive: false,
+    });
+
+    expect(climbing.altitude).toBeGreaterThan(start.altitude);
+    expect(climbing.pitch).toBeGreaterThan(0);
+    expect(diving.pitch).toBeLessThan(climbing.pitch);
+    expect(clamped.altitude).toBe(0);
+    expect(clamped.verticalVelocity).toBe(0);
   });
 });

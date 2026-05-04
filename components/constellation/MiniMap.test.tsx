@@ -88,6 +88,8 @@ describe("MiniMap", () => {
             y: 0,
             heading: 0,
             speed: 220,
+            altitude: 3,
+            pitch: 0,
           },
           camera: {
             x: 0,
