@@ -40,7 +40,7 @@ const readBooleanEnvFlag = (name: string, fallback: boolean) => {
 };
 
 export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
-  fuelSystem: readBooleanEnvFlag("NEXT_PUBLIC_FC_FLAG_FUEL", true),
+  fuelSystem: true,
   pickups: readBooleanEnvFlag("NEXT_PUBLIC_FC_FLAG_PICKUPS", true),
   leaderboard: readBooleanEnvFlag("NEXT_PUBLIC_FC_FLAG_LEADERBOARD", true),
   clouds: readBooleanEnvFlag("NEXT_PUBLIC_FC_FLAG_CLOUDS", true),

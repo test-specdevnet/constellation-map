@@ -62,6 +62,21 @@ describe("session", () => {
     expect(game.state).toBe("flying");
   });
 
+  it("keeps fuel depletion active even if stale progress disabled the fuel flag", () => {
+    const game = createGameState();
+
+    updateRunResources({
+      game,
+      flight: flight({ speed: 220 }),
+      dtMs: 1_000,
+      nowMs: 1_000,
+      qualityMode: "medium",
+      featureFlags: { ...DEFAULT_FEATURE_FLAGS, fuelSystem: false },
+    });
+
+    expect(game.fuel).toBeLessThan(game.fuelMax);
+  });
+
   it("adds only a small fuel penalty while climbing", () => {
     const cruise = createGameState();
     const climbing = createGameState();

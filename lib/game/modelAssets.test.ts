@@ -4,7 +4,7 @@ import {
   getBiplaneMaterialRole,
   getRuntimeModelConfig,
 } from "./modelAssets";
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 describe("modelAssets", () => {
@@ -27,9 +27,11 @@ describe("modelAssets", () => {
   it("keeps only the optimized biplane GLB in public assets", () => {
     const modelDirs = ["public/models", "public/models-optimized"];
     const glbs = modelDirs.flatMap((dir) =>
-      readdirSync(join(process.cwd(), dir), { withFileTypes: true })
-        .filter((entry) => entry.isFile() && entry.name.endsWith(".glb"))
-        .map((entry) => `${dir}/${entry.name}`),
+      existsSync(join(process.cwd(), dir))
+        ? readdirSync(join(process.cwd(), dir), { withFileTypes: true })
+            .filter((entry) => entry.isFile() && entry.name.endsWith(".glb"))
+            .map((entry) => `${dir}/${entry.name}`)
+        : [],
     );
 
     expect(glbs).toEqual(["public/models-optimized/biplane.glb"]);

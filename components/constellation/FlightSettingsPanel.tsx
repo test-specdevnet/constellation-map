@@ -94,7 +94,6 @@ export function FlightSettingsPanel({
       {(
         [
           ["debugHud", "Debug HUD"],
-          ["fuelSystem", "Fuel system"],
           ["pickups", "Fuel and boost pickups"],
           ["leaderboard", "Leaderboard"],
           ["clouds", "Clouds"],

@@ -122,7 +122,7 @@ const defaultProgress: ProgressState = {
   playerCallsign: "Pilot",
   weeklyLeaderboards: {},
   flightSettings: DEFAULT_FLIGHT_SETTINGS,
-  featureFlags: DEFAULT_FEATURE_FLAGS,
+  featureFlags: { ...DEFAULT_FEATURE_FLAGS, fuelSystem: true },
 };
 
 const skinCatalog: Array<{
@@ -212,10 +212,7 @@ const normalizeProgress = (input: Partial<ProgressState> | null | undefined): Pr
         : DEFAULT_FLIGHT_SETTINGS.hudDensity,
   },
   featureFlags: {
-    fuelSystem:
-      typeof input?.featureFlags?.fuelSystem === "boolean"
-        ? input.featureFlags.fuelSystem
-        : DEFAULT_FEATURE_FLAGS.fuelSystem,
+    fuelSystem: true,
     pickups:
       typeof input?.featureFlags?.pickups === "boolean"
         ? input.featureFlags.pickups
@@ -524,6 +521,7 @@ export function ConstellationProgressProvider({
         featureFlags: {
           ...current.featureFlags,
           ...flags,
+          fuelSystem: true,
         },
       }));
     },

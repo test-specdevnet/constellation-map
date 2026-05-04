@@ -84,7 +84,7 @@ export const updateRunResources = ({
   dtMs,
   nowMs,
   qualityMode,
-  featureFlags,
+  featureFlags: _featureFlags,
 }: {
   game: GameState;
   flight: FlightState;
@@ -95,7 +95,7 @@ export const updateRunResources = ({
 }) => {
   const dt = dtMs / 1000;
 
-  if (game.state === "flying" && featureFlags.fuelSystem) {
+  if (game.state === "flying") {
     const distanceTravelled = Math.max(0, flight.speed * dt);
     if (distanceTravelled > 0.5) {
       const qualityMultiplier =
@@ -118,10 +118,6 @@ export const updateRunResources = ({
       game.endReason = "Fuel exhausted";
       game.landingStartedAtMs = nowMs;
     }
-  }
-
-  if (!featureFlags.fuelSystem) {
-    game.fuel = game.fuelMax;
   }
 
   if (
