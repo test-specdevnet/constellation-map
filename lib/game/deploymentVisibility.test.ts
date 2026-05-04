@@ -5,6 +5,7 @@ import {
 } from "./deploymentVisibility";
 import { GAME_CONFIG } from "./config";
 import type { AppSystem, Cluster, Star } from "../types/star";
+import type { DeploymentVisibilityState } from "./types";
 
 const makeSystem = (systemId: string, x: number, y: number): AppSystem => ({
   systemId,
@@ -60,6 +61,17 @@ const makeStar = (systemId: string, index: number): Star => ({
     rareArchetypeId: null,
   },
   metadata: {},
+});
+
+const previousVisibility = (
+  visibleSystems: AppSystem[],
+  detailSystems: AppSystem[] = [],
+): DeploymentVisibilityState => ({
+  visibleSystems,
+  detailSystems,
+  detailSystemIds: new Set(detailSystems.map((system) => system.systemId)),
+  visibleStarsBySystem: new Map(),
+  clusterMarkers: [],
 });
 
 describe("buildDeploymentVisibilityState", () => {
@@ -199,5 +211,81 @@ describe("buildDeploymentVisibilityState", () => {
 
     expect(result.visibleSystems).toHaveLength(GAME_CONFIG.maxVisibleSystems.medium);
     expect(result.visibleSystems.some((system) => system.systemId.startsWith("spaced:"))).toBe(true);
+  });
+
+  it("keeps previously visible systems sticky just beyond the local radius", () => {
+    const sticky = makeSystem("system:sticky", GAME_CONFIG.localSystemRadius + 260, 0);
+
+    const result = buildDeploymentVisibilityState({
+      systems: [sticky],
+      starsBySystem: new Map(),
+      clusters: [],
+      flight: { x: 0, y: 0, heading: 0, speed: 220, angVel: 0 },
+      disclosure: {
+        band: "mid",
+        activeRegionId: null,
+        activeRuntimeId: null,
+      },
+      selectedAppName: null,
+      searchMatches: new Set<string>(),
+      qualityMode: "medium",
+      densityLimitsEnabled: true,
+      previousVisibility: previousVisibility([sticky]),
+    });
+
+    expect(result.visibleSystems.map((system) => system.systemId)).toContain(sticky.systemId);
+    expect(result.visibleSystems).toHaveLength(1);
+  });
+
+  it("drops sticky systems once they are well outside the local radius", () => {
+    const stale = makeSystem("system:stale", GAME_CONFIG.localSystemRadius + 620, 0);
+
+    const result = buildDeploymentVisibilityState({
+      systems: [stale],
+      starsBySystem: new Map(),
+      clusters: [],
+      flight: { x: 0, y: 0, heading: 0, speed: 220, angVel: 0 },
+      disclosure: {
+        band: "mid",
+        activeRegionId: null,
+        activeRuntimeId: null,
+      },
+      selectedAppName: null,
+      searchMatches: new Set<string>(),
+      qualityMode: "medium",
+      densityLimitsEnabled: true,
+      previousVisibility: previousVisibility([stale]),
+    });
+
+    expect(result.visibleSystems).toHaveLength(0);
+  });
+
+  it("pins selected and search matched deployments while keeping caps bounded", () => {
+    const nearbySystems = Array.from({ length: GAME_CONFIG.maxVisibleSystems.low + 8 }, (_, index) =>
+      makeSystem(`near:${index.toString().padStart(2, "0")}`, index * 32, 0),
+    );
+    const selected = makeSystem("selected", 8_000, 0);
+    const searched = makeSystem("searched", -8_000, 0);
+
+    const result = buildDeploymentVisibilityState({
+      systems: [...nearbySystems, selected, searched],
+      starsBySystem: new Map(),
+      clusters: [],
+      flight: { x: 0, y: 0, heading: 0, speed: 220, angVel: 0 },
+      disclosure: {
+        band: "mid",
+        activeRegionId: null,
+        activeRuntimeId: null,
+      },
+      selectedAppName: selected.appName,
+      searchMatches: new Set<string>([searched.appName]),
+      qualityMode: "low",
+      densityLimitsEnabled: true,
+    });
+
+    expect(result.visibleSystems).toHaveLength(GAME_CONFIG.maxVisibleSystems.low);
+    expect(result.visibleSystems.map((system) => system.systemId)).toEqual(
+      expect.arrayContaining([selected.systemId, searched.systemId]),
+    );
   });
 });

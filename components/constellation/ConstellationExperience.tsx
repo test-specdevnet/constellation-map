@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useEffect, useMemo, useState, type ReactNode } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { FilterState } from "./FilterBar";
 import { FilterBar } from "./FilterBar";
 import { SearchBox } from "./SearchBox";
@@ -305,6 +305,7 @@ function ConstellationExperienceBody({
   const [detail, setDetail] = useState<AppDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
+  const detailCacheRef = useRef(new Map<string, AppDetail>());
   const [statusMessage, setStatusMessage] = useState("");
   const [telemetry, setTelemetry] = useState<FlightTelemetry | null>(null);
   const [gameSnapshot, setGameSnapshot] = useState<GameSessionSnapshot | null>(null);
@@ -481,6 +482,15 @@ function ConstellationExperienceBody({
       return;
     }
 
+    const detailCacheKey = `${activeScene.generatedAt}:${selectedAppName}`;
+    const cachedDetail = detailCacheRef.current.get(detailCacheKey);
+    if (cachedDetail) {
+      setDetail(cachedDetail);
+      setDetailLoading(false);
+      setDetailError("");
+      return;
+    }
+
     let cancelled = false;
     setDetailLoading(true);
     setDetailError("");
@@ -488,6 +498,13 @@ function ConstellationExperienceBody({
     fetchAppDetail(selectedAppName)
       .then((payload) => {
         if (!cancelled) {
+          detailCacheRef.current.set(detailCacheKey, payload);
+          if (detailCacheRef.current.size > 24) {
+            const oldestKey = detailCacheRef.current.keys().next().value;
+            if (oldestKey) {
+              detailCacheRef.current.delete(oldestKey);
+            }
+          }
           setDetail(payload);
         }
       })
@@ -507,7 +524,7 @@ function ConstellationExperienceBody({
     return () => {
       cancelled = true;
     };
-  }, [selectedAppName]);
+  }, [activeScene.generatedAt, selectedAppName]);
 
   useEffect(() => {
     if (telemetry?.activeRegionId) {

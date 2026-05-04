@@ -1179,6 +1179,7 @@ export function SceneCanvas({
             searchMatches: matchSet,
             qualityMode,
             densityLimitsEnabled: featureFlags.deploymentClustering,
+            previousVisibility: visibilityRef.current,
           });
           if (
             clusterMarkerSignature(visibilityRef.current.clusterMarkers) !==

@@ -172,8 +172,8 @@ type DisclosureSnapshot = Pick<
 const GAME_STATE_EMIT_INTERVAL_MS = 420;
 const TELEMETRY_EMIT_INTERVAL_MS = 160;
 const SCENE_REACT_SYNC_INTERVAL_MS = 620;
-const VISIBILITY_UPDATE_INTERVAL_MS = 340;
-const VISIBILITY_UPDATE_DISTANCE_WORLD = 420;
+const VISIBILITY_UPDATE_INTERVAL_MS = 520;
+const VISIBILITY_UPDATE_DISTANCE_WORLD = 640;
 const WORLD_SCALE = 0.024;
 const PLANE_ALTITUDE = 6.4;
 const ISLAND_ALTITUDE = 1.2;
@@ -616,6 +616,7 @@ export function ThreeScene({
           searchMatches: matchSet,
           qualityMode,
           densityLimitsEnabled: featureFlags.deploymentClustering,
+          previousVisibility: runtime.visibility,
         });
         visibilityUpdateRef.current = {
           lastAtMs: nowMs,

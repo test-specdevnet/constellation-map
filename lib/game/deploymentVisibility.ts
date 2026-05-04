@@ -9,6 +9,8 @@ const distance = (left: { x: number; y: number }, right: { x: number; y: number 
   Math.hypot(left.x - right.x, left.y - right.y);
 
 const VISIBILITY_ANCHOR_GRID = 420;
+const STICKY_LOCAL_RADIUS_BUFFER = 420;
+const STICKY_DETAIL_RADIUS_BUFFER = 280;
 const SYSTEM_SPACING_BY_QUALITY: Record<QualityMode, number> = {
   low: 360,
   medium: 300,
@@ -115,6 +117,7 @@ export const buildDeploymentVisibilityState = ({
   searchMatches,
   qualityMode,
   densityLimitsEnabled,
+  previousVisibility,
 }: {
   systems: AppSystem[];
   starsBySystem: Map<string, Star[]>;
@@ -129,6 +132,7 @@ export const buildDeploymentVisibilityState = ({
   searchMatches: Set<string>;
   qualityMode: QualityMode;
   densityLimitsEnabled: boolean;
+  previousVisibility?: DeploymentVisibilityState;
 }): DeploymentVisibilityState => {
   const maxVisibleSystems = GAME_CONFIG.maxVisibleSystems[qualityMode];
   const maxDetailSystems = GAME_CONFIG.maxDetailSystems[qualityMode];
@@ -150,6 +154,7 @@ export const buildDeploymentVisibilityState = ({
       )
     : new Set<string>();
 
+  const systemById = new Map(systems.map((system) => [system.systemId, system]));
   const prioritizedSystems = systems
     .map((system) => {
       const systemDistance = distance(system, visibilityAnchor);
@@ -172,9 +177,41 @@ export const buildDeploymentVisibilityState = ({
         priority > 0 || systemDistance <= GAME_CONFIG.localSystemRadius,
     )
     .sort(byPriorityThenDistance);
+  const prioritizedSystemIds = new Set(prioritizedSystems.map(({ system }) => system.systemId));
+  const stickySystems =
+    previousVisibility?.visibleSystems
+      .map((previousSystem) => {
+        if (prioritizedSystemIds.has(previousSystem.systemId)) {
+          return null;
+        }
+
+        const system = systemById.get(previousSystem.systemId);
+        if (!system) {
+          return null;
+        }
+
+        const systemDistance = distance(system, visibilityAnchor);
+        const wasDetailed = previousVisibility.detailSystemIds.has(system.systemId);
+        const stickyRadius = wasDetailed
+          ? GAME_CONFIG.detailSystemRadius + STICKY_DETAIL_RADIUS_BUFFER
+          : GAME_CONFIG.localSystemRadius + STICKY_LOCAL_RADIUS_BUFFER;
+        if (systemDistance > stickyRadius) {
+          return null;
+        }
+
+        return {
+          system,
+          distance: systemDistance,
+          priority: wasDetailed ? 44 : 24,
+        };
+      })
+      .filter(
+        (candidate): candidate is { system: AppSystem; distance: number; priority: number } =>
+          Boolean(candidate),
+      ) ?? [];
 
   const spacedSystems = selectSpacedSystems({
-    candidates: prioritizedSystems,
+    candidates: [...prioritizedSystems, ...stickySystems].sort(byPriorityThenDistance),
     maxVisibleSystems,
     minSpacing: SYSTEM_SPACING_BY_QUALITY[qualityMode],
   });
