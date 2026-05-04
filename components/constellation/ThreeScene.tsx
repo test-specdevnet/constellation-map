@@ -18,7 +18,7 @@ import { MobileDrawer } from "./MobileDrawer";
 import { useMediaQuery } from "./useMediaQuery";
 import { BUILD_STAMP } from "../../lib/buildStamp";
 import { getBuoyColorway } from "../../lib/canvas/buoyCategory";
-import { planeSkinPalettes, type PlaneSkinId } from "../../lib/canvas/cartoonMarkers";
+import { planeSkinPalettes } from "../../lib/canvas/cartoonMarkers";
 import {
   getDisclosureState,
   type FlightTelemetry,
@@ -119,7 +119,6 @@ type ThreeSceneProps = {
   selectedAppDetail: AppDetail | null;
   selectedAppDetailLoading: boolean;
   selectedAppDetailError: string;
-  selectedSkinId: PlaneSkinId;
   searchMatches: string[];
   focusTarget: CameraTarget | null;
   mapDataLoading: boolean;
@@ -127,7 +126,6 @@ type ThreeSceneProps = {
   flightSettings: FlightSettings;
   featureFlags: FeatureFlags;
   hudOverlay?: ReactNode;
-  customizePanel?: ReactNode;
   onSelectApp: (appName: string) => void;
   onClearSelectedApp: () => void;
   onFocusCluster: (cluster: Cluster) => void;
@@ -221,6 +219,18 @@ let softCloudTexture: THREE.CanvasTexture | null = null;
 
 const to3 = (point: { x: number; y: number }, altitude = 0) =>
   new THREE.Vector3(point.x * WORLD_SCALE, altitude, point.y * WORLD_SCALE);
+
+const BOOST_BOLT_SHAPE = (() => {
+  const shape = new THREE.Shape();
+  shape.moveTo(-0.18, 0.72);
+  shape.lineTo(0.46, 0.08);
+  shape.lineTo(0.08, 0.08);
+  shape.lineTo(0.34, -0.72);
+  shape.lineTo(-0.48, -0.02);
+  shape.lineTo(-0.1, -0.02);
+  shape.closePath();
+  return shape;
+})();
 
 const getRefuelAmount = (discoveries: number, fuelMax: number) =>
   clamp(fuelMax * (0.28 + discoveries * 0.035), fuelMax * 0.28, fuelMax);
@@ -318,7 +328,7 @@ const createInitialDebugHudSnapshot = (): DebugHudSnapshot => ({
   fps: 0,
   frameMs: 0,
   tickRate: 0,
-  counts: { deployments: 0, clusters: 0, parachuters: 0, powerUps: 0, clouds: 0 },
+  counts: { deployments: 0, clusters: 0, powerUps: 0, clouds: 0 },
   input: { turnAxis: 0, throttleAxis: 0, verticalAxis: 0 },
   player: {
     speed: 0,
@@ -347,7 +357,6 @@ export function ThreeScene({
   selectedAppDetail,
   selectedAppDetailLoading,
   selectedAppDetailError,
-  selectedSkinId,
   searchMatches,
   focusTarget,
   mapDataLoading,
@@ -355,7 +364,6 @@ export function ThreeScene({
   flightSettings,
   featureFlags,
   hudOverlay,
-  customizePanel,
   onSelectApp,
   onClearSelectedApp,
   onFocusCluster,
@@ -417,7 +425,6 @@ export function ThreeScene({
   const debugPerfRef = useRef({ lastSampleAtMs: 0, frames: 0, ticks: 0 });
   const [runtimeVersion, setRuntimeVersion] = useState(0);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
-  const [showCustomizePanel, setShowCustomizePanel] = useState(false);
   const [showActionMenu, setShowActionMenu] = useState(false);
   const [debugHudHotkey, setDebugHudHotkey] = useState(false);
   const [debugStats, setDebugStats] = useState(createInitialDebugHudSnapshot);
@@ -654,7 +661,6 @@ export function ThreeScene({
         spawnCounter: game.spawnCounter,
         enableFuel: featureFlags.fuelSystem,
         enableBoosts: featureFlags.pickups,
-        enableParachuters: featureFlags.pickups,
         fuelRatio: game.fuel / Math.max(game.fuelMax, 1),
         boostActive,
       });
@@ -673,7 +679,6 @@ export function ThreeScene({
         fuel: game.fuel,
         fuelMax: game.fuelMax,
         boostUntilMs: game.boostUntilMs,
-        rescues: game.rescues,
         fuelTanksCollected: game.fuelTanksCollected,
         speedBoostsCollected: game.speedBoostsCollected,
         collectibleResult,
@@ -681,7 +686,6 @@ export function ThreeScene({
       });
       game.fuel = pickupOutcome.fuel;
       game.boostUntilMs = pickupOutcome.boostUntilMs;
-      game.rescues = pickupOutcome.rescues;
       game.fuelTanksCollected = pickupOutcome.fuelTanksCollected;
       game.speedBoostsCollected = pickupOutcome.speedBoostsCollected;
 
@@ -769,10 +773,7 @@ export function ThreeScene({
             counts: {
               deployments: visibility.visibleSystems.length,
               clusters: activeClusters.length,
-              parachuters: game.collectibles.filter((item) => item.active && item.kind === "parachuter")
-                .length,
-              powerUps: game.collectibles.filter((item) => item.active && item.kind !== "parachuter")
-                .length,
+              powerUps: game.collectibles.filter((item) => item.active).length,
               clouds: regionClusters.length,
             },
             input: inputSample,
@@ -836,7 +837,6 @@ export function ThreeScene({
           deploymentsFound: runtime.game.discoveries.size,
           speedBoosts: runtime.game.speedBoostsCollected,
           fuelTanks: runtime.game.fuelTanksCollected,
-          rescues: runtime.game.rescues,
           upgradeCredits: runtime.game.upgradeCredits,
           thrusterLevel: runtime.game.thrusterLevel,
           fuelEfficiencyLevel: runtime.game.fuelEfficiencyLevel,
@@ -920,7 +920,6 @@ export function ThreeScene({
             type="button"
             className="secondary-action"
             onClick={() => {
-              setShowCustomizePanel(false);
               setShowSettingsPanel((value) => !value);
             }}
           >
@@ -942,16 +941,6 @@ export function ThreeScene({
               Actions
             </button>
           ) : null}
-          <button
-            type="button"
-            className="secondary-action"
-            onClick={() => {
-              setShowSettingsPanel(false);
-              setShowCustomizePanel((value) => !value);
-            }}
-          >
-            Customize
-          </button>
         </div>
         <span className="scene-zoom-label scene-zoom-label--wrap">
             3D chase view | build {BUILD_STAMP} | GLB mode
@@ -1007,7 +996,6 @@ export function ThreeScene({
             systems={systems}
             stars={stars}
             selectedAppName={selectedAppName}
-            selectedSkinId={selectedSkinId}
             searchMatches={matchSet}
             stations={stationByClusterId}
             focusTarget={focusTarget}
@@ -1041,17 +1029,6 @@ export function ThreeScene({
               onClose={() => setShowSettingsPanel(false)}
             />
           ) : null}
-          {showCustomizePanel && customizePanel ? (
-            <section className="scene-customize-panel" aria-label="Plane customization">
-              <div className="scene-customize-panel__header">
-                <strong>Customize aircraft</strong>
-                <button type="button" className="secondary-action" onClick={() => setShowCustomizePanel(false)}>
-                  Close
-                </button>
-              </div>
-              {customizePanel}
-            </section>
-          ) : null}
           {selectedAppName ? (
             <SceneDeploymentPanel
               appName={selectedAppName}
@@ -1083,8 +1060,7 @@ export function ThreeScene({
               <p className="scene-run-end__title">{runEndSnapshot.endReason ?? "Run complete"}</p>
               <p className="scene-run-end__copy">
                 Score {runEndSnapshot.score.toLocaleString()} with{" "}
-                {runEndSnapshot.discoveries.toLocaleString()} discoveries and{" "}
-                {runEndSnapshot.rescues.toLocaleString()} rescues.
+                {runEndSnapshot.discoveries.toLocaleString()} discoveries.
               </p>
               <button
                 type="button"
@@ -1142,7 +1118,6 @@ function ThreeWorld({
   systems,
   stars,
   selectedAppName,
-  selectedSkinId,
   searchMatches,
   stations,
   focusTarget,
@@ -1162,7 +1137,6 @@ function ThreeWorld({
   systems: AppSystem[];
   stars: Star[];
   selectedAppName: string | null;
-  selectedSkinId: PlaneSkinId;
   searchMatches: Set<string>;
   stations: Map<string, StationLayout>;
   focusTarget: CameraTarget | null;
@@ -1285,7 +1259,7 @@ function ThreeWorld({
           ))}
       </group>
       <Effects effects={runtime.effects} />
-      <Biplane runtime={runtime} selectedSkinId={selectedSkinId} modelsEnabled={modelsEnabled} />
+      <Biplane runtime={runtime} modelsEnabled={modelsEnabled} />
     </>
   );
 }
@@ -1590,14 +1564,14 @@ function RuntimeModelAsset({
   position = [0, 0, 0],
   rotation = [0, 0, 0],
   fallback,
-  customize,
+  prepareModel,
 }: {
   modelId: RuntimeModelId;
   targetSize?: number;
   position?: [number, number, number];
   rotation?: [number, number, number];
   fallback?: ReactNode;
-  customize?: (root: THREE.Object3D) => void;
+  prepareModel?: (root: THREE.Object3D) => void;
 }) {
   const config = getRuntimeModelConfig(modelId);
   const [asset, setAsset] = useState<RuntimeModelLoadState>(() => {
@@ -1670,9 +1644,9 @@ function RuntimeModelAsset({
         child.geometry.computeBoundingSphere();
       }
     });
-    customize?.(root);
+    prepareModel?.(root);
     return root;
-  }, [asset, config.groundOffset, config.rotationY, config.scale, customize, targetSize]);
+  }, [asset, config.groundOffset, config.rotationY, config.scale, prepareModel, targetSize]);
 
   if (!normalized) {
     return <>{fallback}</>;
@@ -1691,7 +1665,7 @@ function RuntimeModel(props: {
   position?: [number, number, number];
   rotation?: [number, number, number];
   fallback?: ReactNode;
-  customize?: (root: THREE.Object3D) => void;
+  prepareModel?: (root: THREE.Object3D) => void;
 }) {
   return <RuntimeModelAsset {...props} />;
 }
@@ -1921,26 +1895,51 @@ function StarMarker({ star, onSelectApp }: { star: Star; onSelectApp: (appName: 
 function CollectibleMesh({ collectible, nowMs }: { collectible: Collectible; nowMs: number }) {
   const bob = Math.sin(nowMs / 360 + collectible.bobSeed) * 0.35;
   const position = to3(collectible, PLANE_ALTITUDE + 1.2 + bob);
-  const color =
-    collectible.kind === "fuel" ? "#ff7166" : collectible.kind === "boost" ? "#65eaff" : "#fff2a4";
+  const spin = nowMs / 800 + collectible.spinSeed;
+
+  if (collectible.kind === "boost") {
+    const pulse = 1 + Math.sin(nowMs / 240 + collectible.spinSeed) * 0.08;
+    return (
+      <BillboardGroup position={position}>
+        <group scale={pulse}>
+          <mesh position={[0, 0, -0.03]}>
+            <circleGeometry args={[0.86, 28]} />
+            <meshBasicMaterial color="#ffe56b" transparent opacity={0.22} depthWrite={false} />
+          </mesh>
+          <mesh>
+            <shapeGeometry args={[BOOST_BOLT_SHAPE]} />
+            <meshStandardMaterial
+              color="#ffe15c"
+              emissive="#ffc83d"
+              emissiveIntensity={1.15}
+              roughness={0.26}
+              metalness={0.08}
+            />
+          </mesh>
+        </group>
+      </BillboardGroup>
+    );
+  }
+
   return (
-    <group position={position} rotation={[0, nowMs / 800 + collectible.spinSeed, 0]}>
-      {collectible.kind === "fuel" ? (
-        <mesh>
-          <boxGeometry args={[0.65, 0.9, 0.4]} />
-          <meshStandardMaterial color={color} emissive="#ff4d46" emissiveIntensity={0.32} />
-        </mesh>
-      ) : collectible.kind === "boost" ? (
-        <mesh>
-          <octahedronGeometry args={[0.6, 0]} />
-          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.72} />
-        </mesh>
-      ) : (
-        <mesh>
-          <dodecahedronGeometry args={[0.62, 0]} />
-          <meshStandardMaterial color={color} emissive="#ffe680" emissiveIntensity={0.62} roughness={0.3} />
-        </mesh>
-      )}
+    <group position={position} rotation={[0, spin, 0]} scale={1.18}>
+      <mesh position={[0, 0, 0]}>
+        <boxGeometry args={[0.82, 1.05, 0.42]} />
+        <meshStandardMaterial color="#ef3b32" emissive="#ff4b42" emissiveIntensity={0.38} roughness={0.35} />
+      </mesh>
+      <mesh position={[0, 0.08, 0.235]}>
+        <boxGeometry args={[0.48, 0.42, 0.035]} />
+        <meshStandardMaterial color="#fff0d8" emissive="#ffd6bd" emissiveIntensity={0.18} roughness={0.3} />
+      </mesh>
+      <mesh position={[0.24, 0.64, 0]} rotation={[0, 0, -0.28]}>
+        <boxGeometry args={[0.46, 0.18, 0.46]} />
+        <meshStandardMaterial color="#ffd65d" emissive="#ffbf38" emissiveIntensity={0.45} roughness={0.28} />
+      </mesh>
+      <mesh position={[-0.22, 0.62, 0]} rotation={[0, 0, 0.42]}>
+        <torusGeometry args={[0.22, 0.045, 8, 18]} />
+        <meshStandardMaterial color="#ffd65d" emissive="#ffbf38" emissiveIntensity={0.34} roughness={0.28} />
+      </mesh>
+      <pointLight color="#ff6e5e" intensity={0.6} distance={5} />
     </group>
   );
 }
@@ -1963,16 +1962,14 @@ function Effects({ effects }: { effects: VisualEffect[] }) {
 
 function Biplane({
   runtime,
-  selectedSkinId,
   modelsEnabled,
 }: {
   runtime: SceneRuntime;
-  selectedSkinId: PlaneSkinId;
   modelsEnabled: boolean;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const flight = runtime.flight;
-  const palette = selectedSkinId === "classic" ? planeSkinPalettes.classic : planeSkinPalettes[selectedSkinId] ?? planeSkinPalettes.classic;
+  const palette = planeSkinPalettes.classic;
   const tintBiplaneModel = useCallback(
     (root: THREE.Object3D) => {
       root.traverse((child) => {
@@ -2030,7 +2027,7 @@ function Biplane({
         <RuntimeModel
           modelId="biplane"
           fallback={<BiplaneFallback palette={palette} />}
-          customize={tintBiplaneModel}
+          prepareModel={tintBiplaneModel}
         />
         <pointLight color="#ff9170" intensity={0.55} distance={7} position={[0, 0.5, -1.5]} />
       </group>

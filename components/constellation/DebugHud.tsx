@@ -34,9 +34,7 @@ export function DebugHud({
           <span>Entities</span>
           <strong>{stats.counts.deployments} deployments</strong>
           <small>{stats.counts.clusters} clusters</small>
-          <small>
-            {stats.counts.parachuters} parachuters · {stats.counts.powerUps} power-ups
-          </small>
+          <small>{stats.counts.powerUps} pickups</small>
           <small>{stats.counts.clouds} clouds</small>
         </div>
 
@@ -54,7 +52,7 @@ export function DebugHud({
           <small>
             Alt {stats.player.altitude.toFixed(1)} - Pitch {formatSigned(stats.player.pitch)}
           </small>
-          <small>Fuel {Math.round(stats.player.fuel)} · Route {stats.player.distanceUnits}</small>
+          <small>Fuel {Math.round(stats.player.fuel)} - Route {stats.player.distanceUnits}</small>
           <small>
             {stats.player.boostRemainingMs > 0
               ? `Boost ${(stats.player.boostRemainingMs / 1000).toFixed(1)}s`

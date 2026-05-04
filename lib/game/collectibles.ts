@@ -26,19 +26,16 @@ const distance = (left: { x: number; y: number }, right: { x: number; y: number 
 const ttlMsByKind: Record<CollectibleKind, number> = {
   fuel: GAME_CONFIG.fuelPickupTtlMs,
   boost: GAME_CONFIG.boostPickupTtlMs,
-  parachuter: GAME_CONFIG.parachuterTtlMs,
 };
 
 const radiusByKind: Record<CollectibleKind, number> = {
-  fuel: 24,
-  boost: 21,
-  parachuter: 26,
+  fuel: 30,
+  boost: 28,
 };
 
 const valueByKind: Record<CollectibleKind, number> = {
   fuel: GAME_CONFIG.fuelPickupAmount,
   boost: GAME_CONFIG.boostDurationMs,
-  parachuter: 1,
 };
 
 const getRespawnMs = ({
@@ -54,9 +51,7 @@ const getRespawnMs = ({
       : GAME_CONFIG.fuelPickupCruiseRespawnMs;
   }
 
-  return kind === "boost"
-    ? GAME_CONFIG.boostPickupRespawnMs
-    : GAME_CONFIG.parachuterRespawnMs;
+  return GAME_CONFIG.boostPickupRespawnMs;
 };
 
 const normalizeAngle = (value: number) => {
@@ -114,11 +109,14 @@ const getDesiredCountByKind = ({
 }) => {
   switch (kind) {
     case "fuel":
-      return fuelRatio <= GAME_CONFIG.fuelPickupVisibleThreshold ? 1 : 0;
+      if (fuelRatio <= GAME_CONFIG.fuelPickupCriticalThreshold) {
+        return GAME_CONFIG.fuelPickupLowActiveCap;
+      }
+      return fuelRatio <= GAME_CONFIG.fuelPickupVisibleThreshold
+        ? 2
+        : GAME_CONFIG.fuelPickupCruiseActiveCap;
     case "boost":
       return boostActive ? 0 : GAME_CONFIG.boostPickupActiveCap;
-    case "parachuter":
-      return GAME_CONFIG.maxParachuters;
     default:
       return 0;
   }
@@ -235,7 +233,7 @@ const spawnCollectible = ({
               x: plane.x + Math.cos(fallbackAngle) * fallbackDistance,
               y: plane.y + Math.sin(fallbackAngle) * fallbackDistance,
             },
-            source: anchorSystems.length > 0 ? "rescue-lane" : "flight-path",
+            source: anchorSystems.length > 0 ? "near-system" : "flight-path",
             clampToBounds: true,
           });
         }
@@ -267,9 +265,8 @@ const spawnCollectible = ({
   }
 
   for (let attempt = 0; attempt < 48; attempt += 1) {
-    const preferAnchor = anchorSystems.length > 0 && (kind === "parachuter" || rng() < 0.42);
-    const source: Collectible["source"] =
-      kind === "parachuter" && !preferAnchor ? "rescue-lane" : preferAnchor ? "near-system" : "flight-path";
+    const preferAnchor = anchorSystems.length > 0 && rng() < 0.42;
+    const source: Collectible["source"] = preferAnchor ? "near-system" : "flight-path";
 
     let x = plane.x;
     let y = plane.y;
@@ -277,10 +274,7 @@ const spawnCollectible = ({
     if (preferAnchor) {
       const anchor = anchorSystems[Math.floor(rng() * anchorSystems.length)];
       const angle = randomBetween(rng, -Math.PI, Math.PI);
-      const offset =
-        kind === "parachuter"
-          ? randomBetween(rng, 140, 260)
-          : randomBetween(rng, 210, 340);
+      const offset = randomBetween(rng, 210, 340);
       x = anchor.x + Math.cos(angle) * offset;
       y = anchor.y + Math.sin(angle) * offset;
     } else {
@@ -309,10 +303,7 @@ const spawnCollectible = ({
       continue;
     }
 
-    if (
-      kind !== "parachuter" &&
-      anchorSystems.some((anchor) => distance(anchor, candidate) < 110)
-    ) {
+    if (anchorSystems.some((anchor) => distance(anchor, candidate) < 110)) {
       continue;
     }
 
@@ -345,7 +336,6 @@ export const maintainCollectibles = ({
   spawnCounter,
   enableFuel,
   enableBoosts,
-  enableParachuters,
   fuelRatio,
   boostActive,
 }: {
@@ -357,7 +347,6 @@ export const maintainCollectibles = ({
   spawnCounter: number;
   enableFuel: boolean;
   enableBoosts: boolean;
-  enableParachuters: boolean;
   fuelRatio: number;
   boostActive: boolean;
 }) => {
@@ -366,9 +355,7 @@ export const maintainCollectibles = ({
     const kindEnabled =
       collectible.kind === "fuel"
         ? enableFuel
-        : collectible.kind === "boost"
-          ? enableBoosts
-          : enableParachuters;
+        : enableBoosts;
 
     if (!kindEnabled) {
       return { ...collectible, active: false };
@@ -389,7 +376,7 @@ export const maintainCollectibles = ({
   });
 
   const fuelCollectibles = refreshed.filter((collectible) => collectible.kind === "fuel");
-  if (fuelCollectibles.length > 1) {
+  if (fuelCollectibles.length > GAME_CONFIG.fuelPickupLowActiveCap) {
     const keepFuelIds = new Set(
       fuelCollectibles
         .slice()
@@ -399,7 +386,7 @@ export const maintainCollectibles = ({
             left.respawnAtMs - right.respawnAtMs ||
             left.spawnedAtMs - right.spawnedAtMs,
         )
-        .slice(0, 1)
+        .slice(0, GAME_CONFIG.fuelPickupLowActiveCap)
         .map((collectible) => collectible.id),
     );
     refreshed = refreshed.filter(
@@ -477,7 +464,6 @@ export const maintainCollectibles = ({
 
   ensureKind("fuel", enableFuel);
   ensureKind("boost", enableBoosts);
-  ensureKind("parachuter", enableParachuters);
 
   return {
     collectibles: refreshed,
@@ -500,7 +486,6 @@ export const collectNearbyCollectibles = ({
   let fuelCollectedCount = 0;
   let boostUntilMs = 0;
   let boostCollectedCount = 0;
-  let rescuedCount = 0;
   const effects: VisualEffect[] = [];
 
   const nextCollectibles = collectibles.map((collectible) => {
@@ -547,28 +532,6 @@ export const collectNearbyCollectibles = ({
           color: "#ffe168",
         }),
       );
-    } else {
-      rescuedCount += 1;
-      effects.push(
-        createEffect({
-          kind: "sparkle",
-          x: collectible.x,
-          y: collectible.y,
-          ttlMs: 420,
-          size: 34,
-          color: "#ffffff",
-        }),
-        createEffect({
-          kind: "trail",
-          x: collectible.x,
-          y: collectible.y,
-          ttlMs: 260,
-          size: 24,
-          color: "#78e4ff",
-          vx: 0,
-          vy: -36,
-        }),
-      );
     }
 
     return {
@@ -589,7 +552,6 @@ export const collectNearbyCollectibles = ({
     fuelCollectedCount,
     boostUntilMs,
     boostCollectedCount,
-    rescuedCount,
     effects,
   };
 };
@@ -600,7 +562,6 @@ export const applyCollectibleOutcome = ({
   fuel,
   fuelMax,
   boostUntilMs,
-  rescues,
   fuelTanksCollected,
   speedBoostsCollected,
   collectibleResult,
@@ -609,7 +570,6 @@ export const applyCollectibleOutcome = ({
   fuel: number;
   fuelMax: number;
   boostUntilMs: number;
-  rescues: number;
   fuelTanksCollected: number;
   speedBoostsCollected: number;
   collectibleResult: {
@@ -617,7 +577,6 @@ export const applyCollectibleOutcome = ({
     fuelCollectedCount: number;
     boostUntilMs: number;
     boostCollectedCount: number;
-    rescuedCount: number;
   };
   pickupsEnabled: boolean;
 }) => {
@@ -626,19 +585,10 @@ export const applyCollectibleOutcome = ({
   const nextBoostUntilMs = pickupsEnabled
     ? Math.max(boostUntilMs, collectibleResult.boostUntilMs)
     : 0;
-  const nextRescues = rescues + collectibleResult.rescuedCount;
   const nextFuelTanksCollected = fuelTanksCollected + collectibleResult.fuelCollectedCount;
   const nextSpeedBoostsCollected =
     speedBoostsCollected + collectibleResult.boostCollectedCount;
   const notices: string[] = [];
-
-  if (collectibleResult.rescuedCount > 0) {
-    notices.push(
-      collectibleResult.rescuedCount === 1
-        ? "Pilot rescued!"
-        : `Pilots rescued +${collectibleResult.rescuedCount}`,
-    );
-  }
 
   if (collectibleResult.fuelDelta > 0) {
     notices.push(actualFuelDelta > 0 ? `Fuel +${Math.round(actualFuelDelta)}` : "Fuel topped off");
@@ -651,7 +601,6 @@ export const applyCollectibleOutcome = ({
   return {
     fuel: nextFuel,
     boostUntilMs: nextBoostUntilMs,
-    rescues: nextRescues,
     fuelTanksCollected: nextFuelTanksCollected,
     speedBoostsCollected: nextSpeedBoostsCollected,
     pickupLabel: notices.join(" | ") || null,

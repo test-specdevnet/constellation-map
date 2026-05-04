@@ -122,7 +122,6 @@ describe("session", () => {
     game.boostUntilMs = 7_000;
     game.distance = 720;
     game.distanceUnits = 4;
-    game.rescues = 2;
     game.fuelTanksCollected = 3;
     game.speedBoostsCollected = 1;
     game.collectibles = [
@@ -142,12 +141,12 @@ describe("session", () => {
         active: true,
       },
       {
-        id: "parachuter:1",
-        kind: "parachuter",
+        id: "boost:1",
+        kind: "boost",
         x: -20,
         y: 12,
-        radius: 26,
-        value: 1,
+        radius: 28,
+        value: 8_000,
         bobSeed: 0,
         spinSeed: 0,
         spawnedAtMs: 0,
@@ -167,7 +166,6 @@ describe("session", () => {
     });
 
     expect(snapshot.activeBoostLabel).toBe("Tailwind boost");
-    expect(snapshot.parachuterCount).toBe(1);
     expect(snapshot.fuelTanksCollected).toBe(3);
     expect(snapshot.speedBoostsCollected).toBe(1);
     expect(snapshot.flags.pickups).toBe(true);

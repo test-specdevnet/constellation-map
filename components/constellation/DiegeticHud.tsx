@@ -32,16 +32,10 @@ function HudIcon({ children }: { children: ReactNode }) {
 export function DiegeticHud({
   telemetry: _telemetry,
   snapshot,
-  selectedSkinLabel: _selectedSkinLabel,
-  unlockedSkinCount: _unlockedSkinCount,
-  totalSkinCount: _totalSkinCount,
   mode,
 }: {
   telemetry: FlightTelemetry | null;
   snapshot: GameSessionSnapshot | null;
-  selectedSkinLabel: string;
-  unlockedSkinCount: number;
-  totalSkinCount: number;
   mode: "compact" | "detailed";
 }) {
   const stats: HudStat[] = [
@@ -76,17 +70,6 @@ export function DiegeticHud({
           <path d="M9 5h6v14H9z" />
           <path d="M15 8h2l1 2v7a2 2 0 0 1-2 2h-1" />
           <path d="M11 9h2" />
-        </HudIcon>
-      ),
-    },
-    {
-      key: "rescues",
-      label: "Rescues Made",
-      value: snapshot?.rescues ?? 0,
-      icon: (
-        <HudIcon>
-          <path d="M12 6a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z" />
-          <path d="M6 20a6 6 0 0 1 12 0" />
         </HudIcon>
       ),
     },

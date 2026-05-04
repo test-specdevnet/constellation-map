@@ -558,7 +558,7 @@ h3 {
 .mini-map {
   top: 18px;
   right: 18px;
-  width: 206px;
+  width: 238px;
   padding: 12px 12px 10px;
   border-radius: 18px;
   border: 1px solid rgba(109, 167, 255, 0.22);
@@ -648,7 +648,9 @@ h3 {
   stroke-width: 1;
 }
 
-.mini-map-pickup {
+.mini-map-pickup,
+.mini-map-pickup path,
+.mini-map-pickup rect {
   stroke: rgba(255, 255, 255, 0.72);
   stroke-width: 1;
 }
@@ -659,10 +661,6 @@ h3 {
 
 .mini-map-pickup--boost {
   fill: rgba(117, 233, 255, 0.94);
-}
-
-.mini-map-pickup--parachuter {
-  fill: rgba(255, 248, 182, 0.96);
 }
 
 .mini-map-label {
@@ -690,10 +688,6 @@ h3 {
   height: 8px;
   border-radius: 999px;
   display: inline-block;
-}
-
-.mini-map-legend-dot--parachuter {
-  background: rgba(255, 248, 182, 0.96);
 }
 
 .mini-map-legend-dot--fuel {
@@ -872,32 +866,6 @@ h3 {
   background: rgba(8, 20, 42, 0.9);
   backdrop-filter: blur(14px);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.32);
-}
-
-.scene-customize-panel {
-  position: absolute;
-  top: 72px;
-  left: 18px;
-  z-index: 4;
-  width: min(360px, calc(100% - 36px));
-  max-height: min(620px, calc(100% - 96px));
-  overflow: auto;
-  padding: 16px;
-  border-radius: 20px;
-  border: 1px solid rgba(184, 228, 255, 0.26);
-  background: rgba(8, 20, 42, 0.9);
-  color: #f4fbff;
-  backdrop-filter: blur(14px);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.32);
-  pointer-events: auto;
-}
-
-.scene-customize-panel__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 14px;
 }
 
 .scene-deployment-panel {
@@ -1194,8 +1162,7 @@ h3 {
   font-size: 1rem;
 }
 
-.quest-log,
-.hangar-grid {
+.quest-log {
   display: grid;
   gap: 12px;
 }
@@ -1230,8 +1197,7 @@ h3 {
   margin: 0 0 14px;
 }
 
-.quest-card,
-.hangar-card {
+.quest-card {
   padding: 16px;
   border-radius: 18px;
   border: 1px solid rgba(109, 167, 255, 0.12);
@@ -1245,9 +1211,7 @@ h3 {
   margin-bottom: 10px;
 }
 
-.quest-card p,
-.hangar-card span,
-.hangar-card small {
+.quest-card p {
   margin: 0;
   color: var(--muted);
 }
@@ -1276,35 +1240,6 @@ h3 {
   margin-top: 10px !important;
   color: rgba(255, 241, 176, 0.86) !important;
   font-size: 0.84rem;
-}
-
-.hangar-card {
-  width: 100%;
-  display: grid;
-  gap: 8px;
-  text-align: left;
-  color: var(--text);
-}
-
-.hangar-launcher {
-  display: grid;
-  grid-template-columns: 84px minmax(0, 1fr) auto;
-  gap: 14px;
-  align-items: center;
-  margin-bottom: 12px;
-  padding: 14px;
-  border-radius: 18px;
-  border: 1px solid rgba(109, 167, 255, 0.14);
-  background: rgba(7, 14, 28, 0.82);
-}
-
-.hangar-launcher-copy {
-  display: grid;
-  gap: 6px;
-}
-
-.hangar-launcher-copy span {
-  color: var(--muted);
 }
 
 .leaderboard-panel {
@@ -1381,81 +1316,6 @@ h3 {
 
 .leaderboard-list--archive {
   margin-top: 10px;
-}
-
-.hangar-card:disabled {
-  opacity: 0.7;
-}
-
-.hangar-card--selected {
-  border-color: rgba(104, 214, 255, 0.34);
-  box-shadow: inset 0 0 0 1px rgba(104, 214, 255, 0.24);
-}
-
-.hangar-swatch {
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-  height: 54px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-}
-
-.hangar-swatch img {
-  width: 92%;
-  height: 92%;
-  object-fit: contain;
-  filter: drop-shadow(0 10px 12px rgba(5, 12, 24, 0.32));
-}
-
-.hangar-launcher .hangar-swatch {
-  height: 74px;
-}
-
-.hangar-swatch--classic {
-  background: linear-gradient(135deg, #d81f26, #f25555);
-}
-
-.hangar-swatch--sunset-scout {
-  background: linear-gradient(135deg, #f2c431, #ffe07a);
-}
-
-.hangar-swatch--mint-radar {
-  background: linear-gradient(135deg, #2fa861, #6ad996);
-}
-
-.hangar-swatch--midnight-courier {
-  background: linear-gradient(135deg, #2758af, #78a9ff);
-}
-
-.hangar-modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 18px;
-  background: rgba(5, 10, 18, 0.68);
-  backdrop-filter: blur(12px);
-}
-
-.hangar-modal {
-  width: min(720px, 100%);
-  max-height: calc(100vh - 40px);
-  overflow: auto;
-  padding: 20px;
-  border-radius: 24px;
-  border: 1px solid rgba(109, 167, 255, 0.22);
-  background: linear-gradient(180deg, rgba(10, 18, 34, 0.98), rgba(6, 11, 22, 0.98));
-  box-shadow: var(--shadow);
-}
-
-.hangar-modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 18px;
 }
 
 .status-banner {
@@ -1626,14 +1486,9 @@ h3 {
   .atlas-status-row,
   .detail-drawer-header,
   .panel-card-header,
-  .scene-toolbar,
-  .hangar-modal-actions {
+  .scene-toolbar {
     flex-direction: column;
     align-items: flex-start;
-  }
-
-  .hangar-launcher {
-    grid-template-columns: 1fr;
   }
 
   .scene-wrap,
@@ -1856,7 +1711,7 @@ h1 {
 }
 
 .diegetic-hud--detailed {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .hud-chip--stat {
@@ -2012,7 +1867,7 @@ h1 {
 .mini-map {
   top: 16px;
   right: 16px;
-  width: 196px;
+  width: 224px;
   padding: 11px 12px 10px;
   border-radius: 16px;
   border-color: rgba(184, 228, 255, 0.24);
@@ -2116,100 +1971,6 @@ h1 {
 .result-list--compact li button span::after {
   content: attr(data-owner) " | " attr(data-runtime);
   font-size: 0.85rem;
-}
-
-.hangar-launcher-card {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-}
-
-.hangar-launcher-meta {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-}
-
-.hangar-launcher-label {
-  display: block;
-  margin-bottom: 4px;
-  color: var(--muted);
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.hangar-launcher-card .hangar-swatch {
-  width: 52px;
-  height: 52px;
-  flex: 0 0 auto;
-}
-
-.hangar-launcher-button {
-  padding-inline: 14px;
-}
-
-.hangar-panel-copy {
-  margin: 0 0 14px;
-  color: rgba(230, 242, 255, 0.78);
-  font-size: 0.88rem;
-  line-height: 1.45;
-}
-
-.hangar-modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 40;
-  display: grid;
-  place-items: center;
-  padding: 18px;
-  background: rgba(5, 12, 24, 0.42);
-  backdrop-filter: blur(10px);
-}
-
-.hangar-modal {
-  width: min(560px, calc(100vw - 24px));
-  padding: 18px;
-  border-radius: 24px;
-  border: 1px solid rgba(184, 228, 255, 0.22);
-  background: linear-gradient(180deg, rgba(11, 24, 50, 0.92), rgba(7, 16, 34, 0.98));
-  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.38);
-}
-
-.hangar-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.hangar-card {
-  gap: 6px;
-}
-
-.hangar-card--swatch-only {
-  min-height: 112px;
-  padding: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.hangar-card--swatch-only .hangar-swatch {
-  width: 100%;
-  height: 88px;
-  border-radius: 8px;
-}
-
-.hangar-card strong {
-  font-size: 1rem;
-}
-
-.hangar-modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 14px;
 }
 
 @media (max-width: 1220px) {
@@ -2333,18 +2094,6 @@ h1 {
     grid-template-columns: 1fr;
   }
 
-  .hangar-launcher-card {
-    width: 100%;
-  }
-
-  .hangar-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .hangar-modal-actions {
-    flex-direction: column-reverse;
-    align-items: stretch;
-  }
 }
 
 .atlas-icon,
@@ -2426,8 +2175,7 @@ h1 {
 .mobile-drawer__body,
 .mobile-controls-panel,
 .mobile-controls-panel__results,
-.mobile-scene-actions,
-.hangar-customization-panel {
+.mobile-scene-actions {
   display: grid;
   gap: 14px;
 }
@@ -2759,7 +2507,7 @@ h1 {
 
   .atlas-mobile-nav {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
     position: fixed;
     left: 12px;
@@ -2977,7 +2725,6 @@ h1 {
 .scene-run-end,
 .station-dock,
 .flight-settings-panel,
-.scene-customize-panel,
 .scene-deployment-panel,
 .debug-hud,
 .pickup-notice,
@@ -3098,7 +2845,7 @@ h1 {
   left: 50%;
   bottom: 18px;
   transform: translateX(-50%);
-  width: min(620px, calc(100% - 240px));
+  width: min(520px, calc(100% - 280px));
 }
 
 .scene-shell--three .hud-chip--stat {
@@ -3121,7 +2868,7 @@ h1 {
   top: auto;
   right: 18px;
   bottom: 18px;
-  width: 174px;
+  width: 218px;
 }
 
 .scene-shell--three .scene-flight-pad {
@@ -3157,7 +2904,7 @@ h1 {
   }
 
   .scene-shell--three .mini-map {
-    width: 142px;
+    width: 164px;
   }
 
   .scene-shell--three .scene-flight-pad {

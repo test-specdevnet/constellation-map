@@ -15,8 +15,8 @@ export type {
   QualitySetting,
 };
 
-export type CollectibleKind = "fuel" | "boost" | "parachuter";
-export type CollectibleSpawnSource = "flight-path" | "near-system" | "rescue-lane";
+export type CollectibleKind = "fuel" | "boost";
+export type CollectibleSpawnSource = "flight-path" | "near-system";
 export type RunState = "flying" | "landing" | "landed";
 export type EffectKind = "trail" | "pulse" | "sparkle";
 
@@ -93,7 +93,6 @@ export type LeaderboardEntry = {
   id: string;
   callsign: string;
   score: number;
-  rescues: number;
   discoveries: number;
   distance: number;
   durationMs: number;
@@ -103,7 +102,6 @@ export type LeaderboardEntry = {
 
 export type RunRecord = {
   score: number;
-  rescues: number;
   discoveries: number;
   distance: number;
   durationMs: number;
@@ -120,7 +118,6 @@ export type GameState = {
   score: number;
   distance: number;
   distanceUnits: number;
-  rescues: number;
   fuelTanksCollected: number;
   speedBoostsCollected: number;
   upgradeCredits: number;
@@ -144,7 +141,6 @@ export type GameSessionSnapshot = {
   activeBoostLabel: string | null;
   score: number;
   discoveries: number;
-  rescues: number;
   fuelTanksCollected: number;
   speedBoostsCollected: number;
   upgradeCredits: number;
@@ -157,7 +153,6 @@ export type GameSessionSnapshot = {
   durationMs: number;
   fuelPackCount: number;
   boostPackCount: number;
-  parachuterCount: number;
   qualityMode: QualityMode;
   flags: FeatureFlags;
   miniMap: {
@@ -173,7 +168,6 @@ export type DebugHudSnapshot = {
   counts: {
     deployments: number;
     clusters: number;
-    parachuters: number;
     powerUps: number;
     clouds: number;
   };

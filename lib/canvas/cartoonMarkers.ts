@@ -104,7 +104,6 @@ function hexPath(ctx: CanvasRenderingContext2D, r: number) {
   }
   ctx.closePath();
 }
-
 function mixHex(hex: string, t: number): string {
   const n = hex.replace("#", "");
   const r = parseInt(n.slice(0, 2), 16);
@@ -224,7 +223,6 @@ export function drawDeploymentBuoy({
 
   ctx.restore();
 }
-
 type Puff = { bx: number; by: number; br: number };
 
 type CloudSeed = {
@@ -784,85 +782,6 @@ export function drawSpeedBoostPickup(
   ctx.moveTo(0, -12);
   ctx.lineTo(6, -5);
   ctx.lineTo(1, -5);
-  ctx.stroke();
-  ctx.restore();
-}
-
-export function drawParachuterPickup(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  scale: number,
-  sway: number,
-) {
-  ctx.save();
-  ctx.translate(snapPixel(x), snapPixel(y));
-  ctx.rotate(sway * 0.16);
-  ctx.scale(scale, scale);
-  ctx.lineJoin = "round";
-  ctx.lineCap = "round";
-
-  const glow = ctx.createRadialGradient(0, -4, 2, 0, -4, 34);
-  glow.addColorStop(0, "rgba(135, 228, 255, 0.34)");
-  glow.addColorStop(1, "rgba(135, 228, 255, 0)");
-  ctx.fillStyle = glow;
-  ctx.beginPath();
-  ctx.arc(0, -4, 34, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.strokeStyle = "#10203d";
-  ctx.lineWidth = 2;
-
-  const canopy = ctx.createLinearGradient(-14, -24, 14, -8);
-  canopy.addColorStop(0, "#6ee7ff");
-  canopy.addColorStop(0.5, "#87c6ff");
-  canopy.addColorStop(1, "#5a8ef3");
-  ctx.fillStyle = canopy;
-  ctx.beginPath();
-  ctx.moveTo(-16, -8);
-  ctx.quadraticCurveTo(0, -30, 16, -8);
-  ctx.lineTo(11, -4);
-  ctx.quadraticCurveTo(0, -15, -11, -4);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.strokeStyle = "rgba(232, 246, 255, 0.96)";
-  ctx.lineWidth = 1.4;
-  ctx.beginPath();
-  ctx.moveTo(-10, -6);
-  ctx.lineTo(-5, 8);
-  ctx.moveTo(-4, -8);
-  ctx.lineTo(-2, 8);
-  ctx.moveTo(4, -8);
-  ctx.lineTo(2, 8);
-  ctx.moveTo(10, -6);
-  ctx.lineTo(5, 8);
-  ctx.stroke();
-
-  ctx.fillStyle = "#203968";
-  ctx.beginPath();
-  ctx.arc(0, 11, 5, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = "#ffd9b2";
-  ctx.beginPath();
-  ctx.arc(0, 3, 4, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = "#10203d";
-  ctx.lineWidth = 1.6;
-  ctx.stroke();
-
-  ctx.strokeStyle = "#10203d";
-  ctx.beginPath();
-  ctx.moveTo(-4, 16);
-  ctx.lineTo(-7, 24);
-  ctx.moveTo(4, 16);
-  ctx.lineTo(7, 24);
-  ctx.moveTo(-5, 11);
-  ctx.lineTo(-10, 16);
-  ctx.moveTo(5, 11);
-  ctx.lineTo(10, 16);
   ctx.stroke();
   ctx.restore();
 }

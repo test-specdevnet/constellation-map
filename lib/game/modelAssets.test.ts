@@ -4,6 +4,8 @@ import {
   getBiplaneMaterialRole,
   getRuntimeModelConfig,
 } from "./modelAssets";
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 
 describe("modelAssets", () => {
   it("maps every runtime model to a public GLB path and fallback label", () => {
@@ -20,6 +22,17 @@ describe("modelAssets", () => {
     expect(getRuntimeModelConfig("biplane").path).toContain("biplane");
     expect(getModelInstanceBudget("biplane", "low")).toBeGreaterThan(0);
     expect(getModelInstanceBudget("biplane", "high")).toBeGreaterThan(0);
+  });
+
+  it("keeps only the optimized biplane GLB in public assets", () => {
+    const modelDirs = ["public/models", "public/models-optimized"];
+    const glbs = modelDirs.flatMap((dir) =>
+      readdirSync(join(process.cwd(), dir), { withFileTypes: true })
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".glb"))
+        .map((entry) => `${dir}/${entry.name}`),
+    );
+
+    expect(glbs).toEqual(["public/models-optimized/biplane.glb"]);
   });
 
   it("classifies biplane materials for skin tinting", () => {

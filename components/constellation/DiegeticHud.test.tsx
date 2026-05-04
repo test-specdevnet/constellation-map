@@ -33,7 +33,6 @@ describe("DiegeticHud", () => {
       activeBoostLabel: "Tailwind boost",
       score: 36,
       discoveries: 8,
-      rescues: 3,
       fuelTanksCollected: 2,
       speedBoostsCollected: 1,
       upgradeCredits: 48,
@@ -46,7 +45,6 @@ describe("DiegeticHud", () => {
       durationMs: 12_000,
       fuelPackCount: 1,
       boostPackCount: 1,
-      parachuterCount: 2,
       qualityMode: "high" as const,
       flags: DEFAULT_FEATURE_FLAGS,
       miniMap: {
@@ -54,25 +52,20 @@ describe("DiegeticHud", () => {
         collectibles: [],
       },
     },
-    selectedSkinLabel: "Classic",
-    unlockedSkinCount: 2,
-    totalSkinCount: 4,
   };
 
-  it("renders the four requested run stats in detailed mode", () => {
+  it("renders the requested run stats in detailed mode", () => {
     render(<DiegeticHud {...baseProps} mode="detailed" />);
 
     expect(screen.getByText("Deployments Found")).toBeInTheDocument();
     expect(screen.getByText("Speed Boosts")).toBeInTheDocument();
     expect(screen.getByText("Fuel Tanks Collected")).toBeInTheDocument();
-    expect(screen.getByText("Rescues Made")).toBeInTheDocument();
     expect(screen.getByText("8")).toBeInTheDocument();
     expect(screen.getByText("2")).toBeInTheDocument();
     expect(screen.getByText("1")).toBeInTheDocument();
-    expect(screen.getByText("3")).toBeInTheDocument();
   });
 
-  it("keeps the same four stats in compact mode", () => {
+  it("keeps the same stats in compact mode", () => {
     render(<DiegeticHud {...baseProps} mode="compact" />);
 
     expect(screen.getByText("Deployments Found")).toBeInTheDocument();

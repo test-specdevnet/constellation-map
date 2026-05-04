@@ -79,13 +79,6 @@ export const SPRITES = {
     refuelStationClose: { src: "/sprites/stations/refuel-station-close.png", width: 102, height: 88, anchorX: 0.5, anchorY: 0.62 },
     refuelStationAngled: { src: "/sprites/stations/refuel-station-angled.png", width: 112, height: 90, anchorX: 0.5, anchorY: 0.62 },
   },
-  ui: {
-    robotPilotsSheet: {
-      src: "/sprites/ui/robot-pilots-sheet.png",
-      width: 1536,
-      height: 1024,
-    },
-  },
 } as const;
 
 export const SPRITE_REGIONS = {
@@ -107,27 +100,9 @@ export const SPRITE_REGIONS = {
     yellowRing: { x: 754, y: 438, w: 300, h: 300 },
     redRing: { x: 1096, y: 438, w: 300, h: 300 },
   },
-  pilots: {
-    green: { x: 0, y: 0, w: 384, h: 512 },
-    yellow: { x: 384, y: 0, w: 384, h: 512 },
-    blue: { x: 768, y: 0, w: 384, h: 512 },
-    red: { x: 1152, y: 0, w: 384, h: 512 },
-    greenAlt: { x: 0, y: 512, w: 384, h: 512 },
-    yellowAlt: { x: 384, y: 512, w: 384, h: 512 },
-    blueAlt: { x: 768, y: 512, w: 384, h: 512 },
-    redAlt: { x: 1152, y: 512, w: 384, h: 512 },
-  },
 } as const;
 
-const SKIN_TO_AIRCRAFT: Record<PlaneSkinId, AircraftColor> = {
-  classic: "red",
-  "sunset-scout": "yellow",
-  "mint-radar": "green",
-  "midnight-courier": "blue",
-};
-
-export const getAircraftColorForSkin = (skinId: PlaneSkinId): AircraftColor =>
-  SKIN_TO_AIRCRAFT[skinId] ?? "red";
+export const getAircraftColorForSkin = (_skinId: PlaneSkinId): AircraftColor => "red";
 
 const flattenSpriteDefs = (value: unknown, prefix: string[] = []): Array<[string, SpriteDef]> => {
   if (!value || typeof value !== "object") return [];

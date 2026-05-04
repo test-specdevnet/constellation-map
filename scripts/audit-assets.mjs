@@ -5,13 +5,7 @@ import process from "node:process";
 const root = process.cwd();
 const modelDir = path.join(root, "public", "models");
 const optimizedModelDir = path.join(root, "public", "models-optimized");
-const expectedModels = [
-  "biplane.glb",
-  "floatingdrone.glb",
-  "floatingupgradelab.glb",
-  "refuelstation.glb",
-  "servicerobot.glb",
-];
+const runtimeModels = ["biplane.glb"];
 const softSizeLimitBytes = 20 * 1024 * 1024;
 const hardSizeLimitBytes = 75 * 1024 * 1024;
 const optimizedSoftSizeLimitBytes = 5 * 1024 * 1024;
@@ -43,37 +37,30 @@ const readGlbHeader = async (filePath) => {
 };
 
 const main = async () => {
-  await access(modelDir);
-  const present = new Set(await readdir(modelDir));
   const failures = [];
   const warnings = [];
 
-  for (const model of expectedModels) {
-    const filePath = path.join(modelDir, model);
-    if (!present.has(model)) {
-      failures.push(`${model}: missing from public/models`);
-      continue;
+  try {
+    await access(modelDir);
+    const rawGlbs = (await readdir(modelDir)).filter((file) => file.endsWith(".glb"));
+    if (rawGlbs.length > 0) {
+      failures.push(`public/models contains runtime-disabled GLBs: ${rawGlbs.join(", ")}`);
     }
-
-    const info = await stat(filePath);
-    const header = await readGlbHeader(filePath);
-    if (!header.valid) {
-      failures.push(`${model}: ${header.reason}`);
-      continue;
-    }
-
-    if (info.size > hardSizeLimitBytes) {
-      failures.push(`${model}: ${formatMb(info.size)} exceeds hard limit ${formatMb(hardSizeLimitBytes)}`);
-    } else if (info.size > softSizeLimitBytes) {
-      warnings.push(`${model}: ${formatMb(info.size)} should be optimized before enabling broadly`);
-    }
-
-    console.log(`ok ${model} ${formatMb(info.size)}`);
+  } catch {
+    warnings.push("public/models is missing; no raw GLBs are required for runtime");
   }
 
   try {
     const optimizedPresent = new Set(await readdir(optimizedModelDir));
-    for (const model of expectedModels) {
+    const optimizedGlbs = Array.from(optimizedPresent).filter((file) => file.endsWith(".glb"));
+    const extraOptimizedGlbs = optimizedGlbs.filter((file) => !runtimeModels.includes(file));
+    if (extraOptimizedGlbs.length > 0) {
+      failures.push(
+        `public/models-optimized contains non-runtime GLBs: ${extraOptimizedGlbs.join(", ")}`,
+      );
+    }
+
+    for (const model of runtimeModels) {
       const filePath = path.join(optimizedModelDir, model);
       if (!optimizedPresent.has(model)) {
         failures.push(`${model}: missing from public/models-optimized`);
@@ -89,11 +76,19 @@ const main = async () => {
         failures.push(
           `optimized ${model}: ${formatMb(info.size)} exceeds runtime limit ${formatMb(optimizedSoftSizeLimitBytes)}`,
         );
+      } else if (info.size > hardSizeLimitBytes) {
+        failures.push(
+          `optimized ${model}: ${formatMb(info.size)} exceeds hard limit ${formatMb(hardSizeLimitBytes)}`,
+        );
+      } else if (info.size > softSizeLimitBytes) {
+        warnings.push(
+          `optimized ${model}: ${formatMb(info.size)} should be reduced when a smaller biplane export is available`,
+        );
       }
       console.log(`ok optimized ${model} ${formatMb(info.size)}`);
     }
   } catch {
-    failures.push("public/models-optimized is missing; run npm run asset:optimize");
+    failures.push("public/models-optimized is missing; keep the optimized biplane GLB checked in");
   }
 
   if (warnings.length > 0) {

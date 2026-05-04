@@ -8,8 +8,6 @@ import { ThreeScene } from "./ThreeScene";
 import { DetailDrawer } from "./DetailDrawer";
 import { MiniMap } from "./MiniMap";
 import { DiegeticHud } from "./DiegeticHud";
-import { HangarPanel } from "./HangarPanel";
-import { HangarCustomizationPanel } from "./HangarPanel";
 import { AchievementToast } from "./AchievementToast";
 import { FuelGauge } from "./FuelGauge";
 import { LeaderboardPanel } from "./LeaderboardPanel";
@@ -144,17 +142,6 @@ function MapIcon() {
       <path d="M4 6.5 9 4l6 2.5L20 4v13.5L15 20l-6-2.5L4 20Z" />
       <path d="M9 4v13.5" />
       <path d="M15 6.5V20" />
-    </AtlasIcon>
-  );
-}
-
-function PaintIcon() {
-  return (
-    <AtlasIcon>
-      <path d="M12 4a8 8 0 1 0 0 16h1.1a2.4 2.4 0 0 0 0-4.8H12a2.6 2.6 0 0 1 0-5.2h.5A3.5 3.5 0 0 0 12 4Z" />
-      <circle cx="8" cy="10" r="1" />
-      <circle cx="12.5" cy="7.5" r="1" />
-      <circle cx="16" cy="10" r="1" />
     </AtlasIcon>
   );
 }
@@ -309,17 +296,13 @@ function ConstellationExperienceBody({
   const [statusMessage, setStatusMessage] = useState("");
   const [telemetry, setTelemetry] = useState<FlightTelemetry | null>(null);
   const [gameSnapshot, setGameSnapshot] = useState<GameSessionSnapshot | null>(null);
-  const [panelMode, setPanelMode] = useState<"none" | "hangar" | "leaderboard">("none");
+  const [panelMode, setPanelMode] = useState<"none" | "leaderboard">("none");
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const [mobilePanelMode, setMobilePanelMode] = useState<
-    "none" | "hangar" | "leaderboard"
-  >("none");
+  const [mobilePanelMode, setMobilePanelMode] = useState<"none" | "leaderboard">("none");
 
   const {
     progress,
-    skins,
     activeToast,
-    summary,
     playerCallsign,
     leaderboard,
     flightSettings,
@@ -328,7 +311,6 @@ function ConstellationExperienceBody({
     markRareArchetypeDiscovered,
     markRegionVisited,
     markRuntimeDiscovered,
-    selectSkin,
     setPlayerCallsign,
     updateFlightSettings,
     updateFeatureFlags,
@@ -344,10 +326,6 @@ function ConstellationExperienceBody({
   const systemsByApp = useMemo(
     () => new Map(activeScene.systems.map((system) => [system.appName, system])),
     [activeScene.systems],
-  );
-  const selectedSkin = useMemo(
-    () => skins.find((skin) => skin.selected) ?? skins[0] ?? null,
-    [skins],
   );
   const showLowerPanels =
     !isTabletLayout && ((hasSearched && searchResults.length > 0) || panelMode !== "none");
@@ -662,7 +640,7 @@ function ConstellationExperienceBody({
     setMobileFiltersOpen((current) => !current);
   };
 
-  const toggleMobilePanel = (next: "hangar" | "leaderboard") => {
+  const toggleMobilePanel = (next: "leaderboard") => {
     setMobileFiltersOpen(false);
     setMobilePanelMode((current) => (current === next ? "none" : next));
   };
@@ -719,8 +697,8 @@ function ConstellationExperienceBody({
           <h1>FluxCloud Explore</h1>
           <p className="hero-text">
             Fly through FluxCloud deployments, chart the busiest sectors, refuel in the
-            cloud lanes, and rescue stranded pilots without letting the exploration layer
-            overpower the live deployment map.
+            cloud lanes, and keep the exploration layer light enough that it never
+            overpowers the live deployment map.
           </p>
 
           <div className="hero-metrics hero-metrics--compact" aria-label="Atlas totals">
@@ -791,7 +769,6 @@ function ConstellationExperienceBody({
             selectedAppDetail={detail}
             selectedAppDetailLoading={detailLoading}
             selectedAppDetailError={detailError}
-            selectedSkinId={progress.selectedSkinId}
             searchMatches={searchMatchAppNames}
             focusTarget={focusTarget}
             mapDataLoading={sceneLoading}
@@ -806,9 +783,6 @@ function ConstellationExperienceBody({
                   <DiegeticHud
                     telemetry={telemetry}
                     snapshot={gameSnapshot}
-                    selectedSkinLabel={selectedSkin?.label ?? "Classic"}
-                    unlockedSkinCount={skins.filter((skin) => skin.unlocked).length}
-                    totalSkinCount={skins.length}
                     mode={isTabletLayout ? "compact" : "detailed"}
                   />
                   <FuelGauge snapshot={gameSnapshot} />
@@ -826,13 +800,6 @@ function ConstellationExperienceBody({
                   <AchievementToast toast={activeToast} onDismiss={dismissToast} />
                 ) : null}
               </>
-            }
-            customizePanel={
-              <HangarCustomizationPanel
-                skins={skins}
-                onSelectSkin={selectSkin}
-                onResetProgress={handleResetProgress}
-              />
             }
             onSelectApp={handleSelectApp}
             onClearSelectedApp={() => setSelectedAppName(null)}
@@ -861,13 +828,6 @@ function ConstellationExperienceBody({
             >
               Hide panels
             </button>
-            <button
-              type="button"
-              className={`secondary-action ${panelMode === "hangar" ? "secondary-action--active" : ""}`}
-              onClick={() => setPanelMode((current) => (current === "hangar" ? "none" : "hangar"))}
-            >
-              Customize
-            </button>
             {featureFlags.leaderboard ? (
               <button
                 type="button"
@@ -891,17 +851,6 @@ function ConstellationExperienceBody({
             >
               <MapIcon />
               <span>Map</span>
-            </button>
-            <button
-              type="button"
-              className={`atlas-mobile-nav__item ${
-                mobilePanelMode === "hangar" ? "atlas-mobile-nav__item--active" : ""
-              }`}
-              onClick={() => toggleMobilePanel("hangar")}
-              aria-expanded={mobilePanelMode === "hangar"}
-            >
-              <PaintIcon />
-              <span>Customize</span>
             </button>
             {featureFlags.leaderboard ? (
               <button
@@ -949,14 +898,6 @@ function ConstellationExperienceBody({
                   ))}
                 </ul>
               </section>
-            ) : null}
-
-            {panelMode === "hangar" ? (
-              <HangarPanel
-                skins={skins}
-                onSelectSkin={selectSkin}
-                onResetProgress={handleResetProgress}
-              />
             ) : null}
 
             {featureFlags.leaderboard && panelMode === "leaderboard" ? (
@@ -1020,23 +961,12 @@ function ConstellationExperienceBody({
       {isTabletLayout ? (
         <MobileDrawer
           open={mobilePanelMode !== "none"}
-          title={mobilePanelMode === "leaderboard" ? "Leaderboard" : "Customize aircraft"}
-          description={
-            mobilePanelMode === "leaderboard"
-              ? "Track weekly runs and update your pilot callsign without leaving the map."
-              : "Swap paint styles and reset progress from a mobile-friendly drawer."
-          }
+          title="Leaderboard"
+          description="Track weekly runs and update your pilot callsign without leaving the map."
           onClose={() => setMobilePanelMode("none")}
           placement="bottom"
           className={isPhoneLayout ? "mobile-drawer--phone" : "mobile-drawer--panel"}
         >
-          {mobilePanelMode === "hangar" ? (
-            <HangarCustomizationPanel
-              skins={skins}
-              onSelectSkin={selectSkin}
-              onResetProgress={handleResetProgress}
-            />
-          ) : null}
           {featureFlags.leaderboard && mobilePanelMode === "leaderboard" ? (
             <LeaderboardPanel
               callsign={playerCallsign}

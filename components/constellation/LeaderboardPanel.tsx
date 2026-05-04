@@ -10,7 +10,7 @@ const renderEntry = (entry: LeaderboardEntry, index: number) => (
     </strong>
     <span>{entry.score.toLocaleString()} pts</span>
     <small>
-      {entry.distance} route · {entry.discoveries} deployments · {entry.rescues} rescues
+      {entry.distance} route - {entry.discoveries} deployments
     </small>
   </li>
 );
@@ -58,8 +58,7 @@ export function LeaderboardPanel({
       <div className="leaderboard-live">
         <strong>{(snapshot?.score ?? 0).toLocaleString()} pts</strong>
         <span>
-          {snapshot?.distanceUnits ?? 0} route · {snapshot?.discoveries ?? 0} deployments ·{" "}
-          {snapshot?.rescues ?? 0} rescues
+          {snapshot?.distanceUnits ?? 0} route - {snapshot?.discoveries ?? 0} deployments
         </span>
       </div>
 

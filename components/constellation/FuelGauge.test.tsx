@@ -14,7 +14,6 @@ describe("FuelGauge", () => {
           activeBoostLabel: null,
           score: 10,
           discoveries: 2,
-          rescues: 1,
           fuelTanksCollected: 1,
           speedBoostsCollected: 0,
           upgradeCredits: 24,
@@ -27,7 +26,6 @@ describe("FuelGauge", () => {
           durationMs: 5_000,
           fuelPackCount: 0,
           boostPackCount: 0,
-          parachuterCount: 1,
           qualityMode: "high" as const,
           flags: DEFAULT_FEATURE_FLAGS,
           miniMap: {

@@ -48,7 +48,6 @@ const snapshot: GameSessionSnapshot = {
   activeBoostLabel: null,
   score: 10,
   discoveries: 1,
-  rescues: 0,
   fuelTanksCollected: 0,
   speedBoostsCollected: 0,
   upgradeCredits: 0,
@@ -61,12 +60,14 @@ const snapshot: GameSessionSnapshot = {
   durationMs: 1000,
   fuelPackCount: 1,
   boostPackCount: 1,
-  parachuterCount: 1,
   qualityMode: "high",
   flags: DEFAULT_FEATURE_FLAGS,
   miniMap: {
     clusters: [{ id: "cluster:nearby", x: 24, y: -12, count: 4 }],
-    collectibles: [{ id: "fuel:one", kind: "fuel", x: 40, y: 10 }],
+    collectibles: [
+      { id: "fuel:one", kind: "fuel", x: 40, y: 10 },
+      { id: "boost:one", kind: "boost", x: -20, y: 16 },
+    ],
   },
 };
 

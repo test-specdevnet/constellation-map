@@ -25,8 +25,8 @@ export function MiniMap({
   onSelectCluster: (cluster: Cluster) => void;
 }) {
   const visitedSet = new Set(visitedRegionIds);
-  const mapWidth = 188;
-  const mapHeight = 148;
+  const mapWidth = 220;
+  const mapHeight = 168;
 
   const project = (x: number, y: number) => {
     const px = ((x - bounds.minX) / Math.max(bounds.width, 1)) * mapWidth;
@@ -121,13 +121,16 @@ export function MiniMap({
 
         {snapshot?.miniMap.collectibles.map((collectible) => {
           const point = project(collectible.x, collectible.y);
-          return (
-            <circle
+          return collectible.kind === "fuel" ? (
+            <g key={collectible.id} className="mini-map-pickup mini-map-pickup--fuel">
+              <rect x={point.x - 3.5} y={point.y - 5} width="7" height="10" rx="2" />
+              <path d={`M${point.x - 1.5} ${point.y - 5}h5l1.4 3`} />
+            </g>
+          ) : (
+            <path
               key={collectible.id}
-              cx={point.x}
-              cy={point.y}
-              r={collectible.kind === "parachuter" ? 4 : 3}
-              className={`mini-map-pickup mini-map-pickup--${collectible.kind}`}
+              d={`M${point.x - 1} ${point.y - 7}l6 6h-4l3 8-8-8h4z`}
+              className="mini-map-pickup mini-map-pickup--boost"
             />
           );
         })}
@@ -137,7 +140,6 @@ export function MiniMap({
 
       {mode === "detailed" ? (
         <div className="mini-map-legend" aria-label="Mini-map legend">
-          <span><i className="mini-map-legend-dot mini-map-legend-dot--parachuter" />Rescue</span>
           <span><i className="mini-map-legend-dot mini-map-legend-dot--fuel" />Fuel</span>
           <span><i className="mini-map-legend-dot mini-map-legend-dot--boost" />Boost</span>
           <span><i className="mini-map-legend-dot mini-map-legend-dot--cluster" />Cluster</span>

@@ -6,17 +6,17 @@ Interactive star-atlas style discovery surface for public FluxCloud deployment d
 
 - Fly smoothly through the FluxCloud deployment map with keyboard or touch controls.
 - Discover deployment buoys tied to real FluxCloud snapshot data.
-- Rescue parachuters, collect fuel jerry cans, and grab speed boosts while exploring.
-- Track weekly leaderboard runs scored from the sum of route distance, deployments discovered, and parachuters rescued.
+- Collect fuel tanks and lightning speed boosts while exploring.
+- Track weekly leaderboard runs scored from route distance and deployments discovered.
 
 ## Core features
 
-- Three.js flight scene with chase camera, GLB aircraft/stations, hover, and selection
+- Three.js flight scene with chase camera, red GLB biplane, procedural buoys/stations, hover, and selection
 - Cartoon-style sky layer with parallax clouds, islands, drones, and buoy markers
 - Deterministic constellation and system layout
 - Runtime, status, category, and resource-tier filtering
 - Search-to-focus camera flow with smooth flight follow
-- Compact or detailed HUD modes, minimap, hangar, and leaderboard panels
+- Compact or detailed HUD modes, minimap, and leaderboard panels
 - Internal API layer for render-ready stars, detail hydration, filters, search, and refresh
 
 ## Mobile layout
@@ -34,13 +34,13 @@ Interactive star-atlas style discovery surface for public FluxCloud deployment d
 - `lib/game/deploymentVisibility.ts`
   Progressive datapoint culling, density limits, and cluster summaries.
 - `lib/game/collectibles.ts`
-  Parachuter, fuel, and speed-boost spawning, collection, feedback, and respawn rules.
+  Fuel and speed-boost spawning, collection, feedback, and respawn rules.
 - `lib/game/session.ts`
   Fuel drain, exploration scoring, run lifecycle, and HUD snapshot creation.
 - `components/constellation/ThreeScene.tsx`
   Main 3D render/simulation loop that orchestrates the exploration experience.
 - `public/models/`
-  Runtime GLB assets for the aircraft, FluxCloud drones, refuel stations, upgrade labs, and service robots.
+  Runtime GLB asset source folder. The shipped runtime model is the optimized red biplane in `public/models-optimized/`.
 
 ## Local development
 

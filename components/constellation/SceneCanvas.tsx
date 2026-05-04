@@ -15,7 +15,6 @@ import { FlightSettingsPanel } from "./FlightSettingsPanel";
 import { MobileDrawer } from "./MobileDrawer";
 import { useMediaQuery } from "./useMediaQuery";
 import {
-  drawParachuterPickup,
   drawFuelCanPickup,
   drawDeploymentBuoy,
   drawParallaxCloudLayers,
@@ -185,7 +184,6 @@ const createInitialDebugHudSnapshot = (): DebugHudSnapshot => ({
   counts: {
     deployments: 0,
     clusters: 0,
-    parachuters: 0,
     powerUps: 0,
     clouds: 0,
   },
@@ -259,12 +257,6 @@ function SpriteDebugGallery({ visible }: { visible: boolean }) {
           <figure key={`buoy:${key}`}>
             <span>{`${rect.w}x${rect.h}`}</span>
             <figcaption>{`buoys.${key}`}</figcaption>
-          </figure>
-        ))}
-        {Object.entries(SPRITE_REGIONS.pilots).map(([key, rect]) => (
-          <figure key={`pilot:${key}`}>
-            <span>{`${rect.w}x${rect.h}`}</span>
-            <figcaption>{`pilots.${key}`}</figcaption>
           </figure>
         ))}
       </div>
@@ -1231,7 +1223,6 @@ export function SceneCanvas({
             spawnCounter: game.spawnCounter,
             enableFuel: featureFlags.fuelSystem,
             enableBoosts: featureFlags.pickups,
-            enableParachuters: true,
             fuelRatio: game.fuel / Math.max(game.fuelMax, 1),
             boostActive: game.boostUntilMs > timestamp,
           });
@@ -1257,7 +1248,6 @@ export function SceneCanvas({
             fuel: game.fuel,
             fuelMax: game.fuelMax,
             boostUntilMs: game.boostUntilMs,
-            rescues: game.rescues,
             fuelTanksCollected: game.fuelTanksCollected,
             speedBoostsCollected: game.speedBoostsCollected,
             collectibleResult: pickupResult,
@@ -1265,7 +1255,6 @@ export function SceneCanvas({
           });
           game.fuel = pickupOutcome.fuel;
           game.boostUntilMs = pickupOutcome.boostUntilMs;
-          game.rescues = pickupOutcome.rescues;
           game.fuelTanksCollected = pickupOutcome.fuelTanksCollected;
           game.speedBoostsCollected = pickupOutcome.speedBoostsCollected;
           announcePickup(pickupOutcome.pickupLabel);
@@ -1273,8 +1262,7 @@ export function SceneCanvas({
           syncGameScore(game);
           if (
             pickupResult.fuelCollectedCount > 0 ||
-            pickupResult.boostCollectedCount > 0 ||
-            pickupResult.rescuedCount > 0
+            pickupResult.boostCollectedCount > 0
           ) {
             emitGameStateSnapshot(timestamp);
           }
@@ -1804,13 +1792,9 @@ export function SceneCanvas({
         const bob =
           Math.sin(
             timestamp /
-              (collectible.kind === "fuel"
-                ? 520
-                : collectible.kind === "boost"
-                  ? 460
-                  : 560) +
+              (collectible.kind === "fuel" ? 520 : 460) +
               collectible.bobSeed,
-          ) * (collectible.kind === "parachuter" ? 7 : collectible.kind === "fuel" ? 10 : 8);
+          ) * (collectible.kind === "fuel" ? 10 : 8);
         const px = projected.x;
         const py = projected.y + bob;
         if (offscreen({ x: px, y: py }, 48, canvasSize)) {
@@ -1842,37 +1826,8 @@ export function SceneCanvas({
             px,
             py,
             0.92 * projected.radialScale,
-            timestamp / 1600 + collectible.spinSeed,
-          );
-        } else {
-          const pilotsSheet = getSpriteImage(spriteImages, SPRITES.ui.robotPilotsSheet);
-          if (pilotsSheet) {
-            const pilotRegion =
-              collectible.id.charCodeAt(collectible.id.length - 1) % 4 === 0
-                ? SPRITE_REGIONS.pilots.green
-                : collectible.id.charCodeAt(collectible.id.length - 1) % 4 === 1
-                  ? SPRITE_REGIONS.pilots.yellow
-                  : collectible.id.charCodeAt(collectible.id.length - 1) % 4 === 2
-                    ? SPRITE_REGIONS.pilots.blue
-                    : SPRITE_REGIONS.pilots.red;
-            const w = 34 * projected.radialScale;
-            const h = 46 * projected.radialScale;
-            drawSpriteSheetRegion(
-              context,
-              pilotsSheet,
-              pilotRegion,
-              { x: px - w / 2, y: py - h / 2, w, h },
-              { rotation: Math.sin(timestamp / 900 + collectible.spinSeed) * 0.1 },
+              timestamp / 1600 + collectible.spinSeed,
             );
-          } else {
-            drawParachuterPickup(
-              context,
-              px,
-              py,
-              0.88 * projected.radialScale,
-              Math.sin(timestamp / 900 + collectible.spinSeed),
-            );
-          }
         }
       }
 
@@ -1969,9 +1924,6 @@ export function SceneCanvas({
           counts: {
             deployments: visibleDeployments,
             clusters: visibilityRef.current.clusterMarkers.length,
-            parachuters: game.collectibles.filter(
-              (collectible) => collectible.active && collectible.kind === "parachuter",
-            ).length,
             powerUps: game.collectibles.filter(
               (collectible) =>
                 collectible.active &&
@@ -2278,7 +2230,7 @@ export function SceneCanvas({
           </div>
           <span className="scene-zoom-label scene-zoom-label--wrap">
             Fly with WASD or arrows. Scroll to zoom. Sweep the cloud for buoys, fuel,
-            boosts, and rescue pilots.
+            and boosts.
           </span>
         </div>
       )}
@@ -2365,7 +2317,7 @@ export function SceneCanvas({
             </h2>
             <p className="scene-flight-tip-copy">
               Click the sky, steer with WASD or arrows, and scroll to zoom in on a cluster.
-              Discover deployment buoys, scoop up boosts and fuel, and rescue parachuters.
+              Discover deployment buoys, scoop up boosts and fuel, and keep your route moving.
             </p>
             <button
               type="button"
@@ -2388,7 +2340,6 @@ export function SceneCanvas({
             <div className="scene-run-end__stats" aria-label="Last run summary">
               <span>{runEndSnapshot.distanceUnits} route</span>
               <span>{runEndSnapshot.discoveries} deployments</span>
-              <span>{runEndSnapshot.rescues} rescues</span>
             </div>
             <button type="button" className="primary-action scene-run-end__action" onClick={resetFlight}>
               Restart from hub

@@ -6,7 +6,7 @@ Keep the current Next.js, React, Three.js, and React Three Fiber stack. The app 
 
 ## Audit Hotspots
 
-- Asset loading: `components/constellation/ThreeScene.tsx` currently keeps runtime GLB rendering behind `RUNTIME_GLB_MODELS_ENABLED`; the GLBs in `public/models` are valid but very large. Run `npm run asset:audit` before enabling them broadly.
+- Asset loading: `components/constellation/ThreeScene.tsx` keeps the single runtime GLB biplane behind `RUNTIME_GLB_MODELS_ENABLED`; stations and buoys stay procedural. Run `npm run asset:audit` before changing runtime assets.
 - Render loop: `ThreeScene` owns the R3F `useFrame` loop, flight integration, proximity checks, camera follow, telemetry, and object rendering. Refactor only when a smaller helper has a testable boundary.
 - Game mechanics: deterministic logic already lives under `lib/game`. Prefer moving landing, docking, and collider math there before changing scene components.
 - UI/HUD: counters flow through `createSessionSnapshot`, `DiegeticHud`, `FuelGauge`, and `MiniMap`. Fix broken counters at the session snapshot boundary first.
@@ -19,18 +19,18 @@ Use Three.js for this codebase. Babylon.js is a reasonable option for a new brow
 ## Staged Implementation
 
 1. Stabilize assets.
-   - Keep raw GLBs in `public/models`.
-   - Generate optimized variants in `public/models-optimized` with `npm run asset:optimize` once `@gltf-transform/cli` is available.
-   - Add per-model transform metadata for scale, rotation, ground offset, and fallback geometry.
+   - Keep only the optimized red biplane GLB in `public/models-optimized`.
+   - Leave `public/models` free of runtime GLBs unless a future asset task explicitly reintroduces a raw source.
+   - Keep per-model transform metadata for scale, rotation, ground offset, and fallback geometry scoped to the biplane.
 
 2. Separate world layout and collisions.
    - Move station, buoy, and collectible layout descriptors out of `ThreeScene`.
    - Use deterministic inputs from clusters/systems and expose collider descriptors for the scene.
    - Unit-test landing thresholds, refuel docking, deployment discovery, and minimap snapshots in `lib/game`.
 
-3. Re-enable GLBs safely.
+3. Keep GLB usage bounded.
    - Load models asynchronously and show fallback meshes until ready.
-   - Clone cached model scenes before placing multiple instances.
+   - Clone cached model scenes before placing instances.
    - Recenter each model with `THREE.Box3`, apply scale uniformly, and place its bottom on the intended terrain altitude.
    - Dispose cloned geometries/materials when an instance is removed.
 
@@ -49,7 +49,7 @@ Use Three.js for this codebase. Babylon.js is a reasonable option for a new brow
 
 - "Extract station and deployment world layout from `ThreeScene` into a tested helper under `lib/game`, preserving current behavior."
 - "Add collider helpers for sphere and box proximity checks, then wire landing/refuel/discovery to those helpers with Jest coverage."
-- "Create a React Three Fiber GLB model component that loads an asset once, clones it for instances, recenters it by bounding box, and falls back to existing procedural geometry on load failure."
+- "Profile the biplane GLB loader and fallback path, preserving procedural buoys and stations."
 - "Profile `ThreeScene` and remove per-frame allocations from the camera and object rendering paths without changing gameplay."
 - "Expand `GameSessionSnapshot.miniMap` to include stations and discovered deployments, then update `MiniMap` and tests."
 
@@ -61,8 +61,8 @@ The GitHub Actions workflow runs install, typecheck, unit tests, asset audit, an
 npm run ci
 ```
 
-Use `npm run asset:audit` to check that required GLBs exist, are valid GLB v2 files, and are not above the hard size limit. Size warnings are intentional until optimized files replace raw assets in runtime.
+Use `npm run asset:audit` to check that only the optimized biplane GLB is present for runtime and that it is a valid GLB v2 file under the runtime size limit.
 
 ## Asset Recovery
 
-If a GLB is missing or corrupt, first check git history and source files before replacing it. If a replacement is needed, document the substitute in this file and keep its filename stable so scene metadata does not drift.
+If the biplane GLB is missing or corrupt, first check git history and source files before replacing it. If a replacement is needed, document the substitute in this file and keep its filename stable so scene metadata does not drift.

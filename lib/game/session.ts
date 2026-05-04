@@ -19,7 +19,7 @@ const distanceBetween = (left: { x: number; y: number }, right: { x: number; y: 
 
 export const syncGameScore = (game: GameState) => {
   game.distanceUnits = toDistanceUnits(game.distance);
-  game.score = game.distanceUnits + game.discoveries.size + game.rescues;
+  game.score = game.distanceUnits + game.discoveries.size;
 };
 
 export const createGameState = (): GameState => ({
@@ -31,7 +31,6 @@ export const createGameState = (): GameState => ({
   score: 0,
   distance: 0,
   distanceUnits: 0,
-  rescues: 0,
   fuelTanksCollected: 0,
   speedBoostsCollected: 0,
   upgradeCredits: 0,
@@ -154,7 +153,6 @@ export const createSessionSnapshot = ({
   activeBoostLabel: game.boostUntilMs > nowMs ? "Tailwind boost" : null,
   score: game.score,
   discoveries: game.discoveries.size,
-  rescues: game.rescues,
   fuelTanksCollected: game.fuelTanksCollected,
   speedBoostsCollected: game.speedBoostsCollected,
   upgradeCredits: game.upgradeCredits,
@@ -170,9 +168,6 @@ export const createSessionSnapshot = ({
   ).length,
   boostPackCount: game.collectibles.filter(
     (collectible) => collectible.active && collectible.kind === "boost",
-  ).length,
-  parachuterCount: game.collectibles.filter(
-    (collectible) => collectible.active && collectible.kind === "parachuter",
   ).length,
   qualityMode,
   flags: featureFlags,
@@ -196,7 +191,6 @@ export const createSessionSnapshot = ({
 
 export const toRunRecord = (game: GameState, nowMs: number): RunRecord => ({
   score: game.score,
-  rescues: game.rescues,
   discoveries: game.discoveries.size,
   distance: game.distanceUnits,
   durationMs: Math.max(0, Math.round(nowMs - game.runStartedAtMs)),

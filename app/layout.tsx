@@ -6,7 +6,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "FluxCloud Explore",
   description:
-    "Literally fly through the FluxCloud and explore network deployments, unlocking plane skins as you discover new datapoints with this interactive data visualization tool.",
+    "Fly a red biplane through FluxCloud deployments, collect fuel and boosts, and explore live network data with this interactive visualization tool.",
 };
 
 export default function RootLayout({

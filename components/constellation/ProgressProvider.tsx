@@ -25,12 +25,7 @@ import {
 } from "../../lib/game/config";
 
 const STORAGE_KEY = "flux-constellation-progress-v4";
-const ALL_PLANE_SKIN_IDS: PlaneSkinId[] = [
-  "midnight-courier",
-  "sunset-scout",
-  "classic",
-  "mint-radar",
-];
+const ALL_PLANE_SKIN_IDS: PlaneSkinId[] = ["classic"];
 
 type QuestId = "regional-surveyor" | "rare-signal" | "runtime-rambler";
 
@@ -137,27 +132,9 @@ const skinCatalog: Array<{
   unlockHint: string;
 }> = [
   {
-    id: "midnight-courier",
-    label: "Blue",
-    description: "A bright sky-blue biplane with cool trim.",
-    unlockHint: "Available from the start.",
-  },
-  {
-    id: "sunset-scout",
-    label: "Yellow",
-    description: "A sunny golden finish that stays sharp in the clouds.",
-    unlockHint: "Available from the start.",
-  },
-  {
     id: "classic",
     label: "Red",
     description: "The original candy-red patrol plane.",
-    unlockHint: "Available from the start.",
-  },
-  {
-    id: "mint-radar",
-    label: "Green",
-    description: "A playful green livery with radar-inspired trim.",
     unlockHint: "Available from the start.",
   },
 ];
@@ -175,7 +152,6 @@ const normalizeLeaderboardEntry = (entry: Partial<LeaderboardEntry>): Leaderboar
     id: entry.id,
     callsign: typeof entry.callsign === "string" && entry.callsign.trim() ? entry.callsign.trim() : "Pilot",
     score: entry.score,
-    rescues: typeof entry.rescues === "number" ? entry.rescues : 0,
     discoveries: typeof entry.discoveries === "number" ? entry.discoveries : 0,
     distance: typeof entry.distance === "number" ? entry.distance : 0,
     durationMs: typeof entry.durationMs === "number" ? entry.durationMs : 0,
@@ -197,8 +173,7 @@ const normalizeLeaderboards = (
           (left, right) =>
             right.score - left.score ||
             right.distance - left.distance ||
-            right.discoveries - left.discoveries ||
-            right.rescues - left.rescues,
+            right.discoveries - left.discoveries,
         )
         .slice(0, 10),
     ]),
@@ -211,11 +186,8 @@ const normalizeProgress = (input: Partial<ProgressState> | null | undefined): Pr
   inspectedRuntimeFamilies: unique(input?.inspectedRuntimeFamilies ?? []),
   rareArchetypeIds: unique(input?.rareArchetypeIds ?? []),
   completedQuestIds: unique(input?.completedQuestIds ?? []) as QuestId[],
-  unlockedSkinIds: unique([...ALL_PLANE_SKIN_IDS, ...(input?.unlockedSkinIds ?? [])]) as PlaneSkinId[],
-  selectedSkinId:
-    input?.selectedSkinId && skinCatalog.some((skin) => skin.id === input.selectedSkinId)
-      ? input.selectedSkinId
-      : "classic",
+  unlockedSkinIds: ALL_PLANE_SKIN_IDS,
+  selectedSkinId: "classic",
   playerCallsign:
     typeof input?.playerCallsign === "string" && input.playerCallsign.trim()
       ? input.playerCallsign.trim().slice(0, 18)
@@ -570,7 +542,6 @@ export function ConstellationProgressProvider({
           id: `leader:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
           callsign: current.playerCallsign || "Pilot",
           score: record.score,
-          rescues: record.rescues,
           discoveries: record.discoveries,
           distance: record.distance,
           durationMs: record.durationMs,
@@ -583,8 +554,7 @@ export function ConstellationProgressProvider({
             (left, right) =>
               right.score - left.score ||
               right.distance - left.distance ||
-              right.discoveries - left.discoveries ||
-              right.rescues - left.rescues,
+              right.discoveries - left.discoveries,
           )
           .slice(0, 10);
 

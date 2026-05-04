@@ -37,7 +37,7 @@ export function QuestLog({
       <p className="panel-copy quest-log-copy">
         {activeQuest
           ? `Next objective: ${activeQuest.title} (${activeQuest.progressLabel})`
-          : "Every quest is clear. Keep exploring to show off the full hangar."}
+          : "Every quest is clear. Keep exploring to improve your weekly route."}
       </p>
 
       <div className="quest-log">
