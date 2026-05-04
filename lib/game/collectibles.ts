@@ -72,6 +72,11 @@ const isInsideSpawnBounds = (bounds: SceneBounds, point: { x: number; y: number 
   point.y >= bounds.minY + 180 &&
   point.y <= bounds.maxY - 180;
 
+const clampToSpawnBounds = (bounds: SceneBounds, point: { x: number; y: number }) => ({
+  x: clamp(point.x, bounds.minX + 180, bounds.maxX - 180),
+  y: clamp(point.y, bounds.minY + 180, bounds.maxY - 180),
+});
+
 const overlapsActiveCollectible = ({
   candidate,
   radius,
@@ -153,72 +158,87 @@ const spawnCollectible = ({
       source: Collectible["source"];
     }> = [];
     const anchors = anchorSystems.length > 0 ? anchorSystems : [{ x: plane.x, y: plane.y }];
+    const pushFuelCandidate = ({
+      candidate,
+      source,
+      clampToBounds,
+    }: {
+      candidate: { x: number; y: number };
+      source: Collectible["source"];
+      clampToBounds?: boolean;
+    }) => {
+      const boundedCandidate = clampToBounds
+        ? clampToSpawnBounds(bounds, candidate)
+        : candidate;
+      const planeDistance = distance(plane, boundedCandidate);
+      if (
+        !isInsideSpawnBounds(bounds, boundedCandidate) ||
+        planeDistance < GAME_CONFIG.fuelPickupSpawnMinDistance ||
+        planeDistance > GAME_CONFIG.fuelPickupSpawnMaxDistance ||
+        !isOutsideFlightLane({ plane, candidate: boundedCandidate }) ||
+        overlapsActiveCollectible({
+          candidate: boundedCandidate,
+          radius,
+          collectibles: existingCollectibles,
+        })
+      ) {
+        return;
+      }
+
+      waypointCandidates.push({
+        ...boundedCandidate,
+        source,
+      });
+    };
 
     anchors.forEach((anchor, anchorIndex) => {
       FUEL_WAYPOINT_OFFSETS.forEach((offset, offsetIndex) => {
         const ring = ringDistances[(anchorIndex + offsetIndex) % ringDistances.length];
         const jitter = randomBetween(rng, -28, 28);
-        const candidate = {
-          x: anchor.x + offset.x * (ring + jitter),
-          y: anchor.y + offset.y * (ring - jitter),
-        };
-        const planeDistance = distance(plane, candidate);
-        if (
-          !isInsideSpawnBounds(bounds, candidate) ||
-          planeDistance < GAME_CONFIG.fuelPickupSpawnMinDistance ||
-          planeDistance > GAME_CONFIG.fuelPickupSpawnMaxDistance ||
-          !isOutsideFlightLane({ plane, candidate }) ||
-          overlapsActiveCollectible({
-            candidate,
-            radius,
-            collectibles: existingCollectibles,
-          })
-        ) {
-          return;
-        }
-
-        waypointCandidates.push({
-          ...candidate,
-          source: anchorSystems.length > 0 ? "near-system" : "rescue-lane",
+        pushFuelCandidate({
+          candidate: {
+            x: anchor.x + offset.x * (ring + jitter),
+            y: anchor.y + offset.y * (ring - jitter),
+          },
+          source: anchorSystems.length > 0 ? "near-system" : "flight-path",
         });
       });
     });
 
     if (waypointCandidates.length === 0) {
       const fallbackAngles = [
-        plane.heading + Math.PI,
         plane.heading + Math.PI * 0.72,
         plane.heading - Math.PI * 0.72,
+        plane.heading + Math.PI,
         plane.heading + Math.PI * 0.52,
         plane.heading - Math.PI * 0.52,
+        plane.heading + Math.PI * 0.9,
+        plane.heading - Math.PI * 0.9,
       ];
+      const fallbackDistances =
+        fuelRatio <= GAME_CONFIG.fuelPickupCriticalThreshold
+          ? [
+              GAME_CONFIG.fuelPickupSpawnMinDistance + 24,
+              GAME_CONFIG.fuelPickupSpawnMinDistance + 132,
+              GAME_CONFIG.fuelPickupSpawnMinDistance + 260,
+            ]
+          : [
+              GAME_CONFIG.fuelPickupSpawnMinDistance + 80,
+              GAME_CONFIG.fuelPickupSpawnMinDistance + 240,
+              GAME_CONFIG.fuelPickupSpawnMaxDistance - 120,
+            ];
 
       for (const fallbackAngle of fallbackAngles) {
-        const fallbackDistance = randomBetween(
-          rng,
-          GAME_CONFIG.fuelPickupSpawnMinDistance,
-          GAME_CONFIG.fuelPickupSpawnMaxDistance,
-        );
-        const candidate = {
-          x: plane.x + Math.cos(fallbackAngle) * fallbackDistance,
-          y: plane.y + Math.sin(fallbackAngle) * fallbackDistance,
-        };
-
-        if (
-          !isInsideSpawnBounds(bounds, candidate) ||
-          overlapsActiveCollectible({
-            candidate,
-            radius,
-            collectibles: existingCollectibles,
-          })
-        ) {
-          continue;
+        for (const fallbackDistance of fallbackDistances) {
+          pushFuelCandidate({
+            candidate: {
+              x: plane.x + Math.cos(fallbackAngle) * fallbackDistance,
+              y: plane.y + Math.sin(fallbackAngle) * fallbackDistance,
+            },
+            source: anchorSystems.length > 0 ? "rescue-lane" : "flight-path",
+            clampToBounds: true,
+          });
         }
-
-        waypointCandidates.push({
-          ...candidate,
-          source: "flight-path",
-        });
       }
     }
 
@@ -402,10 +422,15 @@ export const maintainCollectibles = ({
       (collectible) => collectible.kind === kind && collectible.active,
     ).length;
     let trackedCount = refreshed.filter((collectible) => collectible.kind === kind).length;
+    const forceFuelNow = kind === "fuel" && desiredCount > 0 && activeCount === 0;
 
     for (let index = 0; index < refreshed.length && activeCount < desiredCount; index += 1) {
       const collectible = refreshed[index];
-      if (collectible.kind !== kind || collectible.active || collectible.respawnAtMs > nowMs) {
+      if (
+        collectible.kind !== kind ||
+        collectible.active ||
+        (collectible.respawnAtMs > nowMs && !forceFuelNow)
+      ) {
         continue;
       }
 
