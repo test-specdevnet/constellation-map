@@ -79,24 +79,24 @@ export const GAME_CONFIG = {
   localSystemRadius: 1_720,
   detailSystemRadius: 1_050,
   maxVisibleSystems: {
-    low: 18,
-    medium: 28,
-    high: 36,
+    low: 16,
+    medium: 24,
+    high: 32,
   },
   maxDetailSystems: {
-    low: 5,
-    medium: 7,
-    high: 9,
+    low: 4,
+    medium: 6,
+    high: 8,
   },
   maxStarsPerSystem: {
-    low: 8,
-    medium: 12,
-    high: 16,
+    low: 7,
+    medium: 10,
+    high: 14,
   },
   maxClusterMarkers: {
-    low: 14,
-    medium: 20,
-    high: 26,
+    low: 12,
+    medium: 18,
+    high: 22,
   },
 } as const;
 

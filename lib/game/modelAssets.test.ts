@@ -3,11 +3,11 @@ import {
   getModelInstanceBudget,
   getBiplaneMaterialRole,
   getRuntimeModelConfig,
-  getStationModelId,
 } from "./modelAssets";
 
 describe("modelAssets", () => {
   it("maps every runtime model to a public GLB path and fallback label", () => {
+    expect(Object.keys(RUNTIME_MODEL_CONFIGS)).toEqual(["biplane"]);
     for (const config of Object.values(RUNTIME_MODEL_CONFIGS)) {
       expect(config.path).toMatch(/^\/models-optimized\/.+\.glb$/);
       expect(config.fallbackLabel.length).toBeGreaterThan(0);
@@ -17,16 +17,9 @@ describe("modelAssets", () => {
   });
 
   it("returns quality-aware model budgets", () => {
-    expect(getModelInstanceBudget("floatingDrone", "low")).toBe(0);
-    expect(getModelInstanceBudget("floatingDrone", "high")).toBe(0);
-    expect(getModelInstanceBudget("refuelStation", "high")).toBe(0);
-    expect(getModelInstanceBudget("serviceRobot", "high")).toBe(0);
+    expect(getRuntimeModelConfig("biplane").path).toContain("biplane");
+    expect(getModelInstanceBudget("biplane", "low")).toBeGreaterThan(0);
     expect(getModelInstanceBudget("biplane", "high")).toBeGreaterThan(0);
-  });
-
-  it("resolves station kinds to model IDs", () => {
-    expect(getStationModelId()).toBe("refuelStation");
-    expect(getRuntimeModelConfig(getStationModelId()).path).toContain("refuelstation");
   });
 
   it("classifies biplane materials for skin tinting", () => {

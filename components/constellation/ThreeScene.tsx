@@ -171,21 +171,21 @@ type DisclosureSnapshot = Pick<
 
 const GAME_STATE_EMIT_INTERVAL_MS = 420;
 const TELEMETRY_EMIT_INTERVAL_MS = 160;
-const SCENE_REACT_SYNC_INTERVAL_MS = 420;
-const VISIBILITY_UPDATE_INTERVAL_MS = 180;
-const VISIBILITY_UPDATE_DISTANCE_WORLD = 260;
+const SCENE_REACT_SYNC_INTERVAL_MS = 620;
+const VISIBILITY_UPDATE_INTERVAL_MS = 340;
+const VISIBILITY_UPDATE_DISTANCE_WORLD = 420;
 const WORLD_SCALE = 0.024;
 const PLANE_ALTITUDE = 6.4;
 const ISLAND_ALTITUDE = 1.2;
 const MAX_STAR_MARKERS = {
-  low: 18,
-  medium: 32,
-  high: 48,
+  low: 16,
+  medium: 28,
+  high: 42,
 } as const;
 const MAX_ISLAND_MARKERS = {
-  low: 14,
-  medium: 24,
-  high: 34,
+  low: 12,
+  medium: 20,
+  high: 30,
 } as const;
 const CLOUD_FIELD_MARKERS = {
   low: 20,
@@ -459,6 +459,7 @@ export function ThreeScene({
     [clusters],
   );
   const activeClusters = featureFlags.deploymentClustering ? clusters : runtimeClusters;
+  const debugHudVisible = featureFlags.debugHud || debugHudHotkey;
 
   useEffect(() => {
     const center = {
@@ -749,28 +750,30 @@ export function ThreeScene({
       debugPerfRef.current.ticks += 1;
       if (nowMs - debugPerfRef.current.lastSampleAtMs > 500) {
         const seconds = (nowMs - debugPerfRef.current.lastSampleAtMs) / 1000 || 1;
-        setDebugStats({
-          fps: Math.round(debugPerfRef.current.frames / seconds),
-          frameMs: Math.round(dtMs * 10) / 10,
-          tickRate: Math.round(debugPerfRef.current.ticks / seconds),
-          counts: {
-            deployments: visibility.visibleSystems.length,
-            clusters: activeClusters.length,
-            parachuters: game.collectibles.filter((item) => item.active && item.kind === "parachuter")
-              .length,
-            powerUps: game.collectibles.filter((item) => item.active && item.kind !== "parachuter")
-              .length,
-            clouds: regionClusters.length,
-          },
-          input: inputSample,
-          player: {
-            speed: Math.round(nextFlight.speed),
-            fuel: Math.round(game.fuel),
-            boostRemainingMs: Math.max(0, Math.round(game.boostUntilMs - nowMs)),
-            distanceUnits: game.distanceUnits,
-          },
-          lastPickupEvent: pickupOutcome.pickupLabel,
-        });
+        if (debugHudVisible) {
+          setDebugStats({
+            fps: Math.round(debugPerfRef.current.frames / seconds),
+            frameMs: Math.round(dtMs * 10) / 10,
+            tickRate: Math.round(debugPerfRef.current.ticks / seconds),
+            counts: {
+              deployments: visibility.visibleSystems.length,
+              clusters: activeClusters.length,
+              parachuters: game.collectibles.filter((item) => item.active && item.kind === "parachuter")
+                .length,
+              powerUps: game.collectibles.filter((item) => item.active && item.kind !== "parachuter")
+                .length,
+              clouds: regionClusters.length,
+            },
+            input: inputSample,
+            player: {
+              speed: Math.round(nextFlight.speed),
+              fuel: Math.round(game.fuel),
+              boostRemainingMs: Math.max(0, Math.round(game.boostUntilMs - nowMs)),
+              distanceUnits: game.distanceUnits,
+            },
+            lastPickupEvent: pickupOutcome.pickupLabel,
+          });
+        }
         debugPerfRef.current = { lastSampleAtMs: nowMs, frames: 0, ticks: 0 };
       }
     },
@@ -778,6 +781,7 @@ export function ThreeScene({
       activeClusters.length,
       bounds,
       clusters,
+      debugHudVisible,
       featureFlags,
       flightSettings.mouseSensitivity,
       matchSet,
@@ -795,7 +799,6 @@ export function ThreeScene({
   );
 
   const snapshot = runtimeRef.current;
-  const debugHudVisible = featureFlags.debugHud || debugHudHotkey;
   useEffect(() => {
     const browserWindow = window as Window & {
       render_game_to_text?: () => string;
