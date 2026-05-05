@@ -83,7 +83,7 @@ export const updateRunResources = ({
   flight,
   dtMs,
   nowMs,
-  qualityMode,
+  qualityMode: _qualityMode,
   featureFlags: _featureFlags,
 }: {
   game: GameState;
@@ -98,8 +98,7 @@ export const updateRunResources = ({
   if (game.state === "flying") {
     const distanceTravelled = Math.max(0, flight.speed * dt);
     if (distanceTravelled > 0.5) {
-      const qualityMultiplier =
-        qualityMode === "low" ? 0.92 : qualityMode === "medium" ? 1 : 1.05;
+      const qualityMultiplier = 1;
       const efficiencyMultiplier = Math.max(0.62, 1 - game.fuelEfficiencyLevel * 0.08);
       const drain =
         (distanceTravelled / GAME_CONFIG.worldUnitsPerFuelUnit) *

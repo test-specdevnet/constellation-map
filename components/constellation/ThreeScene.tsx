@@ -421,6 +421,15 @@ const shouldIgnoreFlightPointer = (target: EventTarget | null) =>
       )
     : false;
 
+const shouldIgnoreFlightKeyboard = (target: EventTarget | null) =>
+  target instanceof Element
+    ? Boolean(
+        target.closest(
+          "input, select, textarea, [contenteditable='true'], [role='textbox'], .control-bar, .flight-settings-panel",
+        ),
+      )
+    : false;
+
 const controlKeyFromEvent = (key: string): ControlKey | null => {
   const normalized = key.toLowerCase();
   if (key === "ArrowUp" || normalized === "w") return "ArrowUp";
@@ -608,6 +617,10 @@ export function ThreeScene({
   useEffect(() => {
     const controller = inputControllerRef.current;
     const down = (event: KeyboardEvent) => {
+      if (shouldIgnoreFlightKeyboard(event.target)) {
+        return;
+      }
+
       const mapped = controlKeyFromEvent(event.key);
       if (mapped) {
         focusInputController(controller);
@@ -617,6 +630,10 @@ export function ThreeScene({
       if (event.key.toLowerCase() === "g") setDebugHudHotkey((value) => !value);
     };
     const up = (event: KeyboardEvent) => {
+      if (shouldIgnoreFlightKeyboard(event.target)) {
+        return;
+      }
+
       const mapped = controlKeyFromEvent(event.key);
       if (mapped) releaseControlKey(controller, mapped);
     };
@@ -1342,8 +1359,8 @@ function ThreeWorld({
       />
       <ambientLight intensity={0.48} />
       <SkyDome />
-      {cloudsEnabled ? <CloudFields clusters={regionClusters} qualityMode={qualityMode} /> : null}
-      {cloudsEnabled ? <AmbientCloudLayer bounds={bounds} qualityMode={qualityMode} /> : null}
+      <CloudFields clusters={regionClusters} qualityMode={qualityMode} visible={cloudsEnabled} />
+      <AmbientCloudLayer bounds={bounds} qualityMode={qualityMode} visible={cloudsEnabled} />
       <group>
         {visibleClusters.map((cluster, index) => (
           <CloudIsland
@@ -1529,9 +1546,11 @@ function SkyDome() {
 function CloudFields({
   clusters,
   qualityMode,
+  visible,
 }: {
   clusters: Cluster[];
   qualityMode: "low" | "medium" | "high";
+  visible: boolean;
 }) {
   const layeredOffsets =
     qualityMode === "low"
@@ -1554,7 +1573,7 @@ function CloudFields({
             [-12, -7.5, 0.48],
           ];
   return (
-    <group>
+    <group visible={visible}>
       {clusters.slice(0, CLOUD_FIELD_MARKERS[qualityMode]).flatMap((cluster, index) =>
         layeredOffsets.map(([offsetX, offsetY, scaleFactor], layerIndex) => {
           const position = to3(
@@ -1581,9 +1600,11 @@ function CloudFields({
 function AmbientCloudLayer({
   bounds,
   qualityMode,
+  visible,
 }: {
   bounds: SceneBounds;
   qualityMode: "low" | "medium" | "high";
+  visible: boolean;
 }) {
   const count = qualityMode === "low" ? 56 : qualityMode === "medium" ? 104 : 150;
   const clouds = useMemo(
@@ -1611,7 +1632,7 @@ function AmbientCloudLayer({
   );
 
   return (
-    <group>
+    <group visible={visible}>
       {clouds.map((cloud, index) => {
         const position = to3(
           {
@@ -1641,37 +1662,22 @@ function AmbientCloudLayer({
 }
 
 function CloudPuff({ scale = 1, variant = 0 }: { scale?: number; variant?: number }) {
-  const lobes = [
-    [-2.35, -0.22, 0.02, 2.4, 1.42, "#ffffff", 0.72],
-    [-1.42, 0.22, 0.05, 2.25, 1.55, "#ffffff", 0.9],
-    [-0.26, 0.44, 0.08, 2.76, 1.82, "#ffffff", 0.96],
-    [1.18, 0.22, 0.04, 2.46, 1.55, "#ffffff", 0.92],
-    [2.36, -0.14, 0.02, 2.08, 1.22, "#ffffff", 0.76],
-    [0.08, -0.24, 0.14, 4.8, 1.34, "#ffffff", 0.5],
-  ] as const;
   const cloudMap = useMemo(() => getSoftCloudTexture(), []);
   const rotation = variant * 0.18;
   return (
-    <BillboardGroup position={[0, 0, 0]}>
-      <group scale={scale} rotation={[0, 0, rotation]}>
-        {lobes.map(([x, y, z, width, height, color, opacity], index) => (
-          <mesh key={index} position={[x, y, z]} renderOrder={-20 + index}>
-            <planeGeometry args={[width, height]} />
-            <meshBasicMaterial
-              map={cloudMap}
-              alphaMap={cloudMap}
-            color={color}
-              transparent
-              opacity={opacity}
-              depthWrite={false}
-              depthTest
-              side={THREE.DoubleSide}
-              toneMapped={false}
-            />
-          </mesh>
-        ))}
-      </group>
-    </BillboardGroup>
+    <sprite scale={[scale * 7.2, scale * 3.45, 1]} renderOrder={-20}>
+      <spriteMaterial
+        map={cloudMap}
+        alphaMap={cloudMap}
+        color="#ffffff"
+        transparent
+        opacity={0.78}
+        rotation={rotation}
+        depthWrite={false}
+        depthTest
+        toneMapped={false}
+      />
+    </sprite>
   );
 }
 

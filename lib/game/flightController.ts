@@ -18,7 +18,6 @@ export const integrateFlightState = ({
   input,
   bounds,
   dtMs,
-  qualityMode,
   boostActive,
 }: {
   flight: FlightState;
@@ -29,14 +28,12 @@ export const integrateFlightState = ({
   boostActive: boolean;
 }): FlightState => {
   const dt = dtMs / 1000;
-  const highQuality = qualityMode === "high";
-  const lowQuality = qualityMode === "low";
-  const baseTurnRate = lowQuality ? 2.15 : highQuality ? 3.4 : 2.8;
-  const turnResponse = lowQuality ? 14 : highQuality ? 22 : 18;
-  const accel = (lowQuality ? 430 : highQuality ? 980 : 760) * (boostActive ? 1.55 : 1);
-  const brake = lowQuality ? 680 : highQuality ? 1_360 : 1_080;
-  const passiveDrag = lowQuality ? 210 : highQuality ? 310 : 260;
-  const maxSpeed = (lowQuality ? 260 : highQuality ? 760 : 620) * (boostActive ? 1.45 : 1);
+  const baseTurnRate = 2.8;
+  const turnResponse = 18;
+  const accel = 760 * (boostActive ? 1.55 : 1);
+  const brake = 1_080;
+  const passiveDrag = 260;
+  const maxSpeed = 620 * (boostActive ? 1.45 : 1);
   const turnInput = clamp(
     input.moveX || (input.turnLeft ? -1 : 0) + (input.turnRight ? 1 : 0) + input.mouseTurn,
     -1,
@@ -80,7 +77,7 @@ export const integrateFlightState = ({
   nextFlight.x = clamp(nextFlight.x, bounds.minX, bounds.maxX);
   nextFlight.y = clamp(nextFlight.y, bounds.minY, bounds.maxY);
 
-  const climbAcceleration = GAME_CONFIG.climbAcceleration * (lowQuality ? 0.82 : highQuality ? 1.08 : 1);
+  const climbAcceleration = GAME_CONFIG.climbAcceleration;
   nextFlight.verticalVelocity += climbInput * climbAcceleration * dt;
   nextFlight.verticalVelocity *= Math.exp(-GAME_CONFIG.verticalDrag * dt);
   nextFlight.verticalVelocity = clamp(
@@ -113,12 +110,12 @@ export const integrateFlightState = ({
 
 export const computeCameraFollowTarget = ({
   flight,
-  qualityMode,
+  qualityMode: _qualityMode,
 }: {
   flight: FlightState;
   qualityMode: QualityMode;
 }) => {
-  const lookDistance = Math.min(qualityMode === "high" ? 520 : 460, flight.speed * 0.78);
+  const lookDistance = Math.min(480, flight.speed * 0.78);
   return {
     x: flight.x + Math.cos(flight.heading) * lookDistance * 0.12,
     y: flight.y + Math.sin(flight.heading) * lookDistance * 0.12,

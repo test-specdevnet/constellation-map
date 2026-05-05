@@ -89,6 +89,29 @@ describe("integrateFlightState", () => {
     expect(Math.abs(released.angVel)).toBeLessThan(Math.abs(turning.angVel));
   });
 
+  it("keeps flight mechanics independent from graphics quality", () => {
+    const start = { ...createFlightState(0, 0), speed: 260 };
+    const controls = input({ accelerate: true, turnRight: true, moveX: 0.65 });
+    const low = integrateFlightState({
+      flight: start,
+      input: controls,
+      bounds,
+      dtMs: 300,
+      qualityMode: "low",
+      boostActive: false,
+    });
+    const high = integrateFlightState({
+      flight: start,
+      input: controls,
+      bounds,
+      dtMs: 300,
+      qualityMode: "high",
+      boostActive: false,
+    });
+
+    expect(high).toEqual(low);
+  });
+
   it("climbs, dives, and clamps altitude without changing map position semantics", () => {
     const start = { ...createFlightState(0, 0), speed: 260, altitude: 4 };
     const climbing = integrateFlightState({
