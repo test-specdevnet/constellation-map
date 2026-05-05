@@ -46,6 +46,7 @@ describe("integrateFlightState", () => {
     });
 
     expect(up.y).toBeLessThan(0);
+    expect(up.speed).toBeGreaterThan(220);
     expect(down.speed).toBeLessThan(120);
     expect(down.y).toBeLessThanOrEqual(up.y);
   });

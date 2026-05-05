@@ -118,7 +118,7 @@ describe("collectibles", () => {
     const fuel = activeFuel[0];
     const fuelDistance = fuel ? Math.hypot(fuel.x - plane.x, fuel.y - plane.y) : 0;
 
-    expect(activeFuel).toHaveLength(2);
+    expect(activeFuel).toHaveLength(3);
     expect(fuel?.source).toBe("flight-path");
     expect(fuel?.x).toBeGreaterThanOrEqual(bounds.minX + 180);
     expect(fuel?.x).toBeLessThanOrEqual(bounds.maxX - 180);
@@ -154,7 +154,7 @@ describe("collectibles", () => {
     expect(result.collectibles.filter((collectible) => collectible.kind === "fuel")).toHaveLength(1);
   });
 
-  it("honors fuel pickup cooldown before showing another tank", () => {
+  it("fills open fuel slots while keeping collected tanks on cooldown", () => {
     const result = maintain({
       collectibles: [
         fuelCollectible({
@@ -171,8 +171,36 @@ describe("collectibles", () => {
     });
     const activeFuel = activeFuelCollectibles(result.collectibles);
 
-    expect(activeFuel).toHaveLength(0);
-    expect(result.collectibles.filter((collectible) => collectible.kind === "fuel")).toHaveLength(1);
+    expect(activeFuel).toHaveLength(2);
+    expect(result.collectibles.filter((collectible) => collectible.kind === "fuel")).toHaveLength(3);
+    expect(result.collectibles.find((collectible) => collectible.id === "fuel:picked-up")?.active).toBe(false);
+  });
+
+  it("does not instantly replace a collected tank when active fuel already fills the target cadence", () => {
+    const result = maintain({
+      collectibles: [
+        fuelCollectible({
+          id: "fuel:active",
+          active: true,
+          respawnAtMs: 30_000,
+        }),
+        fuelCollectible({
+          id: "fuel:picked-up",
+          active: false,
+          respawnAtMs: 30_000,
+        }),
+      ],
+      anchorSystems: [],
+      enableBoosts: false,
+      spawnCounter: 7,
+      nowMs: 3_000,
+      fuelRatio: 0.96,
+    });
+
+    expect(activeFuelCollectibles(result.collectibles)).toHaveLength(1);
+    expect(result.collectibles.filter((collectible) => collectible.kind === "fuel")).toHaveLength(
+      GAME_CONFIG.fuelPickupCruiseActiveCap,
+    );
   });
 
   it("moves expired fuel into cooldown even when reserves are critical", () => {
@@ -193,12 +221,15 @@ describe("collectibles", () => {
     const activeFuel = activeFuelCollectibles(result.collectibles);
     const expiredFuel = result.collectibles.find((collectible) => collectible.id === "fuel:expired");
 
-    expect(activeFuel).toHaveLength(0);
+    expect(activeFuel).toHaveLength(GAME_CONFIG.fuelPickupLowActiveCap - 1);
     expect(expiredFuel?.active).toBe(false);
     expect(expiredFuel?.respawnAtMs).toBe(2_000 + GAME_CONFIG.fuelPickupCriticalRespawnMs);
+    expect(result.collectibles.filter((collectible) => collectible.kind === "fuel")).toHaveLength(
+      GAME_CONFIG.fuelPickupLowActiveCap,
+    );
   });
 
-  it("does not replace a collected boost until its respawn timer clears", () => {
+  it("fills open boost slots while keeping collected boosts on cooldown", () => {
     const result = maintain({
       collectibles: [
         boostCollectible({
@@ -217,7 +248,10 @@ describe("collectibles", () => {
       result.collectibles.filter(
         (collectible) => collectible.kind === "boost" && collectible.active,
       ),
-    ).toHaveLength(0);
+    ).toHaveLength(1);
+    expect(result.collectibles.filter((collectible) => collectible.kind === "boost")).toHaveLength(
+      GAME_CONFIG.boostPickupActiveCap,
+    );
   });
 
   it("collects nearby fuel and boosts in one pass", () => {

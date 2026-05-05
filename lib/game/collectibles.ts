@@ -113,7 +113,7 @@ const getDesiredCountByKind = ({
         return GAME_CONFIG.fuelPickupLowActiveCap;
       }
       return fuelRatio <= GAME_CONFIG.fuelPickupVisibleThreshold
-        ? 2
+        ? GAME_CONFIG.fuelPickupCruiseActiveCap + 1
         : GAME_CONFIG.fuelPickupCruiseActiveCap;
     case "boost":
       return boostActive ? 0 : GAME_CONFIG.boostPickupActiveCap;
@@ -264,8 +264,8 @@ const spawnCollectible = ({
     };
   }
 
-  for (let attempt = 0; attempt < 48; attempt += 1) {
-    const preferAnchor = anchorSystems.length > 0 && rng() < 0.42;
+  for (let attempt = 0; attempt < 64; attempt += 1) {
+    const preferAnchor = anchorSystems.length > 0 && rng() < 0.54;
     const source: Collectible["source"] = preferAnchor ? "near-system" : "flight-path";
 
     let x = plane.x;
@@ -274,15 +274,15 @@ const spawnCollectible = ({
     if (preferAnchor) {
       const anchor = anchorSystems[Math.floor(rng() * anchorSystems.length)];
       const angle = randomBetween(rng, -Math.PI, Math.PI);
-      const offset = randomBetween(rng, 210, 340);
+      const offset = randomBetween(rng, 180, 310);
       x = anchor.x + Math.cos(angle) * offset;
       y = anchor.y + Math.sin(angle) * offset;
     } else {
       const arc = kind === "boost" ? 0.42 : 0.62;
       const angle = plane.heading + randomBetween(rng, -arc, arc);
-      const lateral = randomBetween(rng, -170, 170);
+      const lateral = randomBetween(rng, -150, 150);
       const distanceAhead =
-        kind === "boost" ? randomBetween(rng, 540, 980) : randomBetween(rng, 360, 820);
+        kind === "boost" ? randomBetween(rng, 430, 800) : randomBetween(rng, 360, 820);
 
       x += Math.cos(angle) * distanceAhead + Math.cos(angle + Math.PI / 2) * lateral;
       y += Math.sin(angle) * distanceAhead + Math.sin(angle + Math.PI / 2) * lateral;
@@ -444,7 +444,7 @@ export const maintainCollectibles = ({
       }
     }
 
-    if (cooldownPending) {
+    if (cooldownPending && trackedCount >= desiredCount) {
       return;
     }
 

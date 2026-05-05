@@ -28,12 +28,12 @@ export const integrateFlightState = ({
   boostActive: boolean;
 }): FlightState => {
   const dt = dtMs / 1000;
-  const baseTurnRate = 2.8;
+  const baseTurnRate = 2.95;
   const turnResponse = 18;
-  const accel = 760 * (boostActive ? 1.55 : 1);
+  const accel = 920 * (boostActive ? 1.55 : 1);
   const brake = 1_080;
-  const passiveDrag = 260;
-  const maxSpeed = 620 * (boostActive ? 1.45 : 1);
+  const passiveDrag = 230;
+  const maxSpeed = 760 * (boostActive ? 1.45 : 1);
   const turnInput = clamp(
     input.moveX || (input.turnLeft ? -1 : 0) + (input.turnRight ? 1 : 0) + input.mouseTurn,
     -1,
