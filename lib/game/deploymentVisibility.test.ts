@@ -92,9 +92,9 @@ describe("buildDeploymentVisibilityState", () => {
       x: 0,
       y: 0,
     });
-    expect(getDeploymentVisibilityAnchor(makeFlight({ x: 214, y: 211, speed: 100 }))).toEqual({
-      x: 420,
-      y: 420,
+    expect(getDeploymentVisibilityAnchor(makeFlight({ x: 310, y: 306, speed: 100 }))).toEqual({
+      x: 560,
+      y: 560,
     });
   });
 
@@ -250,7 +250,7 @@ describe("buildDeploymentVisibilityState", () => {
   });
 
   it("drops sticky systems once they are well outside the local radius", () => {
-    const stale = makeSystem("system:stale", GAME_CONFIG.localSystemRadius + 620, 0);
+    const stale = makeSystem("system:stale", GAME_CONFIG.localSystemRadius + 940, 0);
 
     const result = buildDeploymentVisibilityState({
       systems: [stale],

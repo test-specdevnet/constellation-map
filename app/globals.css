@@ -2625,12 +2625,54 @@ h1 {
 }
 
 .atlas-page:has(.scene-shell--three) .hero-shell,
-.atlas-page:has(.scene-shell--three) .control-bar,
 .atlas-page:has(.scene-shell--three) .atlas-panel-toggles,
 .atlas-page:has(.scene-shell--three) .atlas-lower-grid,
 .atlas-page:has(.scene-shell--three) .detail-drawer,
 .atlas-page:has(.scene-shell--three) .flight-disclaimer {
   display: none !important;
+}
+
+.atlas-page:has(.scene-shell--three) .control-bar {
+  position: fixed;
+  z-index: 8;
+  top: 14px;
+  left: 50%;
+  width: min(460px, calc(100vw - 620px));
+  min-width: 340px;
+  padding: 8px;
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.64), rgba(157, 217, 255, 0.42));
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+.atlas-page:has(.scene-shell--three) .control-bar .filter-bar {
+  display: none;
+}
+
+.atlas-page:has(.scene-shell--three) .control-bar .search-box {
+  gap: 8px;
+}
+
+.atlas-page:has(.scene-shell--three) .control-bar .search-field input {
+  min-height: 42px;
+  border-radius: 999px;
+  border-color: rgba(255, 255, 255, 0.56);
+  background: rgba(246, 252, 255, 0.9);
+  color: #10355f;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
+}
+
+.atlas-page:has(.scene-shell--three) .control-bar .search-field input::placeholder {
+  color: rgba(16, 53, 95, 0.62);
+}
+
+.atlas-page:has(.scene-shell--three) .control-bar .primary-action {
+  min-height: 42px;
+  border-radius: 999px;
+  white-space: nowrap;
 }
 
 .atlas-page:has(.scene-shell--three) .atlas-grid {
@@ -2845,7 +2887,7 @@ h1 {
   left: 50%;
   bottom: 18px;
   transform: translateX(-50%);
-  width: min(520px, calc(100% - 280px));
+  width: min(520px, calc(100% - 360px));
 }
 
 .scene-shell--three .hud-chip--stat {
@@ -2868,7 +2910,7 @@ h1 {
   top: auto;
   right: 18px;
   bottom: 18px;
-  width: 218px;
+  width: 286px;
 }
 
 .scene-shell--three .scene-flight-pad {
@@ -2885,7 +2927,28 @@ h1 {
   color: #113a66;
 }
 
+@media (max-width: 1180px) {
+  .atlas-page:has(.scene-shell--three) .control-bar {
+    top: 70px;
+    width: min(520px, calc(100vw - 36px));
+    min-width: 0;
+  }
+}
+
 @media (max-width: 768px) {
+  .atlas-page:has(.scene-shell--three) .control-bar {
+    top: 72px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    transform: none;
+  }
+
+  .atlas-page:has(.scene-shell--three) .control-bar .search-box {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
   .scene-shell--three .scene-toolbar {
     left: 12px;
     right: 12px;
@@ -2899,12 +2962,12 @@ h1 {
   }
 
   .scene-shell--three .scene-mobile-status-stack {
-    top: 82px;
-    width: min(46vw, 220px);
+    top: 132px;
+    width: min(54vw, 238px);
   }
 
   .scene-shell--three .mini-map {
-    width: 164px;
+    width: 190px;
   }
 
   .scene-shell--three .scene-flight-pad {

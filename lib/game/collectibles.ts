@@ -409,14 +409,19 @@ export const maintainCollectibles = ({
       (collectible) => collectible.kind === kind && collectible.active,
     ).length;
     let trackedCount = refreshed.filter((collectible) => collectible.kind === kind).length;
-    const forceFuelNow = kind === "fuel" && desiredCount > 0 && activeCount === 0;
+    const cooldownPending = refreshed.some(
+      (collectible) =>
+        collectible.kind === kind &&
+        !collectible.active &&
+        collectible.respawnAtMs > nowMs,
+    );
 
     for (let index = 0; index < refreshed.length && activeCount < desiredCount; index += 1) {
       const collectible = refreshed[index];
       if (
         collectible.kind !== kind ||
         collectible.active ||
-        (collectible.respawnAtMs > nowMs && !forceFuelNow)
+        collectible.respawnAtMs > nowMs
       ) {
         continue;
       }
@@ -437,6 +442,10 @@ export const maintainCollectibles = ({
         refreshed[index] = respawned;
         activeCount += 1;
       }
+    }
+
+    if (cooldownPending) {
+      return;
     }
 
     while (activeCount < desiredCount && trackedCount < desiredCount) {

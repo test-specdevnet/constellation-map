@@ -97,6 +97,30 @@ export const discoverNearbyDeployments = ({
   plane: FlightState;
   deployments: DeploymentDock[];
 }): NearbyDeployment | null => {
+  const nearestDeployment = findNearbyDeployment({ plane, deployments });
+  if (!nearestDeployment) {
+    return null;
+  }
+
+  const deployment = deployments.find((item) => item.id === nearestDeployment.id);
+  if (
+    deployment &&
+    nearestDeployment.distance <= deployment.discoveryRadius &&
+    discoverDeployment(game, deployment.id)
+  ) {
+    game.upgradeCredits += DEPLOYMENT_CREDIT_VALUE;
+  }
+
+  return nearestDeployment;
+};
+
+export const findNearbyDeployment = ({
+  plane,
+  deployments,
+}: {
+  plane: FlightState;
+  deployments: DeploymentDock[];
+}): NearbyDeployment | null => {
   let nearestDeployment: NearbyDeployment | null = null;
 
   for (const deployment of deployments) {
@@ -108,10 +132,6 @@ export const discoverNearbyDeployments = ({
           appName: deployment.appName,
           distance,
         };
-      }
-
-      if (distance <= deployment.discoveryRadius && discoverDeployment(game, deployment.id)) {
-        game.upgradeCredits += DEPLOYMENT_CREDIT_VALUE;
       }
     }
   }

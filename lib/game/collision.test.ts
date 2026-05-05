@@ -1,6 +1,7 @@
 import { createGameState } from "./session";
 import {
   discoverNearbyDeployments,
+  findNearbyDeployment,
   findNearbyStation,
   resolveLandingAttempt,
 } from "./collision";
@@ -94,6 +95,18 @@ describe("collision", () => {
     expect(nearby?.id).toBe("system:1");
     expect(game.discoveries.has("system:1")).toBe(true);
     expect(game.upgradeCredits).toBeGreaterThan(0);
+  });
+
+  it("can report deployment proximity without counting a fly-through as discovered", () => {
+    const game = createGameState();
+    const nearby = findNearbyDeployment({
+      plane: planeAt(20, 0),
+      deployments: [deployment()],
+    });
+
+    expect(nearby?.id).toBe("system:1");
+    expect(game.discoveries.size).toBe(0);
+    expect(game.upgradeCredits).toBe(0);
   });
 
   it("reports dock proximity without discovering outside discovery radius", () => {

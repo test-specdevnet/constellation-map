@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  startTransition,
   type ReactNode,
 } from "react";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
@@ -17,7 +18,7 @@ import { FlightSettingsPanel } from "./FlightSettingsPanel";
 import { MobileDrawer } from "./MobileDrawer";
 import { useMediaQuery } from "./useMediaQuery";
 import { BUILD_STAMP } from "../../lib/buildStamp";
-import { getBuoyColorway } from "../../lib/canvas/buoyCategory";
+import { categoryLabel, getBuoyColorway } from "../../lib/canvas/buoyCategory";
 import { planeSkinPalettes } from "../../lib/canvas/cartoonMarkers";
 import {
   getDisclosureState,
@@ -61,15 +62,17 @@ import {
   accumulateDistanceFlown,
   createGameState,
   createSessionSnapshot,
+  discoverDeployment,
   syncGameScore,
   toRunRecord,
   updateRunResources,
 } from "../../lib/game/session";
 import {
-  discoverNearbyDeployments,
+  findNearbyDeployment,
   resolveLandingAttempt,
 } from "../../lib/game/collision";
 import {
+  DEPLOYMENT_CREDIT_VALUE,
   buildDeploymentDocks,
   buildStationLayout,
   type LandingStation,
@@ -167,11 +170,11 @@ type DisclosureSnapshot = Pick<
   | "nearestSystemDistance"
 >;
 
-const GAME_STATE_EMIT_INTERVAL_MS = 420;
-const TELEMETRY_EMIT_INTERVAL_MS = 160;
-const SCENE_REACT_SYNC_INTERVAL_MS = 620;
-const VISIBILITY_UPDATE_INTERVAL_MS = 520;
-const VISIBILITY_UPDATE_DISTANCE_WORLD = 640;
+const GAME_STATE_EMIT_INTERVAL_MS = 620;
+const TELEMETRY_EMIT_INTERVAL_MS = 220;
+const SCENE_REACT_SYNC_INTERVAL_MS = 1_200;
+const VISIBILITY_UPDATE_INTERVAL_MS = 1_150;
+const VISIBILITY_UPDATE_DISTANCE_WORLD = 1_180;
 const WORLD_SCALE = 0.024;
 const PLANE_ALTITUDE = 6.4;
 const ISLAND_ALTITUDE = 1.2;
@@ -186,9 +189,9 @@ const MAX_ISLAND_MARKERS = {
   high: 30,
 } as const;
 const CLOUD_FIELD_MARKERS = {
-  low: 20,
-  medium: 38,
-  high: 62,
+  low: 30,
+  medium: 58,
+  high: 92,
 } as const;
 const RUNTIME_GLB_MODELS_ENABLED = true;
 const EMPTY_VISIBILITY: DeploymentVisibilityState = {
@@ -302,6 +305,112 @@ const requestRuntimeModel = (modelId: RuntimeModelId) => {
   };
   runtimeModelCache.set(modelId, entry);
   return entry;
+};
+
+const fitCanvasText = ({
+  context,
+  text,
+  maxWidth,
+  maxFontSize,
+  minFontSize,
+  weight,
+}: {
+  context: CanvasRenderingContext2D;
+  text: string;
+  maxWidth: number;
+  maxFontSize: number;
+  minFontSize: number;
+  weight: number;
+}) => {
+  let fontSize = maxFontSize;
+  const fontFamily = "Segoe UI, system-ui, sans-serif";
+  while (fontSize > minFontSize) {
+    context.font = `${weight} ${fontSize}px ${fontFamily}`;
+    if (context.measureText(text).width <= maxWidth) {
+      return fontSize;
+    }
+    fontSize -= 2;
+  }
+  context.font = `${weight} ${minFontSize}px ${fontFamily}`;
+  return minFontSize;
+};
+
+const clampLabelText = (text: string, maxLength: number) =>
+  text.length > maxLength ? `${text.slice(0, Math.max(0, maxLength - 3))}...` : text;
+
+const createBeaconPlaqueTexture = ({
+  label,
+  subtitle,
+  color,
+  compact,
+  selected,
+}: {
+  label: string;
+  subtitle?: string;
+  color: string;
+  compact: boolean;
+  selected: boolean;
+}) => {
+  const canvas = document.createElement("canvas");
+  canvas.width = compact ? 640 : 720;
+  canvas.height = compact ? 184 : 196;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return null;
+  }
+
+  const width = canvas.width;
+  const height = canvas.height;
+  const radius = compact ? 32 : 34;
+  context.clearRect(0, 0, width, height);
+  context.fillStyle = selected ? "rgba(251, 254, 255, 0.97)" : "rgba(244, 251, 255, 0.92)";
+  context.strokeStyle = selected ? "rgba(255, 229, 146, 0.94)" : "rgba(141, 188, 224, 0.74)";
+  context.lineWidth = selected ? 8 : 5;
+  context.beginPath();
+  context.roundRect(6, 6, width - 12, height - 12, radius);
+  context.fill();
+  context.stroke();
+
+  context.fillStyle = color;
+  context.beginPath();
+  context.roundRect(32, 24, width - 64, compact ? 20 : 22, 12);
+  context.fill();
+
+  const title = clampLabelText(label, compact ? 30 : 34);
+  const titleFontSize = fitCanvasText({
+    context,
+    text: title,
+    maxWidth: width - 88,
+    maxFontSize: compact ? 42 : 46,
+    minFontSize: 24,
+    weight: 850,
+  });
+  context.font = `850 ${titleFontSize}px Segoe UI, system-ui, sans-serif`;
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillStyle = "#123557";
+  context.fillText(title, width / 2, compact ? 88 : 92);
+
+  if (subtitle) {
+    const subtitleText = clampLabelText(subtitle, compact ? 38 : 42);
+    const subtitleFontSize = fitCanvasText({
+      context,
+      text: subtitleText,
+      maxWidth: width - 104,
+      maxFontSize: compact ? 24 : 26,
+      minFontSize: 17,
+      weight: 750,
+    });
+    context.font = `750 ${subtitleFontSize}px Segoe UI, system-ui, sans-serif`;
+    context.fillStyle = "rgba(18, 53, 87, 0.78)";
+    context.fillText(subtitleText, width / 2, compact ? 132 : 140);
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  texture.needsUpdate = true;
+  return texture;
 };
 
 const shouldIgnoreFlightPointer = (target: EventTarget | null) =>
@@ -494,7 +603,7 @@ export function ThreeScene({
     telemetryEmitTsRef.current = 0;
     sceneSyncTsRef.current = 0;
     setRunEndSnapshot(null);
-    setRuntimeVersion((value) => value + 1);
+    startTransition(() => setRuntimeVersion((value) => value + 1));
   }, [bounds]);
 
   useEffect(() => {
@@ -689,8 +798,7 @@ export function ThreeScene({
       game.fuelTanksCollected = pickupOutcome.fuelTanksCollected;
       game.speedBoostsCollected = pickupOutcome.speedBoostsCollected;
 
-      const nearestDeployment = discoverNearbyDeployments({
-        game,
+      const nearestDeployment = findNearbyDeployment({
         plane: nextFlight,
         deployments: buildDeploymentDocks(visibility.visibleSystems),
       });
@@ -757,7 +865,7 @@ export function ThreeScene({
           nowMs - sceneSyncTsRef.current >= SCENE_REACT_SYNC_INTERVAL_MS
         ) {
           sceneSyncTsRef.current = nowMs;
-          setRuntimeVersion((value) => value + 1);
+          startTransition(() => setRuntimeVersion((value) => value + 1));
         }
       }
 
@@ -873,6 +981,21 @@ export function ThreeScene({
     };
   }, [handleRuntimeTick]);
 
+  const handleSelectDeployment = useCallback(
+    (appName: string, deploymentId: string) => {
+      const game = runtimeRef.current.game;
+      const discovered = discoverDeployment(game, deploymentId);
+      if (discovered) {
+        game.upgradeCredits += DEPLOYMENT_CREDIT_VALUE;
+        syncGameScore(game);
+        setPickupNotice("Deployment discovered");
+        window.setTimeout(() => setPickupNotice(null), 1300);
+      }
+      onSelectApp(appName);
+    },
+    [onSelectApp],
+  );
+
   const boostLaunchSpeed = () => {
     runtimeRef.current.flight = {
       ...runtimeRef.current.flight,
@@ -896,12 +1019,12 @@ export function ThreeScene({
     telemetryEmitTsRef.current = 0;
     sceneSyncTsRef.current = 0;
     setRunEndSnapshot(null);
-    setRuntimeVersion((value) => value + 1);
+    startTransition(() => setRuntimeVersion((value) => value + 1));
   }, [bounds]);
   const setLandedMode = (mode: PlayerMode) => {
     if (!runtimeRef.current.landedStation) return;
     runtimeRef.current.playerMode = mode;
-    setRuntimeVersion((value) => value + 1);
+    startTransition(() => setRuntimeVersion((value) => value + 1));
   };
   useEffect(() => {
     const kickoff = window.setTimeout(() => {
@@ -1002,7 +1125,7 @@ export function ThreeScene({
             cloudsEnabled={featureFlags.clouds}
             modelsEnabled={RUNTIME_GLB_MODELS_ENABLED}
             qualityMode={qualityMode}
-            onSelectApp={onSelectApp}
+            onSelectDeployment={handleSelectDeployment}
             onFocusCluster={onFocusCluster}
             onHoverEntity={onHoverEntity}
             onTick={handleRuntimeTick}
@@ -1051,7 +1174,7 @@ export function ThreeScene({
                 runtimeRef.current.landedStation = null;
                 runtimeRef.current.playerMode = "flying";
                 runtimeRef.current.flight.speed = Math.max(190, runtimeRef.current.flight.speed);
-                setRuntimeVersion((value) => value + 1);
+                startTransition(() => setRuntimeVersion((value) => value + 1));
               }}
             />
           ) : null}
@@ -1124,7 +1247,7 @@ function ThreeWorld({
   cloudsEnabled,
   modelsEnabled,
   qualityMode,
-  onSelectApp,
+  onSelectDeployment,
   onFocusCluster,
   onHoverEntity,
   onTick,
@@ -1143,7 +1266,7 @@ function ThreeWorld({
   cloudsEnabled: boolean;
   modelsEnabled: boolean;
   qualityMode: "low" | "medium" | "high";
-  onSelectApp: (appName: string) => void;
+  onSelectDeployment: (appName: string, deploymentId: string) => void;
   onFocusCluster: (cluster: Cluster) => void;
   onHoverEntity: (entity: HoveredEntity | null) => void;
   onTick: (dtMs: number, elapsedSeconds: number) => void;
@@ -1243,12 +1366,12 @@ function ThreeWorld({
             system={system}
             selected={system.appName === selectedAppName || searchMatches.has(system.appName)}
             index={index}
-            onSelectApp={onSelectApp}
+            onSelectDeployment={onSelectDeployment}
             onHoverEntity={onHoverEntity}
           />
         ))}
         {visibleStars.map((star) => (
-          <StarMarker key={star.id} star={star} onSelectApp={onSelectApp} />
+          <StarMarker key={star.id} star={star} onSelectDeployment={onSelectDeployment} />
         ))}
       </group>
       <group>
@@ -1466,13 +1589,13 @@ function AmbientCloudLayer({
   bounds: SceneBounds;
   qualityMode: "low" | "medium" | "high";
 }) {
-  const count = qualityMode === "low" ? 42 : qualityMode === "medium" ? 78 : 118;
+  const count = qualityMode === "low" ? 72 : qualityMode === "medium" ? 128 : 190;
   const clouds = useMemo(
     () => {
       const centerX = bounds.minX + bounds.width / 2;
       const centerY = bounds.minY + bounds.height / 2;
-      const width = Math.min(Math.max(bounds.width * 0.52, 1_850), 2_950);
-      const height = Math.min(Math.max(bounds.height * 0.52, 1_350), 2_300);
+      const width = Math.min(Math.max(bounds.width * 0.72, 2_600), 4_200);
+      const height = Math.min(Math.max(bounds.height * 0.68, 1_900), 3_450);
       const columns = Math.max(8, Math.ceil(Math.sqrt(count * (width / height))));
       const rows = Math.max(5, Math.ceil(count / columns));
       return Array.from({ length: count }, (_, index) => {
@@ -1528,9 +1651,7 @@ function CloudPuff({ scale = 1, variant = 0 }: { scale?: number; variant?: numbe
     [-0.26, 0.44, 0.08, 2.76, 1.82, "#ffffff", 0.96],
     [1.18, 0.22, 0.04, 2.46, 1.55, "#ffffff", 0.92],
     [2.36, -0.14, 0.02, 2.08, 1.22, "#ffffff", 0.76],
-    [-0.92, -0.56, 0.1, 3.35, 1.18, "#ffffff", 0.72],
-    [0.95, -0.58, 0.1, 3.55, 1.16, "#ffffff", 0.68],
-    [0.08, -0.08, 0.16, 4.65, 1.42, "#ffffff", 0.48],
+    [0.08, -0.24, 0.14, 4.8, 1.34, "#ffffff", 0.5],
   ] as const;
   const cloudMap = useMemo(() => getSoftCloudTexture(), []);
   const rotation = variant * 0.18;
@@ -1755,13 +1876,13 @@ function DeploymentMarker({
   system,
   selected,
   index,
-  onSelectApp,
+  onSelectDeployment,
   onHoverEntity,
 }: {
   system: AppSystem;
   selected: boolean;
   index: number;
-  onSelectApp: (appName: string) => void;
+  onSelectDeployment: (appName: string, deploymentId: string) => void;
   onHoverEntity: (entity: HoveredEntity | null) => void;
 }) {
   const colorway = getBuoyColorway(system);
@@ -1773,11 +1894,11 @@ function DeploymentMarker({
   useFrame((state, delta) => {
     const bob = Math.sin(state.clock.elapsedTime * 1.25 + index * 0.83) * 0.24;
     const spin = Math.sin(state.clock.elapsedTime * 0.34 + index) * 0.08;
-    mountProgressRef.current = Math.min(1, mountProgressRef.current + delta * 2.8);
+    mountProgressRef.current = Math.min(1, mountProgressRef.current + delta * 1.8);
     if (groupRef.current) {
       groupRef.current.position.y = position.y + bob;
       groupRef.current.rotation.y = spin;
-      groupRef.current.scale.setScalar(0.62 + mountProgressRef.current * 0.38);
+      groupRef.current.scale.setScalar(0.5 + mountProgressRef.current * 0.5);
     }
     const flash = 0.45 + Math.max(0, Math.sin(state.clock.elapsedTime * 5.6 + index)) * 0.95;
     if (beaconRef.current) {
@@ -1796,7 +1917,7 @@ function DeploymentMarker({
       position={position}
       onClick={(event: ThreeEvent<MouseEvent>) => {
         event.stopPropagation();
-        scheduleSceneAction(() => onSelectApp(system.appName));
+        scheduleSceneAction(() => onSelectDeployment(system.appName, system.systemId));
       }}
       onPointerOver={(event: ThreeEvent<PointerEvent>) => {
         event.stopPropagation();
@@ -1832,7 +1953,13 @@ function DeploymentMarker({
         />
       </mesh>
       <BillboardGroup position={[0, 2.72, 0]}>
-        <BeaconPlaque color={colorway.beacon} compact selected={selected} />
+        <BeaconPlaque
+          color={colorway.beacon}
+          compact
+          selected={selected}
+          label={system.appName}
+          subtitle={`${system.runtimeFamily} | ${categoryLabel(system)}`}
+        />
       </BillboardGroup>
     </group>
   );
@@ -1882,10 +2009,19 @@ function DeploymentFallback({
   );
 }
 
-function StarMarker({ star, onSelectApp }: { star: Star; onSelectApp: (appName: string) => void }) {
+function StarMarker({
+  star,
+  onSelectDeployment,
+}: {
+  star: Star;
+  onSelectDeployment: (appName: string, deploymentId: string) => void;
+}) {
   const position = to3(star, ISLAND_ALTITUDE + 4.2);
   return (
-    <mesh position={position} onClick={() => scheduleSceneAction(() => onSelectApp(star.appName))}>
+    <mesh
+      position={position}
+      onClick={() => scheduleSceneAction(() => onSelectDeployment(star.appName, star.systemId))}
+    >
       <sphereGeometry args={[clamp(star.size * 0.08, 0.1, 0.32), 12, 8]} />
       <meshStandardMaterial color="#fff3a3" emissive="#8ee8ff" emissiveIntensity={0.55} />
     </mesh>
@@ -2244,11 +2380,48 @@ function BeaconPlaque({
   color,
   compact = false,
   selected = false,
+  label,
+  subtitle,
 }: {
   color: string;
   compact?: boolean;
   selected?: boolean;
+  label?: string;
+  subtitle?: string;
 }) {
+  const labelTexture = useMemo(
+    () =>
+      label && typeof document !== "undefined"
+        ? createBeaconPlaqueTexture({
+            label,
+            subtitle,
+            color,
+            compact,
+            selected,
+          })
+        : null,
+    [color, compact, label, selected, subtitle],
+  );
+
+  useEffect(() => () => labelTexture?.dispose(), [labelTexture]);
+
+  if (labelTexture) {
+    return (
+      <group>
+        <mesh>
+          <planeGeometry args={compact ? [3.25, 0.94] : [3.8, 1.0]} />
+          <meshBasicMaterial
+            map={labelTexture}
+            transparent
+            opacity={selected ? 0.98 : 0.92}
+            side={THREE.DoubleSide}
+            toneMapped={false}
+          />
+        </mesh>
+      </group>
+    );
+  }
+
   return (
     <group>
       <mesh>

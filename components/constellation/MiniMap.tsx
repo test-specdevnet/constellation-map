@@ -25,8 +25,8 @@ export function MiniMap({
   onSelectCluster: (cluster: Cluster) => void;
 }) {
   const visitedSet = new Set(visitedRegionIds);
-  const mapWidth = 220;
-  const mapHeight = 168;
+  const mapWidth = 260;
+  const mapHeight = 198;
 
   const project = (x: number, y: number) => {
     const px = ((x - bounds.minX) / Math.max(bounds.width, 1)) * mapWidth;

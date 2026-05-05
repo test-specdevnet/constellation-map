@@ -8,9 +8,9 @@ export type VisibilityZoomBucket = "overview" | "mid" | "detail";
 const distance = (left: { x: number; y: number }, right: { x: number; y: number }) =>
   Math.hypot(left.x - right.x, left.y - right.y);
 
-const VISIBILITY_ANCHOR_GRID = 420;
-const STICKY_LOCAL_RADIUS_BUFFER = 420;
-const STICKY_DETAIL_RADIUS_BUFFER = 280;
+const VISIBILITY_ANCHOR_GRID = 560;
+const STICKY_LOCAL_RADIUS_BUFFER = 760;
+const STICKY_DETAIL_RADIUS_BUFFER = 460;
 const SYSTEM_SPACING_BY_QUALITY: Record<QualityMode, number> = {
   low: 360,
   medium: 300,

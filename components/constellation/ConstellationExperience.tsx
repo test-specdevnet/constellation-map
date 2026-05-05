@@ -517,27 +517,6 @@ function ConstellationExperienceBody({
   }, [markRuntimeDiscovered, telemetry?.activeRuntimeId]);
 
   useEffect(() => {
-    if (!telemetry?.nearbySystemId) {
-      return;
-    }
-
-    const system = systemsById.get(telemetry.nearbySystemId);
-    if (!system) {
-      return;
-    }
-
-    markAppInspected(system.appName, system.runtimeFamily);
-    if (system.rarityFlags.rareArchetypeId) {
-      markRareArchetypeDiscovered(system.rarityFlags.rareArchetypeId);
-    }
-  }, [
-    markAppInspected,
-    markRareArchetypeDiscovered,
-    systemsById,
-    telemetry?.nearbySystemId,
-  ]);
-
-  useEffect(() => {
     if (!selectedAppName) {
       return;
     }
