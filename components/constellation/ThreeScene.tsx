@@ -17,7 +17,6 @@ import { DebugHud } from "./DebugHud";
 import { FlightSettingsPanel } from "./FlightSettingsPanel";
 import { MobileDrawer } from "./MobileDrawer";
 import { useMediaQuery } from "./useMediaQuery";
-import { BUILD_STAMP } from "../../lib/buildStamp";
 import { categoryLabel, getBuoyColorway } from "../../lib/canvas/buoyCategory";
 import { planeSkinPalettes } from "../../lib/canvas/cartoonMarkers";
 import {
@@ -170,11 +169,11 @@ type DisclosureSnapshot = Pick<
   | "nearestSystemDistance"
 >;
 
-const GAME_STATE_EMIT_INTERVAL_MS = 620;
-const TELEMETRY_EMIT_INTERVAL_MS = 220;
-const SCENE_REACT_SYNC_INTERVAL_MS = 1_200;
-const VISIBILITY_UPDATE_INTERVAL_MS = 1_150;
-const VISIBILITY_UPDATE_DISTANCE_WORLD = 1_180;
+const GAME_STATE_EMIT_INTERVAL_MS = 760;
+const TELEMETRY_EMIT_INTERVAL_MS = 280;
+const SCENE_REACT_SYNC_INTERVAL_MS = 1_600;
+const VISIBILITY_UPDATE_INTERVAL_MS = 1_500;
+const VISIBILITY_UPDATE_DISTANCE_WORLD = 1_520;
 const WORLD_SCALE = 0.024;
 const PLANE_ALTITUDE = 6.4;
 const ISLAND_ALTITUDE = 1.2;
@@ -189,9 +188,9 @@ const MAX_ISLAND_MARKERS = {
   high: 30,
 } as const;
 const CLOUD_FIELD_MARKERS = {
-  low: 30,
-  medium: 58,
-  high: 92,
+  low: 24,
+  medium: 46,
+  high: 72,
 } as const;
 const RUNTIME_GLB_MODELS_ENABLED = true;
 const EMPTY_VISIBILITY: DeploymentVisibilityState = {
@@ -1065,9 +1064,6 @@ export function ThreeScene({
             </button>
           ) : null}
         </div>
-        <span className="scene-zoom-label scene-zoom-label--wrap">
-            3D chase view | build {BUILD_STAMP} | GLB mode
-        </span>
       </div>
 
       <div
@@ -1589,7 +1585,7 @@ function AmbientCloudLayer({
   bounds: SceneBounds;
   qualityMode: "low" | "medium" | "high";
 }) {
-  const count = qualityMode === "low" ? 72 : qualityMode === "medium" ? 128 : 190;
+  const count = qualityMode === "low" ? 56 : qualityMode === "medium" ? 104 : 150;
   const clouds = useMemo(
     () => {
       const centerX = bounds.minX + bounds.width / 2;
@@ -1627,12 +1623,12 @@ function AmbientCloudLayer({
         return (
           <group key={index} position={position}>
             <CloudPuff scale={cloud.scale} variant={cloud.variant} />
-            {index % 3 === 0 ? (
+            {index % 4 === 0 ? (
               <group position={[2.4, 4.7, -0.2]}>
                 <CloudPuff scale={cloud.scale * 1.28} variant={(cloud.variant + 2) % 4} />
               </group>
             ) : null}
-            {index % 5 === 0 ? (
+            {index % 7 === 0 ? (
               <group position={[-3.8, 2.2, 0.34]}>
                 <CloudPuff scale={cloud.scale * 0.86} variant={(cloud.variant + 1) % 4} />
               </group>
