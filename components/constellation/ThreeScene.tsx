@@ -244,6 +244,7 @@ const runtimeModelCache = new Map<
 >();
 let runtimeModelLoader: GLTFLoader | null = null;
 let softCloudTexture: THREE.CanvasTexture | null = null;
+let skyCloudBackdropTexture: THREE.CanvasTexture | null = null;
 
 type SystemSpatialIndex = {
   cellSize: number;
@@ -393,6 +394,80 @@ const getSoftCloudTexture = () => {
   softCloudTexture.colorSpace = THREE.SRGBColorSpace;
   softCloudTexture.needsUpdate = true;
   return softCloudTexture;
+};
+
+const drawCloudLobe = ({
+  context,
+  x,
+  y,
+  radius,
+  opacity,
+}: {
+  context: CanvasRenderingContext2D;
+  x: number;
+  y: number;
+  radius: number;
+  opacity: number;
+}) => {
+  const gradient = context.createRadialGradient(x, y, radius * 0.08, x, y, radius);
+  gradient.addColorStop(0, `rgba(255, 255, 255, ${opacity})`);
+  gradient.addColorStop(0.38, `rgba(248, 253, 255, ${opacity * 0.9})`);
+  gradient.addColorStop(0.68, `rgba(210, 235, 252, ${opacity * 0.42})`);
+  gradient.addColorStop(1, "rgba(178, 215, 238, 0)");
+  context.fillStyle = gradient;
+  context.beginPath();
+  context.arc(x, y, radius, 0, Math.PI * 2);
+  context.fill();
+};
+
+const getSkyCloudBackdropTexture = () => {
+  if (skyCloudBackdropTexture) return skyCloudBackdropTexture;
+  const canvas = document.createElement("canvas");
+  canvas.width = 1024;
+  canvas.height = 512;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    skyCloudBackdropTexture = new THREE.CanvasTexture(canvas);
+    return skyCloudBackdropTexture;
+  }
+
+  context.clearRect(0, 0, canvas.width, canvas.height);
+
+  for (let bank = 0; bank < 9; bank += 1) {
+    const baseX = -90 + bank * 142 + ((bank * 37) % 54);
+    const baseY = 245 + ((bank * 29) % 124);
+    const lobes = 14 + (bank % 4) * 3;
+    for (let lobe = 0; lobe < lobes; lobe += 1) {
+      const offsetX = ((lobe * 71 + bank * 23) % 210) - 70;
+      const offsetY = Math.sin((lobe + bank) * 0.82) * 34 + ((lobe * 17) % 26);
+      const radius = 56 + ((lobe * 19 + bank * 11) % 58);
+      drawCloudLobe({
+        context,
+        x: baseX + offsetX,
+        y: baseY + offsetY,
+        radius,
+        opacity: 0.68,
+      });
+    }
+  }
+
+  for (let wisp = 0; wisp < 42; wisp += 1) {
+    const x = ((wisp * 97) % 1160) - 70;
+    const y = 54 + ((wisp * 53) % 250);
+    const radius = 28 + ((wisp * 31) % 72);
+    drawCloudLobe({
+      context,
+      x,
+      y,
+      radius,
+      opacity: 0.22 + (wisp % 5) * 0.035,
+    });
+  }
+
+  skyCloudBackdropTexture = new THREE.CanvasTexture(canvas);
+  skyCloudBackdropTexture.colorSpace = THREE.SRGBColorSpace;
+  skyCloudBackdropTexture.needsUpdate = true;
+  return skyCloudBackdropTexture;
 };
 
 const scheduleIdleModelLoad = (callback: () => void) => {
@@ -1654,6 +1729,7 @@ function ThreeWorld({
       />
       <ambientLight color="#68adf2" intensity={0.54} />
       <SkyDome />
+      <SkyCloudBackdrop visible={cloudsEnabled} />
       <CloudFields clusters={regionClusters} qualityMode={qualityMode} visible={cloudsEnabled} />
       <AmbientCloudLayer bounds={bounds} qualityMode={qualityMode} visible={cloudsEnabled} />
       <group>
@@ -1835,10 +1911,64 @@ function SceneDeploymentPanel({
 
 function SkyDome() {
   return (
-    <mesh scale={[1, 1, 1]} position={[0, -80, 0]}>
+    <mesh scale={[1, 1, 1]} position={[0, -80, 0]} renderOrder={-120}>
       <sphereGeometry args={[520, 16, 8]} />
-      <meshBasicMaterial side={THREE.BackSide} color="#155b99" transparent opacity={0.98} />
+      <meshBasicMaterial
+        side={THREE.BackSide}
+        color="#155b99"
+        transparent
+        opacity={0.98}
+        depthWrite={false}
+      />
     </mesh>
+  );
+}
+
+function SkyCloudBackdrop({ visible }: { visible: boolean }) {
+  const groupRef = useRef<THREE.Group>(null);
+  const forwardRef = useRef(new THREE.Vector3());
+  const { camera } = useThree();
+  const texture = useMemo(() => getSkyCloudBackdropTexture(), []);
+  const layers = useMemo(
+    () => [
+      { x: -46, y: 10, z: 0, width: 155, height: 78, opacity: 0.58, scale: 1 },
+      { x: 34, y: -5, z: 0.1, width: 175, height: 88, opacity: 0.5, scale: 1.12 },
+      { x: 0, y: -26, z: 0.2, width: 205, height: 96, opacity: 0.36, scale: 1.28 },
+    ],
+    [],
+  );
+
+  useFrame(() => {
+    const group = groupRef.current;
+    if (!group) return;
+    camera.getWorldDirection(forwardRef.current);
+    group.position.copy(camera.position).addScaledVector(forwardRef.current, 120);
+    group.position.y += 4;
+    group.quaternion.copy(camera.quaternion);
+  });
+
+  return (
+    <group ref={groupRef} visible={visible}>
+      {layers.map((layer, index) => (
+        <sprite
+          key={index}
+          position={[layer.x, layer.y, layer.z]}
+          scale={[layer.width * layer.scale, layer.height * layer.scale, 1]}
+          renderOrder={-90 + index}
+        >
+          <spriteMaterial
+            map={texture}
+            alphaMap={texture}
+            color="#ffffff"
+            transparent
+            opacity={layer.opacity}
+            depthWrite={false}
+            depthTest={false}
+            toneMapped={false}
+          />
+        </sprite>
+      ))}
+    </group>
   );
 }
 
@@ -1964,13 +2094,13 @@ function CloudPuff({ scale = 1, variant = 0 }: { scale?: number; variant?: numbe
   const cloudMap = useMemo(() => getSoftCloudTexture(), []);
   const rotation = variant * 0.18;
   return (
-    <sprite scale={[scale * 7.2, scale * 3.45, 1]} renderOrder={-20}>
+    <sprite scale={[scale * 8.6, scale * 4.12, 1]} renderOrder={-20}>
       <spriteMaterial
         map={cloudMap}
         alphaMap={cloudMap}
         color="#f1fbff"
         transparent
-        opacity={0.94}
+        opacity={0.98}
         rotation={rotation}
         depthWrite={false}
         depthTest
