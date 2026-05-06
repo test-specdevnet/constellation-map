@@ -259,10 +259,10 @@ const getSoftCloudTexture = () => {
     return softCloudTexture;
   }
   const gradient = context.createRadialGradient(96, 90, 8, 96, 96, 92);
-  gradient.addColorStop(0, "rgba(255, 255, 255, 0.98)");
-  gradient.addColorStop(0.34, "rgba(255, 255, 255, 0.94)");
-  gradient.addColorStop(0.58, "rgba(246, 252, 255, 0.68)");
-  gradient.addColorStop(0.78, "rgba(217, 239, 252, 0.28)");
+  gradient.addColorStop(0, "rgba(255, 255, 255, 1)");
+  gradient.addColorStop(0.34, "rgba(255, 255, 255, 0.98)");
+  gradient.addColorStop(0.58, "rgba(246, 252, 255, 0.78)");
+  gradient.addColorStop(0.78, "rgba(217, 239, 252, 0.38)");
   gradient.addColorStop(1, "rgba(190, 224, 244, 0)");
   context.fillStyle = gradient;
   context.fillRect(0, 0, 192, 192);
@@ -1350,15 +1350,15 @@ function ThreeWorld({
   );
   return (
     <>
-      <color attach="background" args={["#061734"]} />
-      <fog attach="fog" args={["#0c3470", 88, 340]} />
-      <hemisphereLight args={["#a8d8ff", "#05142f", 1.28]} />
+      <color attach="background" args={["#0f4a84"]} />
+      <fog attach="fog" args={["#2682c7", 108, 430]} />
+      <hemisphereLight args={["#dcf4ff", "#0a3470", 1.52]} />
       <directionalLight
         position={[30, 48, 28]}
-        color="#b8ddff"
-        intensity={1.7}
+        color="#e4f5ff"
+        intensity={1.98}
       />
-      <ambientLight color="#2e78d6" intensity={0.36} />
+      <ambientLight color="#68adf2" intensity={0.54} />
       <SkyDome />
       <CloudFields clusters={regionClusters} qualityMode={qualityMode} visible={cloudsEnabled} />
       <AmbientCloudLayer bounds={bounds} qualityMode={qualityMode} visible={cloudsEnabled} />
@@ -1539,7 +1539,7 @@ function SkyDome() {
   return (
     <mesh scale={[1, 1, 1]} position={[0, -80, 0]}>
       <sphereGeometry args={[520, 16, 8]} />
-      <meshBasicMaterial side={THREE.BackSide} color="#071a3c" transparent opacity={0.97} />
+      <meshBasicMaterial side={THREE.BackSide} color="#155b99" transparent opacity={0.98} />
     </mesh>
   );
 }
@@ -1670,9 +1670,9 @@ function CloudPuff({ scale = 1, variant = 0 }: { scale?: number; variant?: numbe
       <spriteMaterial
         map={cloudMap}
         alphaMap={cloudMap}
-        color="#7bbfff"
+        color="#f1fbff"
         transparent
-        opacity={0.7}
+        opacity={0.94}
         rotation={rotation}
         depthWrite={false}
         depthTest

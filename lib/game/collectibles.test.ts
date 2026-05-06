@@ -93,7 +93,7 @@ describe("collectibles", () => {
     expect(DEFAULT_FEATURE_FLAGS.pickups).toBe(true);
   });
 
-  it("spawns obvious fuel and boost pickups while keeping counts bounded", () => {
+  it("spawns obvious route-readable fuel and boost pickups while keeping counts bounded", () => {
     const result = maintain({ fuelRatio: 0.24 });
     const activeFuel = activeFuelCollectibles(result.collectibles);
     const activeBoost = result.collectibles.filter(
@@ -101,7 +101,20 @@ describe("collectibles", () => {
     );
 
     expect(activeFuel).toHaveLength(GAME_CONFIG.fuelPickupLowActiveCap);
-    expect(activeFuel.every((collectible) => collectible.source === "near-system")).toBe(true);
+    expect(activeFuel.some((collectible) => collectible.source === "flight-path")).toBe(true);
+    expect(
+      activeFuel.every((collectible) => {
+        const fuelDistance = Math.hypot(collectible.x - plane.x, collectible.y - plane.y);
+        const fuelAngle = Math.abs(
+          normalizeAngle(Math.atan2(collectible.y - plane.y, collectible.x - plane.x) - plane.heading),
+        );
+        return (
+          fuelDistance >= GAME_CONFIG.fuelPickupSpawnMinDistance &&
+          fuelDistance <= GAME_CONFIG.fuelPickupSpawnMaxDistance &&
+          fuelAngle >= GAME_CONFIG.fuelPickupSpawnAvoidanceRadians
+        );
+      }),
+    ).toBe(true);
     expect(activeBoost).toHaveLength(GAME_CONFIG.boostPickupActiveCap);
     expect(result.collectibles).toHaveLength(
       GAME_CONFIG.fuelPickupLowActiveCap + GAME_CONFIG.boostPickupActiveCap,
@@ -252,6 +265,33 @@ describe("collectibles", () => {
     expect(result.collectibles.filter((collectible) => collectible.kind === "boost")).toHaveLength(
       GAME_CONFIG.boostPickupActiveCap,
     );
+  });
+
+  it("places speed boosts in the forward flight lane before falling back to anchors", () => {
+    const result = maintain({
+      enableFuel: false,
+      fuelRatio: 0.62,
+      plane: { ...plane, speed: 760 },
+    });
+    const activeBoost = result.collectibles.filter(
+      (collectible) => collectible.active && collectible.kind === "boost",
+    );
+
+    expect(activeBoost).toHaveLength(GAME_CONFIG.boostPickupActiveCap);
+    expect(activeBoost.every((collectible) => collectible.source === "flight-path")).toBe(true);
+    expect(
+      activeBoost.every((collectible) => {
+        const ahead = collectible.x - plane.x;
+        const angle = Math.abs(
+          normalizeAngle(Math.atan2(collectible.y - plane.y, collectible.x - plane.x) - plane.heading),
+        );
+        return (
+          ahead >= GAME_CONFIG.boostPickupSpawnMinDistance - 120 &&
+          ahead <= GAME_CONFIG.boostPickupSpawnMaxDistance + 120 &&
+          angle <= 0.72
+        );
+      }),
+    ).toBe(true);
   });
 
   it("collects nearby fuel and boosts in one pass", () => {

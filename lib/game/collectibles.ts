@@ -122,6 +122,43 @@ const getDesiredCountByKind = ({
   }
 };
 
+const getFuelRouteDistances = (fuelRatio: number) => {
+  if (fuelRatio <= GAME_CONFIG.fuelPickupCriticalThreshold) {
+    return [
+      GAME_CONFIG.fuelPickupSpawnMinDistance + 12,
+      GAME_CONFIG.fuelPickupSpawnMinDistance + 118,
+      GAME_CONFIG.fuelPickupSpawnMinDistance + 246,
+    ];
+  }
+
+  if (fuelRatio <= GAME_CONFIG.fuelPickupVisibleThreshold) {
+    return [
+      GAME_CONFIG.fuelPickupSpawnMinDistance + 80,
+      GAME_CONFIG.fuelPickupSpawnMinDistance + 260,
+      GAME_CONFIG.fuelPickupSpawnMinDistance + 440,
+    ];
+  }
+
+  return [
+    GAME_CONFIG.fuelPickupSpawnMinDistance + 220,
+    GAME_CONFIG.fuelPickupSpawnMinDistance + 420,
+    GAME_CONFIG.fuelPickupSpawnMaxDistance - 80,
+  ];
+};
+
+const getFuelRouteAngles = (heading: number, fuelRatio: number) => {
+  const tightAngle =
+    fuelRatio <= GAME_CONFIG.fuelPickupCriticalThreshold ? 0.52 : 0.58;
+  return [
+    heading + tightAngle,
+    heading - tightAngle,
+    heading + 0.78,
+    heading - 0.78,
+    heading + 1.04,
+    heading - 1.04,
+  ];
+};
+
 const spawnCollectible = ({
   kind,
   bounds,
@@ -150,7 +187,12 @@ const spawnCollectible = ({
       fuelRatio <= GAME_CONFIG.fuelPickupCriticalThreshold
         ? [220, 280, 340]
         : [280, 360, 440];
-    const waypointCandidates: Array<{
+    const routeCandidates: Array<{
+      x: number;
+      y: number;
+      source: Collectible["source"];
+    }> = [];
+    const anchorCandidates: Array<{
       x: number;
       y: number;
       source: Collectible["source"];
@@ -160,10 +202,16 @@ const spawnCollectible = ({
       candidate,
       source,
       clampToBounds,
+      pool,
     }: {
       candidate: { x: number; y: number };
       source: Collectible["source"];
       clampToBounds?: boolean;
+      pool?: Array<{
+        x: number;
+        y: number;
+        source: Collectible["source"];
+      }>;
     }) => {
       const boundedCandidate = clampToBounds
         ? clampToSpawnBounds(bounds, candidate)
@@ -183,11 +231,27 @@ const spawnCollectible = ({
         return;
       }
 
-      waypointCandidates.push({
+      (pool ?? anchorCandidates).push({
         ...boundedCandidate,
         source,
       });
     };
+
+    getFuelRouteAngles(plane.heading, fuelRatio).forEach((angle, angleIndex) => {
+      getFuelRouteDistances(fuelRatio).forEach((routeDistance, distanceIndex) => {
+        const jitter = randomBetween(rng, -26, 26);
+        const distanceAhead = routeDistance + jitter + angleIndex * 10 - distanceIndex * 6;
+        pushFuelCandidate({
+          candidate: {
+            x: plane.x + Math.cos(angle) * distanceAhead,
+            y: plane.y + Math.sin(angle) * distanceAhead,
+          },
+          source: "flight-path",
+          clampToBounds: true,
+          pool: routeCandidates,
+        });
+      });
+    });
 
     anchors.forEach((anchor, anchorIndex) => {
       FUEL_WAYPOINT_OFFSETS.forEach((offset, offsetIndex) => {
@@ -203,7 +267,7 @@ const spawnCollectible = ({
       });
     });
 
-    if (waypointCandidates.length === 0) {
+    if (routeCandidates.length === 0 && anchorCandidates.length === 0) {
       const fallbackAngles = [
         plane.heading + Math.PI * 0.72,
         plane.heading - Math.PI * 0.72,
@@ -235,11 +299,14 @@ const spawnCollectible = ({
             },
             source: anchorSystems.length > 0 ? "near-system" : "flight-path",
             clampToBounds: true,
+            pool: routeCandidates,
           });
         }
       }
     }
 
+    const waypointCandidates =
+      routeCandidates.length > 0 ? routeCandidates : anchorCandidates;
     const fuelWaypoint =
       waypointCandidates[Math.floor(rng() * Math.max(waypointCandidates.length, 1))];
 
@@ -265,7 +332,10 @@ const spawnCollectible = ({
   }
 
   for (let attempt = 0; attempt < 64; attempt += 1) {
-    const preferAnchor = anchorSystems.length > 0 && rng() < 0.54;
+    const routeAttemptCount = kind === "boost" ? 44 : 0;
+    const preferAnchor =
+      anchorSystems.length > 0 &&
+      (kind === "boost" ? attempt >= routeAttemptCount && rng() < 0.32 : rng() < 0.54);
     const source: Collectible["source"] = preferAnchor ? "near-system" : "flight-path";
 
     let x = plane.x;
@@ -278,11 +348,24 @@ const spawnCollectible = ({
       x = anchor.x + Math.cos(angle) * offset;
       y = anchor.y + Math.sin(angle) * offset;
     } else {
-      const arc = kind === "boost" ? 0.42 : 0.62;
+      const arc = kind === "boost" ? 0.34 : 0.62;
       const angle = plane.heading + randomBetween(rng, -arc, arc);
-      const lateral = randomBetween(rng, -150, 150);
+      const lateral =
+        kind === "boost"
+          ? randomBetween(
+              rng,
+              -GAME_CONFIG.boostPickupSpawnLateralDistance,
+              GAME_CONFIG.boostPickupSpawnLateralDistance,
+            )
+          : randomBetween(rng, -150, 150);
       const distanceAhead =
-        kind === "boost" ? randomBetween(rng, 430, 800) : randomBetween(rng, 360, 820);
+        kind === "boost"
+          ? randomBetween(
+              rng,
+              GAME_CONFIG.boostPickupSpawnMinDistance,
+              GAME_CONFIG.boostPickupSpawnMaxDistance,
+            )
+          : randomBetween(rng, 360, 820);
 
       x += Math.cos(angle) * distanceAhead + Math.cos(angle + Math.PI / 2) * lateral;
       y += Math.sin(angle) * distanceAhead + Math.sin(angle + Math.PI / 2) * lateral;

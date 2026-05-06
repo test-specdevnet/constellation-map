@@ -23,8 +23,8 @@ import {
   DEFAULT_FLIGHT_SETTINGS,
   getWeeklyLeaderboardKey,
 } from "../../lib/game/config";
+import { PROGRESS_STORAGE_KEY } from "../../lib/game/progressStorage";
 
-const STORAGE_KEY = "flux-constellation-progress-v4";
 const ALL_PLANE_SKIN_IDS: PlaneSkinId[] = ["classic"];
 
 type QuestId = "regional-surveyor" | "rare-signal" | "runtime-rambler";
@@ -348,7 +348,7 @@ export function ConstellationProgressProvider({
 
   useEffect(() => {
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
+      const raw = window.localStorage.getItem(PROGRESS_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as Partial<ProgressState>;
         const next = reconcileProgress(normalizeProgress(parsed), totalRegionCount);
@@ -369,7 +369,7 @@ export function ConstellationProgressProvider({
       return;
     }
 
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
+    window.localStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify(progress));
   }, [progress]);
 
   useEffect(() => {
@@ -569,7 +569,7 @@ export function ConstellationProgressProvider({
   );
 
   const resetProgress = useCallback(() => {
-    window.localStorage.removeItem(STORAGE_KEY);
+    window.localStorage.removeItem(PROGRESS_STORAGE_KEY);
     setToastQueue([]);
     setProgress(defaultProgress);
   }, []);

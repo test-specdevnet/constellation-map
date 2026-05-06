@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
+import { LandingLeaderboard } from "./LandingLeaderboard";
 import styles from "./LandingPage.module.css";
 
 const heroStyle = {
@@ -8,8 +9,8 @@ const heroStyle = {
 
 export function LandingPage() {
   return (
-    <main className={styles.landingPage}>
-      <section className={styles.hero} style={heroStyle}>
+    <main className={styles.landingPage} style={heroStyle}>
+      <section className={styles.hero}>
         <div className={styles.heroInner}>
           <div className={styles.heroCopy}>
             <h1>Welcome to the FluxCloud Flight Sim</h1>
@@ -31,6 +32,12 @@ export function LandingPage() {
               />
             </div>
           </div>
+        </div>
+      </section>
+
+      <section className={styles.leaderboardSection}>
+        <div className={styles.leaderboardInner}>
+          <LandingLeaderboard />
         </div>
       </section>
 
