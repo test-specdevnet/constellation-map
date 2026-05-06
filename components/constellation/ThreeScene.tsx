@@ -211,6 +211,13 @@ const DEPLOYMENT_LABEL_CAP = {
   medium: 6,
   high: 8,
 } as const;
+const DEFAULT_DEPLOYMENT_COLORWAY = {
+  main: "#6B7F9E",
+  light: "#8FA4BE",
+  trim: "#1B2744",
+  beacon: "#A8B8D8",
+  core: "#F2F6FF",
+} as const;
 const RUNTIME_GLB_MODELS_ENABLED = true;
 const EMPTY_VISIBILITY: DeploymentVisibilityState = {
   visibleSystems: [],
@@ -345,11 +352,10 @@ const BOOST_BOLT_SHAPE = (() => {
   shape.closePath();
   return shape;
 })();
-const DEPLOYMENT_MARKER_INSTANCE_ARGS = [
-  undefined,
-  undefined,
-  DEPLOYMENT_MARKER_INSTANCE_CAP,
-] as unknown as [THREE.BufferGeometry, THREE.Material, number];
+const DEPLOYMENT_MARKER_SLOT_IDS = Array.from(
+  { length: DEPLOYMENT_MARKER_INSTANCE_CAP },
+  (_, index) => index,
+);
 
 const getRefuelAmount = (discoveries: number, fuelMax: number) =>
   clamp(fuelMax * (0.28 + discoveries * 0.035), fuelMax * 0.28, fuelMax);
@@ -487,43 +493,6 @@ type BeaconPlaqueTextureOptions = {
   compact: boolean;
   selected: boolean;
 };
-type BeaconPlaqueTextureEntry = {
-  key: string;
-  texture: THREE.CanvasTexture;
-  refs: number;
-  lastUsed: number;
-};
-
-const BEACON_PLAQUE_TEXTURE_CACHE_LIMIT = 160;
-const beaconPlaqueTextureCache = new Map<string, BeaconPlaqueTextureEntry>();
-let beaconPlaqueTextureClock = 0;
-
-const getBeaconPlaqueTextureKey = ({
-  label,
-  subtitle,
-  color,
-  compact,
-  selected,
-}: BeaconPlaqueTextureOptions) =>
-  [label, subtitle ?? "", color, compact ? "compact" : "full", selected ? "selected" : "default"].join("\u001f");
-
-const pruneBeaconPlaqueTextureCache = () => {
-  if (beaconPlaqueTextureCache.size <= BEACON_PLAQUE_TEXTURE_CACHE_LIMIT) {
-    return;
-  }
-
-  const releasable = [...beaconPlaqueTextureCache.values()]
-    .filter((entry) => entry.refs === 0)
-    .sort((left, right) => left.lastUsed - right.lastUsed);
-
-  for (const entry of releasable) {
-    if (beaconPlaqueTextureCache.size <= BEACON_PLAQUE_TEXTURE_CACHE_LIMIT) {
-      break;
-    }
-    beaconPlaqueTextureCache.delete(entry.key);
-    entry.texture.dispose();
-  }
-};
 
 const createBeaconPlaqueTexture = ({
   label,
@@ -544,8 +513,8 @@ const createBeaconPlaqueTexture = ({
   const height = canvas.height;
   const radius = compact ? 32 : 34;
   context.clearRect(0, 0, width, height);
-  context.fillStyle = selected ? "rgba(251, 254, 255, 0.97)" : "rgba(244, 251, 255, 0.92)";
-  context.strokeStyle = selected ? "rgba(255, 229, 146, 0.94)" : "rgba(141, 188, 224, 0.74)";
+  context.fillStyle = selected ? "#fbfeff" : "#f4fbff";
+  context.strokeStyle = selected ? "#ffe592" : "#8dbce0";
   context.lineWidth = selected ? 8 : 5;
   context.beginPath();
   context.roundRect(6, 6, width - 12, height - 12, radius);
@@ -592,40 +561,6 @@ const createBeaconPlaqueTexture = ({
   texture.anisotropy = 4;
   texture.needsUpdate = true;
   return texture;
-};
-
-const acquireBeaconPlaqueTexture = (
-  options: BeaconPlaqueTextureOptions,
-): BeaconPlaqueTextureEntry | null => {
-  const key = getBeaconPlaqueTextureKey(options);
-  const cached = beaconPlaqueTextureCache.get(key);
-  if (cached) {
-    cached.refs += 1;
-    cached.lastUsed = ++beaconPlaqueTextureClock;
-    return cached;
-  }
-
-  const texture = createBeaconPlaqueTexture(options);
-  if (!texture) {
-    return null;
-  }
-
-  const entry = {
-    key,
-    texture,
-    refs: 1,
-    lastUsed: ++beaconPlaqueTextureClock,
-  };
-  beaconPlaqueTextureCache.set(key, entry);
-  pruneBeaconPlaqueTextureCache();
-  return entry;
-};
-
-const releaseBeaconPlaqueTexture = (entry: BeaconPlaqueTextureEntry | null) => {
-  if (!entry) return;
-  entry.refs = Math.max(0, entry.refs - 1);
-  entry.lastUsed = ++beaconPlaqueTextureClock;
-  pruneBeaconPlaqueTextureCache();
 };
 
 const shouldIgnoreFlightPointer = (target: EventTarget | null) =>
@@ -2252,184 +2187,159 @@ function DeploymentMarkerLayer({
   onHoverEntity: (entity: HoveredEntity | null) => void;
 }) {
   const visibleSystems = systems.slice(0, DEPLOYMENT_MARKER_INSTANCE_CAP);
-  const ringRef = useRef<THREE.InstancedMesh>(null);
-  const bodyRef = useRef<THREE.InstancedMesh>(null);
-  const baseRef = useRef<THREE.InstancedMesh>(null);
-  const beaconRef = useRef<THREE.InstancedMesh>(null);
-  const hitRef = useRef<THREE.InstancedMesh>(null);
-  const hoveredSystemIdRef = useRef<string | null>(null);
-  const dummy = useMemo(() => new THREE.Object3D(), []);
-  const color = useMemo(() => new THREE.Color(), []);
-
-  const setInstanceTransform = useCallback(
-    ({
-      mesh,
-      index,
-      x,
-      y,
-      z,
-      rotationX = 0,
-      rotationY = 0,
-      scale = 1,
-    }: {
-      mesh: THREE.InstancedMesh | null;
-      index: number;
-      x: number;
-      y: number;
-      z: number;
-      rotationX?: number;
-      rotationY?: number;
-      scale?: number;
-    }) => {
-      if (!mesh) return;
-      dummy.position.set(x, y, z);
-      dummy.rotation.set(rotationX, rotationY, 0);
-      dummy.scale.setScalar(scale);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(index, dummy.matrix);
-    },
-    [dummy],
+  return (
+    <group>
+      {DEPLOYMENT_MARKER_SLOT_IDS.map((slotIndex) => {
+        const system = visibleSystems[slotIndex] ?? null;
+        return (
+          <DeploymentMarkerSlot
+            key={slotIndex}
+            system={system}
+            selected={
+              system ? system.appName === selectedAppName || searchMatches.has(system.appName) : false
+            }
+            index={slotIndex}
+            onSelectDeployment={onSelectDeployment}
+            onHoverEntity={onHoverEntity}
+          />
+        );
+      })}
+    </group>
   );
+}
 
-  useFrame((state) => {
-    const meshes = [ringRef.current, bodyRef.current, baseRef.current, beaconRef.current, hitRef.current];
-    for (const mesh of meshes) {
-      if (mesh) mesh.count = visibleSystems.length;
+function DeploymentMarkerSlot({
+  system,
+  selected,
+  index,
+  onSelectDeployment,
+  onHoverEntity,
+}: {
+  system: AppSystem | null;
+  selected: boolean;
+  index: number;
+  onSelectDeployment: (appName: string, deploymentId: string) => void;
+  onHoverEntity: (entity: HoveredEntity | null) => void;
+}) {
+  const groupRef = useRef<THREE.Group>(null);
+  const beaconRef = useRef<THREE.Mesh>(null);
+  const lightRef = useRef<THREE.PointLight>(null);
+  const mountProgressRef = useRef(1);
+  const systemIdRef = useRef<string | null>(null);
+  const colorway = system ? getBuoyColorway(system) : DEFAULT_DEPLOYMENT_COLORWAY;
+
+  useFrame((state, delta) => {
+    const group = groupRef.current;
+    if (!group) return;
+
+    if (!system) {
+      group.visible = false;
+      systemIdRef.current = null;
+      mountProgressRef.current = 1;
+      return;
     }
 
-    visibleSystems.forEach((system, index) => {
-      const selected = system.appName === selectedAppName || searchMatches.has(system.appName);
-      const colorway = getBuoyColorway(system);
-      const bob = Math.sin(state.clock.elapsedTime * 1.25 + index * 0.83) * 0.24;
-      const spin = Math.sin(state.clock.elapsedTime * 0.34 + index) * 0.08;
-      const baseX = system.x * WORLD_SCALE;
-      const baseY = ISLAND_ALTITUDE + 6.1 + (index % 4) * 0.08 + bob;
-      const baseZ = system.y * WORLD_SCALE;
-      const selectedScale = selected ? 1.08 : 0.9;
+    if (systemIdRef.current !== system.systemId) {
+      systemIdRef.current = system.systemId;
+      mountProgressRef.current = 0.72;
+    }
 
-      setInstanceTransform({
-        mesh: hitRef.current,
-        index,
-        x: baseX,
-        y: baseY,
-        z: baseZ,
-        rotationY: spin,
-        scale: 1,
-      });
-      setInstanceTransform({
-        mesh: ringRef.current,
-        index,
-        x: baseX,
-        y: baseY - 0.9,
-        z: baseZ,
-        rotationX: Math.PI / 2,
-        rotationY: spin,
-        scale: selected ? 1.08 : 1,
-      });
-      setInstanceTransform({
-        mesh: bodyRef.current,
-        index,
-        x: baseX,
-        y: baseY - 0.43,
-        z: baseZ,
-        rotationY: spin,
-        scale: selectedScale,
-      });
-      setInstanceTransform({
-        mesh: baseRef.current,
-        index,
-        x: baseX,
-        y: baseY - 1.08,
-        z: baseZ,
-        rotationY: spin,
-        scale: selected ? 1.04 : 1,
-      });
-      setInstanceTransform({
-        mesh: beaconRef.current,
-        index,
-        x: baseX,
-        y: baseY + 1.68,
-        z: baseZ,
-        rotationY: spin,
-        scale: selected ? 1.34 : 1,
-      });
+    const basePosition = to3(system, ISLAND_ALTITUDE + 6.1 + (index % 4) * 0.08);
+    const bob = Math.sin(state.clock.elapsedTime * 1.25 + index * 0.83) * 0.24;
+    const spin = Math.sin(state.clock.elapsedTime * 0.34 + index) * 0.08;
+    mountProgressRef.current = Math.min(1, mountProgressRef.current + delta * 2.2);
+    group.visible = true;
+    group.position.set(basePosition.x, basePosition.y + bob, basePosition.z);
+    group.rotation.y = spin;
+    group.scale.setScalar(0.5 + mountProgressRef.current * 0.5);
 
-      ringRef.current?.setColorAt(index, color.set(selected ? "#7df0ff" : "#49b8ff"));
-      bodyRef.current?.setColorAt(index, color.set(selected ? colorway.beacon : "#9eb4c9"));
-      baseRef.current?.setColorAt(index, color.set(colorway.beacon));
-      beaconRef.current?.setColorAt(index, color.set(selected ? "#fff8be" : "#ffe16a"));
-    });
-
-    for (const mesh of meshes) {
-      if (!mesh) continue;
-      mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) {
-        mesh.instanceColor.needsUpdate = true;
+    const flash = 0.45 + Math.max(0, Math.sin(state.clock.elapsedTime * 5.6 + index)) * 0.95;
+    if (beaconRef.current) {
+      const material = beaconRef.current.material;
+      if (material instanceof THREE.MeshStandardMaterial) {
+        material.emissiveIntensity = selected ? 1.35 + flash * 0.4 : 0.9 + flash * 0.22;
       }
+    }
+    if (lightRef.current) {
+      lightRef.current.intensity = selected ? 1.6 + flash * 0.42 : 0.6 + flash * 0.32;
     }
   });
 
-  const getEventSystem = (event: ThreeEvent<PointerEvent | MouseEvent>) => {
-    const instanceId = event.instanceId;
-    return typeof instanceId === "number" ? visibleSystems[instanceId] ?? null : null;
-  };
-
-  const clearHover = () => {
-    if (!hoveredSystemIdRef.current) return;
-    hoveredSystemIdRef.current = null;
-    document.body.style.cursor = "";
-    onHoverEntity(null);
-  };
-
   return (
-    <group>
-      <instancedMesh
-        ref={hitRef}
-        args={DEPLOYMENT_MARKER_INSTANCE_ARGS}
-        onClick={(event: ThreeEvent<MouseEvent>) => {
-          const system = getEventSystem(event);
-          if (!system) return;
-          event.stopPropagation();
-          scheduleSceneAction(() => onSelectDeployment(system.appName, system.systemId));
-        }}
-        onPointerMove={(event: ThreeEvent<PointerEvent>) => {
-          const system = getEventSystem(event);
-          if (!system) return;
-          event.stopPropagation();
-          if (hoveredSystemIdRef.current === system.systemId) return;
-          hoveredSystemIdRef.current = system.systemId;
-          document.body.style.cursor = "pointer";
-          onHoverEntity({
-            kind: "system",
-            id: system.systemId,
-            discoveryId: system.systemId,
-            label: system.label,
-            subtitle: `${system.runtimeFamily} | ${system.projectCategory}`,
-            appName: system.appName,
-          });
-        }}
-        onPointerOut={clearHover}
-      >
-        <sphereGeometry args={[2.35, 8, 6]} />
+    <group
+      ref={groupRef}
+      visible={Boolean(system)}
+      onClick={(event: ThreeEvent<MouseEvent>) => {
+        if (!system) return;
+        event.stopPropagation();
+        scheduleSceneAction(() => onSelectDeployment(system.appName, system.systemId));
+      }}
+      onPointerOver={(event: ThreeEvent<PointerEvent>) => {
+        if (!system) return;
+        event.stopPropagation();
+        document.body.style.cursor = "pointer";
+        onHoverEntity({
+          kind: "system",
+          id: system.systemId,
+          discoveryId: system.systemId,
+          label: system.label,
+          subtitle: `${system.runtimeFamily} | ${system.projectCategory}`,
+          appName: system.appName,
+        });
+      }}
+      onPointerOut={() => {
+        document.body.style.cursor = "";
+        onHoverEntity(null);
+      }}
+    >
+      <mesh>
+        <sphereGeometry args={[2.35, 10, 8]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-      </instancedMesh>
-      <instancedMesh ref={ringRef} args={DEPLOYMENT_MARKER_INSTANCE_ARGS}>
-        <torusGeometry args={[0.82, 0.045, 6, 18]} />
-        <meshBasicMaterial vertexColors transparent opacity={0.88} />
-      </instancedMesh>
-      <instancedMesh ref={bodyRef} args={DEPLOYMENT_MARKER_INSTANCE_ARGS}>
-        <sphereGeometry args={[0.7, 10, 8]} />
-        <meshStandardMaterial vertexColors emissive="#2a8ce8" emissiveIntensity={0.28} metalness={0.74} roughness={0.3} />
-      </instancedMesh>
-      <instancedMesh ref={baseRef} args={DEPLOYMENT_MARKER_INSTANCE_ARGS}>
-        <cylinderGeometry args={[0.92, 1.12, 0.18, 12]} />
-        <meshStandardMaterial vertexColors emissive="#2bc7ff" emissiveIntensity={0.34} roughness={0.42} metalness={0.18} />
-      </instancedMesh>
-      <instancedMesh ref={beaconRef} args={DEPLOYMENT_MARKER_INSTANCE_ARGS}>
-        <sphereGeometry args={[0.14, 8, 6]} />
-        <meshStandardMaterial vertexColors emissive="#ffd84a" emissiveIntensity={1.05} metalness={0.12} roughness={0.22} />
-      </instancedMesh>
+      </mesh>
+      <pointLight ref={lightRef} color="#fff2a8" intensity={selected ? 1.8 : 0.65} distance={10} />
+      <DeploymentFallback selected={selected} colorway={colorway} />
+      <mesh ref={beaconRef} position={[0, 1.68, 0]}>
+        <sphereGeometry args={[0.14, 10, 8]} />
+        <meshStandardMaterial
+          color="#fff4a8"
+          emissive="#ffd84a"
+          emissiveIntensity={1.1}
+          metalness={0.15}
+          roughness={0.22}
+        />
+      </mesh>
     </group>
+  );
+}
+
+function DeploymentFallback({
+  selected,
+  colorway,
+}: {
+  selected: boolean;
+  colorway: ReturnType<typeof getBuoyColorway>;
+}) {
+  return (
+    <>
+      <mesh position={[0, -0.9, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[0.82, 0.045, 6, 18]} />
+        <meshBasicMaterial color="#49b8ff" transparent opacity={selected ? 0.98 : 0.78} />
+      </mesh>
+      <mesh position={[0, -0.42, 0]}>
+        <sphereGeometry args={[selected ? 0.76 : 0.62, 12, 9]} />
+        <meshStandardMaterial
+          color={selected ? "#d9f6ff" : "#9eb4c9"}
+          emissive={selected ? colorway.beacon : "#2a8ce8"}
+          emissiveIntensity={selected ? 0.52 : 0.24}
+          metalness={0.72}
+          roughness={0.28}
+        />
+      </mesh>
+      <mesh position={[0, -1.08, 0]}>
+        <cylinderGeometry args={[0.92, 1.12, 0.18, 12]} />
+        <meshStandardMaterial color="#5ed8ff" emissive={colorway.beacon} emissiveIntensity={0.38} roughness={0.42} metalness={0.18} />
+      </mesh>
+    </>
   );
 }
 
@@ -2868,57 +2778,35 @@ function BeaconPlaque({
   label?: string;
   subtitle?: string;
 }) {
-  const [labelTextureEntry, setLabelTextureEntry] =
-    useState<BeaconPlaqueTextureEntry | null>(null);
-  const labelTextureEntryRef = useRef<BeaconPlaqueTextureEntry | null>(null);
+  const labelTexture = useMemo(
+    () =>
+      label && typeof document !== "undefined"
+        ? createBeaconPlaqueTexture({
+            label,
+            subtitle,
+            color,
+            compact,
+            selected,
+          })
+        : null,
+    [color, compact, label, selected, subtitle],
+  );
 
-  useEffect(() => {
-    releaseBeaconPlaqueTexture(labelTextureEntryRef.current);
-    labelTextureEntryRef.current = null;
-    setLabelTextureEntry(null);
-
-    if (!label || typeof document === "undefined") {
-      return undefined;
-    }
-
-    let cancelled = false;
-    const handle = scheduleIdleSceneWork(() => {
-      const entry = acquireBeaconPlaqueTexture({
-        label,
-        subtitle,
-        color,
-        compact,
-        selected,
-      });
-      if (cancelled) {
-        releaseBeaconPlaqueTexture(entry);
-        return;
-      }
-      labelTextureEntryRef.current = entry;
-      setLabelTextureEntry(entry);
-    });
-
-    return () => {
-      cancelled = true;
-      cancelIdleSceneWork(handle);
-      releaseBeaconPlaqueTexture(labelTextureEntryRef.current);
-      labelTextureEntryRef.current = null;
-    };
-  }, [color, compact, label, selected, subtitle]);
-
-  const labelTexture = labelTextureEntry?.texture ?? null;
+  useEffect(() => () => labelTexture?.dispose(), [labelTexture]);
 
   if (labelTexture) {
     return (
       <group>
-        <mesh>
+        <mesh renderOrder={30}>
           <planeGeometry args={compact ? [3.25, 0.94] : [3.8, 1.0]} />
           <meshBasicMaterial
             map={labelTexture}
+            color="#ffffff"
             transparent
             opacity={selected ? 0.98 : 0.92}
             side={THREE.DoubleSide}
             toneMapped={false}
+            depthTest={false}
           />
         </mesh>
       </group>
