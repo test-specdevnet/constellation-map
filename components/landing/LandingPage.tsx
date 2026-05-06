@@ -46,6 +46,10 @@ export function LandingPage() {
             <p>
               There are over 5,000 active deployments on FluxCloud, and the Flight Sim maps every single one. Using the FluxAPI, the Flight Sim pulls in publicly available application data, categorizes deployments by app type (infrastructure, AI, node, miscellaneous, etc.), and maps them within the simulator for discovery.
             </p>
+
+            <p>
+              The FluxCloud Flight Sim was launched using Deploy with Git, a FluxCloud feature enabling users to deploy apps directly from Git repos without needing to manually tediously configure Dockerfiles.
+            </p>
           </article>
 
           <article className={styles.card}>

@@ -2619,9 +2619,10 @@ h1 {
   min-height: 100svh;
   padding: 0;
   background:
-    radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.5), transparent 24%),
-    linear-gradient(180deg, rgba(70, 181, 255, 0.4), rgba(21, 111, 218, 0.28)),
-    #5ac1ff;
+    radial-gradient(circle at 42% 18%, rgba(38, 135, 255, 0.22), transparent 28%),
+    radial-gradient(circle at 78% 58%, rgba(0, 78, 180, 0.18), transparent 34%),
+    linear-gradient(180deg, rgba(3, 12, 31, 0.96), rgba(5, 20, 48, 0.98)),
+    #06152f;
 }
 
 .atlas-page:has(.scene-shell--three) .hero-shell,
@@ -2642,8 +2643,9 @@ h1 {
   padding: 8px;
   border-radius: 999px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.64), rgba(157, 217, 255, 0.42));
-  border-color: rgba(255, 255, 255, 0.5);
+    linear-gradient(180deg, rgba(13, 42, 91, 0.88), rgba(7, 23, 52, 0.72));
+  border-color: rgba(88, 183, 255, 0.36);
+  box-shadow: 0 18px 44px rgba(0, 20, 58, 0.28);
   pointer-events: auto;
 }
 
@@ -2658,10 +2660,10 @@ h1 {
 .atlas-page:has(.scene-shell--three) .control-bar .search-field input {
   min-height: 42px;
   border-radius: 999px;
-  border-color: rgba(255, 255, 255, 0.56);
-  background: rgba(246, 252, 255, 0.9);
-  color: #10355f;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
+  border-color: rgba(96, 189, 255, 0.42);
+  background: rgba(229, 247, 255, 0.92);
+  color: #0b2c58;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62), 0 0 24px rgba(38, 153, 255, 0.14);
 }
 
 .atlas-page:has(.scene-shell--three) .control-bar .search-field input::placeholder {
@@ -2712,32 +2714,32 @@ h1 {
 
 .scene-shell--three .scene-toolbar-group {
   padding: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.42);
+  border: 1px solid rgba(91, 184, 255, 0.36);
   border-radius: 22px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(77, 168, 238, 0.32));
-  box-shadow: 0 16px 38px rgba(25, 92, 150, 0.18);
+    linear-gradient(180deg, rgba(14, 48, 100, 0.86), rgba(7, 24, 55, 0.72));
+  box-shadow: 0 16px 38px rgba(0, 20, 58, 0.28);
   backdrop-filter: blur(14px);
 }
 
 .scene-shell--three .secondary-action,
 .scene-shell--three .icon-button {
   border-radius: 999px;
-  border-color: rgba(255, 255, 255, 0.48);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(196, 233, 255, 0.38));
-  color: #12365d;
-  box-shadow: 0 8px 18px rgba(40, 116, 190, 0.16);
+  border-color: rgba(113, 207, 255, 0.5);
+  background: linear-gradient(180deg, rgba(19, 72, 135, 0.9), rgba(8, 35, 80, 0.82));
+  color: #eaf7ff;
+  box-shadow: 0 8px 22px rgba(12, 91, 190, 0.24);
   font-weight: 800;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.42);
+  text-shadow: 0 0 14px rgba(102, 199, 255, 0.45);
 }
 
 .scene-shell--three .scene-zoom-label--wrap {
   max-width: min(520px, 48vw);
   padding: 9px 14px;
   border-radius: 999px;
-  color: #0e335c;
-  background: rgba(255, 255, 255, 0.54);
-  border: 1px solid rgba(255, 255, 255, 0.52);
+  color: #eaf7ff;
+  background: rgba(6, 21, 49, 0.66);
+  border: 1px solid rgba(92, 184, 255, 0.34);
   text-align: right;
   backdrop-filter: blur(12px);
 }
@@ -2775,16 +2777,16 @@ h1 {
 }
 
 .scene-flight-tip {
-  border-color: rgba(255, 255, 255, 0.56);
+  border-color: rgba(104, 197, 255, 0.44);
   background:
-    radial-gradient(circle at 22% 0%, rgba(255, 255, 255, 0.9), transparent 42%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(208, 237, 255, 0.82));
-  color: #17385f;
+    radial-gradient(circle at 22% 0%, rgba(79, 181, 255, 0.24), transparent 42%),
+    linear-gradient(180deg, rgba(14, 42, 86, 0.92), rgba(7, 25, 57, 0.88));
+  color: #f3fbff;
 }
 
 .scene-flight-tip-list,
 .scene-flight-tip-copy {
-  color: rgba(23, 56, 95, 0.78);
+  color: rgba(215, 236, 255, 0.82);
 }
 
 .station-dock {
@@ -2794,13 +2796,13 @@ h1 {
   z-index: 7;
   width: min(360px, calc(100% - 36px));
   padding: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.48);
+  border: 1px solid rgba(99, 194, 255, 0.42);
   border-radius: 18px;
   background:
-    radial-gradient(circle at 15% 0%, rgba(255, 255, 255, 0.68), transparent 42%),
-    rgba(17, 80, 136, 0.5);
+    radial-gradient(circle at 15% 0%, rgba(68, 176, 255, 0.32), transparent 42%),
+    rgba(7, 27, 65, 0.72);
   color: #f7fcff;
-  box-shadow: 0 18px 46px rgba(13, 54, 104, 0.26);
+  box-shadow: 0 18px 46px rgba(0, 18, 52, 0.34);
   backdrop-filter: blur(16px);
 }
 
@@ -2873,11 +2875,11 @@ h1 {
 .scene-shell--three .diegetic-hud,
 .scene-shell--three .fuel-gauge,
 .scene-shell--three .mini-map {
-  border-color: rgba(255, 255, 255, 0.38);
+  border-color: rgba(94, 188, 255, 0.38);
   background:
-    radial-gradient(circle at 12% 0%, rgba(255, 255, 255, 0.42), transparent 42%),
-    rgba(18, 91, 150, 0.18);
-  box-shadow: 0 16px 34px rgba(15, 72, 132, 0.18);
+    radial-gradient(circle at 12% 0%, rgba(73, 174, 255, 0.3), transparent 42%),
+    rgba(5, 20, 50, 0.64);
+  box-shadow: 0 16px 38px rgba(0, 16, 48, 0.32), 0 0 24px rgba(19, 118, 255, 0.08);
   backdrop-filter: blur(12px);
 }
 
@@ -2893,9 +2895,9 @@ h1 {
   min-height: 60px;
   border-radius: 18px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(145, 218, 255, 0.16));
+    linear-gradient(180deg, rgba(32, 112, 197, 0.32), rgba(8, 36, 82, 0.28));
   color: #f7fcff;
-  text-shadow: 0 2px 8px rgba(12, 46, 84, 0.34);
+  text-shadow: 0 0 16px rgba(106, 207, 255, 0.36);
 }
 
 .scene-shell--three .fuel-gauge {
@@ -2915,15 +2917,15 @@ h1 {
 .scene-shell--three .scene-flight-pad {
   right: 20px;
   bottom: 214px;
-  background: rgba(255, 255, 255, 0.34);
-  border-color: rgba(255, 255, 255, 0.48);
+  background: rgba(6, 22, 52, 0.68);
+  border-color: rgba(92, 185, 255, 0.42);
   backdrop-filter: blur(12px);
 }
 
 .scene-shell--three .scene-flight-pad-btn {
   border-radius: 18px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(128, 207, 255, 0.42));
-  color: #113a66;
+  background: linear-gradient(180deg, rgba(26, 95, 170, 0.92), rgba(7, 35, 82, 0.82));
+  color: #eaf7ff;
 }
 
 @media (max-width: 1180px) {

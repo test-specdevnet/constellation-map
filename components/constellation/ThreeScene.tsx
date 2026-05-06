@@ -1350,14 +1350,15 @@ function ThreeWorld({
   );
   return (
     <>
-      <color attach="background" args={["#238ce8"]} />
-      <fog attach="fog" args={["#79c9ff", 90, 330]} />
-      <hemisphereLight args={["#ffffff", "#2988d3", 1.5]} />
+      <color attach="background" args={["#061734"]} />
+      <fog attach="fog" args={["#0c3470", 88, 340]} />
+      <hemisphereLight args={["#a8d8ff", "#05142f", 1.28]} />
       <directionalLight
         position={[30, 48, 28]}
-        intensity={1.85}
+        color="#b8ddff"
+        intensity={1.7}
       />
-      <ambientLight intensity={0.48} />
+      <ambientLight color="#2e78d6" intensity={0.36} />
       <SkyDome />
       <CloudFields clusters={regionClusters} qualityMode={qualityMode} visible={cloudsEnabled} />
       <AmbientCloudLayer bounds={bounds} qualityMode={qualityMode} visible={cloudsEnabled} />
@@ -1538,7 +1539,7 @@ function SkyDome() {
   return (
     <mesh scale={[1, 1, 1]} position={[0, -80, 0]}>
       <sphereGeometry args={[520, 16, 8]} />
-      <meshBasicMaterial side={THREE.BackSide} color="#1688ea" transparent opacity={0.9} />
+      <meshBasicMaterial side={THREE.BackSide} color="#071a3c" transparent opacity={0.97} />
     </mesh>
   );
 }
@@ -1669,9 +1670,9 @@ function CloudPuff({ scale = 1, variant = 0 }: { scale?: number; variant?: numbe
       <spriteMaterial
         map={cloudMap}
         alphaMap={cloudMap}
-        color="#ffffff"
+        color="#7bbfff"
         transparent
-        opacity={0.78}
+        opacity={0.7}
         rotation={rotation}
         depthWrite={false}
         depthTest
@@ -1818,11 +1819,11 @@ function StationFallback({ radius, color, accent }: { radius: number; color: str
     <>
       <mesh position={[0, 0.22, 0]}>
         <cylinderGeometry args={[radius * 0.38, radius * 0.48, 0.42, 28]} />
-        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.18} roughness={0.42} />
+        <meshStandardMaterial color="#2bc7ff" emissive={color} emissiveIntensity={0.28} roughness={0.38} metalness={0.16} />
       </mesh>
       <mesh position={[0, 0.82, 0]} rotation={[Math.PI / 2, 0, 0]}>
         <torusGeometry args={[radius * 0.38, 0.07, 8, 36]} />
-        <meshStandardMaterial color={accent} emissive={accent} emissiveIntensity={0.32} roughness={0.34} />
+        <meshStandardMaterial color="#55ecff" emissive={accent} emissiveIntensity={0.48} roughness={0.3} metalness={0.08} />
       </mesh>
       <group position={[0, 1.14, 0]}>
         <mesh rotation={[0, 0, Math.PI / 2]}>
@@ -1978,15 +1979,15 @@ function DeploymentFallback({
     <>
       <mesh position={[0, -0.9, 0]} rotation={[Math.PI / 2, 0, 0]}>
         <torusGeometry args={[0.82, 0.045, 6, 18]} />
-        <meshBasicMaterial color="#f4fbff" transparent opacity={selected ? 0.92 : 0.7} />
+        <meshBasicMaterial color="#49b8ff" transparent opacity={selected ? 0.98 : 0.78} />
       </mesh>
       {selected ? (
         <mesh position={[0, -0.42, 0]}>
           <sphereGeometry args={[0.76, 12, 9]} />
           <meshStandardMaterial
-            color="#f7fbff"
+            color="#c9edff"
             emissive={colorway.beacon}
-            emissiveIntensity={0.22}
+            emissiveIntensity={0.42}
             metalness={0.72}
             roughness={0.25}
           />
@@ -1995,9 +1996,9 @@ function DeploymentFallback({
         <mesh position={[0, -0.44, 0]}>
           <sphereGeometry args={[0.62, 10, 8]} />
           <meshStandardMaterial
-            color="#d9e1e7"
-            emissive="#8fb4ca"
-            emissiveIntensity={0.12}
+            color="#9eb4c9"
+            emissive="#2a8ce8"
+            emissiveIntensity={0.24}
             metalness={0.78}
             roughness={0.3}
           />
@@ -2005,7 +2006,7 @@ function DeploymentFallback({
       )}
       <mesh position={[0, -1.08, 0]}>
         <cylinderGeometry args={[0.92, 1.12, 0.18, 12]} />
-        <meshStandardMaterial color="#dff8ff" emissive={colorway.beacon} emissiveIntensity={0.18} roughness={0.5} />
+        <meshStandardMaterial color="#5ed8ff" emissive={colorway.beacon} emissiveIntensity={0.38} roughness={0.42} metalness={0.18} />
       </mesh>
     </>
   );
@@ -2025,7 +2026,7 @@ function StarMarker({
       onClick={() => scheduleSceneAction(() => onSelectDeployment(star.appName, star.systemId))}
     >
       <sphereGeometry args={[clamp(star.size * 0.08, 0.1, 0.32), 12, 8]} />
-      <meshStandardMaterial color="#fff3a3" emissive="#8ee8ff" emissiveIntensity={0.55} />
+      <meshStandardMaterial color="#c7f4ff" emissive="#48bcff" emissiveIntensity={0.8} />
     </mesh>
   );
 }
@@ -2042,14 +2043,14 @@ function CollectibleMesh({ collectible, nowMs }: { collectible: Collectible; now
         <group scale={pulse}>
           <mesh position={[0, 0, -0.03]}>
             <circleGeometry args={[0.86, 28]} />
-            <meshBasicMaterial color="#ffe56b" transparent opacity={0.22} depthWrite={false} />
+            <meshBasicMaterial color="#8beeff" transparent opacity={0.26} depthWrite={false} />
           </mesh>
           <mesh>
             <shapeGeometry args={[BOOST_BOLT_SHAPE]} />
             <meshStandardMaterial
-              color="#ffe15c"
-              emissive="#ffc83d"
-              emissiveIntensity={1.15}
+              color="#ffed8a"
+              emissive="#ffe14a"
+              emissiveIntensity={1.25}
               roughness={0.26}
               metalness={0.08}
             />
@@ -2063,11 +2064,11 @@ function CollectibleMesh({ collectible, nowMs }: { collectible: Collectible; now
     <group position={position} rotation={[0, spin, 0]} scale={1.18}>
       <mesh position={[0, 0, 0]}>
         <boxGeometry args={[0.82, 1.05, 0.42]} />
-        <meshStandardMaterial color="#ef3b32" emissive="#ff4b42" emissiveIntensity={0.38} roughness={0.35} />
+        <meshStandardMaterial color="#ff413a" emissive="#ff5948" emissiveIntensity={0.5} roughness={0.32} metalness={0.06} />
       </mesh>
       <mesh position={[0, 0.08, 0.235]}>
         <boxGeometry args={[0.48, 0.42, 0.035]} />
-        <meshStandardMaterial color="#fff0d8" emissive="#ffd6bd" emissiveIntensity={0.18} roughness={0.3} />
+        <meshStandardMaterial color="#fff5df" emissive="#ffe0b4" emissiveIntensity={0.24} roughness={0.26} />
       </mesh>
       <mesh position={[0.24, 0.64, 0]} rotation={[0, 0, -0.28]}>
         <boxGeometry args={[0.46, 0.18, 0.46]} />
