@@ -249,50 +249,6 @@ describe("buildDeploymentVisibilityState", () => {
     expect(result.visibleSystems).toHaveLength(1);
   });
 
-  it("limits new visible deployment churn when entering dense regions", () => {
-    const previousSystems = Array.from({ length: 12 }, (_, index) => {
-      const angle = (Math.PI * 2 * index) / 12;
-      return makeSystem(
-        `previous:${index.toString().padStart(2, "0")}`,
-        Math.cos(angle) * 1_160,
-        Math.sin(angle) * 1_160,
-      );
-    });
-    const denseIncomingSystems = Array.from({ length: 36 }, (_, index) => {
-      const angle = (Math.PI * 2 * index) / 36;
-      const radius = index % 2 === 0 ? 620 : 880;
-      return makeSystem(
-        `incoming:${index.toString().padStart(2, "0")}`,
-        Math.cos(angle) * radius,
-        Math.sin(angle) * radius,
-      );
-    });
-
-    const result = buildDeploymentVisibilityState({
-      systems: [...denseIncomingSystems, ...previousSystems],
-      starsBySystem: new Map(),
-      clusters: [],
-      flight: makeFlight(),
-      disclosure: {
-        band: "mid",
-        activeRegionId: null,
-        activeRuntimeId: null,
-      },
-      selectedAppName: null,
-      searchMatches: new Set<string>(),
-      qualityMode: "medium",
-      densityLimitsEnabled: true,
-      previousVisibility: previousVisibility(previousSystems),
-    });
-
-    const incomingVisibleCount = result.visibleSystems.filter((system) =>
-      system.systemId.startsWith("incoming:"),
-    ).length;
-
-    expect(incomingVisibleCount).toBeLessThanOrEqual(8);
-    expect(result.visibleSystems.some((system) => system.systemId.startsWith("previous:"))).toBe(true);
-  });
-
   it("drops sticky systems once they are well outside the local radius", () => {
     const stale = makeSystem("system:stale", GAME_CONFIG.localSystemRadius + 940, 0);
 

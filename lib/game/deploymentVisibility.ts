@@ -16,11 +16,6 @@ const SYSTEM_SPACING_BY_QUALITY: Record<QualityMode, number> = {
   medium: 300,
   high: 240,
 };
-const MAX_NEW_SYSTEMS_PER_REFRESH: Record<QualityMode, number> = {
-  low: 5,
-  medium: 8,
-  high: 10,
-};
 
 const byPriorityThenDistance = (
   left: { system: AppSystem; priority: number; distance: number },
@@ -227,33 +222,8 @@ export const buildDeploymentVisibilityState = ({
     minSpacing: SYSTEM_SPACING_BY_QUALITY[qualityMode],
   });
 
-  const previousVisibleIds = new Set(
-    previousVisibility?.visibleSystems.map((system) => system.systemId) ?? [],
-  );
-  const limitedSpacedSystems =
-    previousVisibleIds.size > 0
-      ? (() => {
-          const retained = spacedSystems.filter(({ system }) =>
-            previousVisibleIds.has(system.systemId),
-          );
-          const incoming = spacedSystems.filter(
-            ({ system }) => !previousVisibleIds.has(system.systemId),
-          );
-          const forcedIncoming = incoming.filter(({ priority }) => priority >= 70);
-          const normalIncoming = incoming.filter(({ priority }) => priority < 70);
-          const incomingSlots = Math.max(
-            MAX_NEW_SYSTEMS_PER_REFRESH[qualityMode],
-            forcedIncoming.length,
-          );
-
-          return [...retained, ...forcedIncoming, ...normalIncoming.slice(0, incomingSlots - forcedIncoming.length)]
-            .sort(byPriorityThenDistance)
-            .slice(0, maxVisibleSystems);
-        })()
-      : spacedSystems;
-
-  const visibleSystems = limitedSpacedSystems.map(({ system }) => system);
-  const detailSystems = limitedSpacedSystems
+  const visibleSystems = spacedSystems.map(({ system }) => system);
+  const detailSystems = spacedSystems
     .filter(
       ({ system, distance: systemDistance }) =>
         system.appName === selectedAppName ||

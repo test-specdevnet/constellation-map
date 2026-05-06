@@ -168,6 +168,18 @@ type DisclosureSnapshot = Pick<
   | "nearestRegionDistance"
   | "nearestSystemDistance"
 >;
+type VisibilityRefreshRequest = {
+  flight: FlightState;
+  nowMs: number;
+  zoom: number;
+  selectedAppName: string | null;
+  searchSignature: string;
+  qualityMode: QualityMode;
+  deploymentClustering: boolean;
+};
+type IdleWorkHandle =
+  | { kind: "idle"; id: number }
+  | { kind: "timeout"; id: number };
 
 const GAME_STATE_EMIT_INTERVAL_MS = 760;
 const TELEMETRY_EMIT_INTERVAL_MS = 280;
@@ -377,6 +389,32 @@ const scheduleIdleModelLoad = (callback: () => void) => {
   window.setTimeout(callback, 16);
 };
 
+const scheduleIdleSceneWork = (callback: () => void): IdleWorkHandle => {
+  const browserWindow = window as Window & {
+    requestIdleCallback?: (cb: IdleRequestCallback, options?: IdleRequestOptions) => number;
+  };
+  if (browserWindow.requestIdleCallback) {
+    return {
+      kind: "idle",
+      id: browserWindow.requestIdleCallback(callback, { timeout: 240 }),
+    };
+  }
+
+  return { kind: "timeout", id: window.setTimeout(callback, 24) };
+};
+
+const cancelIdleSceneWork = (handle: IdleWorkHandle | null) => {
+  if (!handle) return;
+  if (handle.kind === "idle") {
+    const browserWindow = window as Window & {
+      cancelIdleCallback?: (id: number) => void;
+    };
+    browserWindow.cancelIdleCallback?.(handle.id);
+    return;
+  }
+  window.clearTimeout(handle.id);
+};
+
 const requestRuntimeModel = (modelId: RuntimeModelId) => {
   const cached = runtimeModelCache.get(modelId);
   if (cached) return cached;
@@ -431,19 +469,58 @@ const fitCanvasText = ({
 const clampLabelText = (text: string, maxLength: number) =>
   text.length > maxLength ? `${text.slice(0, Math.max(0, maxLength - 3))}...` : text;
 
+type BeaconPlaqueTextureOptions = {
+  label: string;
+  subtitle?: string;
+  color: string;
+  compact: boolean;
+  selected: boolean;
+};
+type BeaconPlaqueTextureEntry = {
+  key: string;
+  texture: THREE.CanvasTexture;
+  refs: number;
+  lastUsed: number;
+};
+
+const BEACON_PLAQUE_TEXTURE_CACHE_LIMIT = 160;
+const beaconPlaqueTextureCache = new Map<string, BeaconPlaqueTextureEntry>();
+let beaconPlaqueTextureClock = 0;
+
+const getBeaconPlaqueTextureKey = ({
+  label,
+  subtitle,
+  color,
+  compact,
+  selected,
+}: BeaconPlaqueTextureOptions) =>
+  [label, subtitle ?? "", color, compact ? "compact" : "full", selected ? "selected" : "default"].join("\u001f");
+
+const pruneBeaconPlaqueTextureCache = () => {
+  if (beaconPlaqueTextureCache.size <= BEACON_PLAQUE_TEXTURE_CACHE_LIMIT) {
+    return;
+  }
+
+  const releasable = [...beaconPlaqueTextureCache.values()]
+    .filter((entry) => entry.refs === 0)
+    .sort((left, right) => left.lastUsed - right.lastUsed);
+
+  for (const entry of releasable) {
+    if (beaconPlaqueTextureCache.size <= BEACON_PLAQUE_TEXTURE_CACHE_LIMIT) {
+      break;
+    }
+    beaconPlaqueTextureCache.delete(entry.key);
+    entry.texture.dispose();
+  }
+};
+
 const createBeaconPlaqueTexture = ({
   label,
   subtitle,
   color,
   compact,
   selected,
-}: {
-  label: string;
-  subtitle?: string;
-  color: string;
-  compact: boolean;
-  selected: boolean;
-}) => {
+}: BeaconPlaqueTextureOptions) => {
   const canvas = document.createElement("canvas");
   canvas.width = compact ? 640 : 720;
   canvas.height = compact ? 184 : 196;
@@ -504,6 +581,40 @@ const createBeaconPlaqueTexture = ({
   texture.anisotropy = 4;
   texture.needsUpdate = true;
   return texture;
+};
+
+const acquireBeaconPlaqueTexture = (
+  options: BeaconPlaqueTextureOptions,
+): BeaconPlaqueTextureEntry | null => {
+  const key = getBeaconPlaqueTextureKey(options);
+  const cached = beaconPlaqueTextureCache.get(key);
+  if (cached) {
+    cached.refs += 1;
+    cached.lastUsed = ++beaconPlaqueTextureClock;
+    return cached;
+  }
+
+  const texture = createBeaconPlaqueTexture(options);
+  if (!texture) {
+    return null;
+  }
+
+  const entry = {
+    key,
+    texture,
+    refs: 1,
+    lastUsed: ++beaconPlaqueTextureClock,
+  };
+  beaconPlaqueTextureCache.set(key, entry);
+  pruneBeaconPlaqueTextureCache();
+  return entry;
+};
+
+const releaseBeaconPlaqueTexture = (entry: BeaconPlaqueTextureEntry | null) => {
+  if (!entry) return;
+  entry.refs = Math.max(0, entry.refs - 1);
+  entry.lastUsed = ++beaconPlaqueTextureClock;
+  pruneBeaconPlaqueTextureCache();
 };
 
 const shouldIgnoreFlightPointer = (target: EventTarget | null) =>
@@ -634,6 +745,8 @@ export function ThreeScene({
     qualityMode: "medium",
     deploymentClustering: true,
   });
+  const pendingVisibilityRequestRef = useRef<VisibilityRefreshRequest | null>(null);
+  const visibilityWorkHandleRef = useRef<IdleWorkHandle | null>(null);
   const debugPerfRef = useRef({ lastSampleAtMs: 0, frames: 0, ticks: 0 });
   const [runtimeVersion, setRuntimeVersion] = useState(0);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
@@ -708,6 +821,9 @@ export function ThreeScene({
         return;
       }
 
+      cancelIdleSceneWork(visibilityWorkHandleRef.current);
+      visibilityWorkHandleRef.current = null;
+      pendingVisibilityRequestRef.current = null;
       const center = {
         x: bounds.minX + bounds.width / 2,
         y: bounds.minY + bounds.height / 2,
@@ -733,6 +849,9 @@ export function ThreeScene({
     }
 
     const runtime = runtimeRef.current;
+    cancelIdleSceneWork(visibilityWorkHandleRef.current);
+    visibilityWorkHandleRef.current = null;
+    pendingVisibilityRequestRef.current = null;
     const clampedX = clamp(runtime.flight.x, bounds.minX, bounds.maxX);
     const clampedY = clamp(runtime.flight.y, bounds.minY, bounds.maxY);
     if (clampedX !== runtime.flight.x || clampedY !== runtime.flight.y) {
@@ -781,6 +900,95 @@ export function ThreeScene({
       window.removeEventListener("pointercancel", pointerRelease);
     };
   }, []);
+
+  const queueVisibilityRefresh = useCallback(
+    (request: VisibilityRefreshRequest) => {
+      pendingVisibilityRequestRef.current = request;
+      visibilityUpdateRef.current = {
+        lastAtMs: request.nowMs,
+        x: request.flight.x,
+        y: request.flight.y,
+        zoom: request.zoom,
+        selectedAppName: request.selectedAppName,
+        searchSignature: request.searchSignature,
+        qualityMode: request.qualityMode,
+        deploymentClustering: request.deploymentClustering,
+      };
+
+      if (visibilityWorkHandleRef.current) {
+        return;
+      }
+
+      visibilityWorkHandleRef.current = scheduleIdleSceneWork(() => {
+        visibilityWorkHandleRef.current = null;
+        const pendingRequest = pendingVisibilityRequestRef.current;
+        pendingVisibilityRequestRef.current = null;
+        if (!pendingRequest) {
+          return;
+        }
+
+        const runtime = runtimeRef.current;
+        const candidateSystems = mergeSystemsById(
+          querySystemSpatialIndex({
+            index: systemSpatialIndex,
+            point: pendingRequest.flight,
+            radius: VISIBILITY_CANDIDATE_RADIUS_WORLD,
+          }),
+          priorityVisibilitySystems,
+          runtime.visibility.visibleSystems,
+        );
+        const disclosure = getDisclosureState({
+          zoom: pendingRequest.zoom,
+          plane: pendingRequest.flight,
+          clusters,
+          systems: candidateSystems,
+          regionClusters,
+          runtimeClusters,
+        });
+        disclosureRef.current = disclosure;
+        runtime.visibility = buildDeploymentVisibilityState({
+          systems,
+          candidateSystems,
+          systemById,
+          starsBySystem,
+          clusters,
+          flight: pendingRequest.flight,
+          disclosure,
+          selectedAppName: pendingRequest.selectedAppName,
+          searchMatches: matchSet,
+          qualityMode: pendingRequest.qualityMode,
+          densityLimitsEnabled: pendingRequest.deploymentClustering,
+          previousVisibility: runtime.visibility,
+        });
+
+        const nextSceneRenderSignature = getSceneRenderSignature(runtime);
+        if (sceneRenderSignatureRef.current !== nextSceneRenderSignature) {
+          sceneRenderSignatureRef.current = nextSceneRenderSignature;
+          startTransition(() => setRuntimeVersion((value) => value + 1));
+        }
+      });
+    },
+    [
+      clusters,
+      matchSet,
+      priorityVisibilitySystems,
+      regionClusters,
+      runtimeClusters,
+      starsBySystem,
+      systemById,
+      systemSpatialIndex,
+      systems,
+    ],
+  );
+
+  useEffect(
+    () => () => {
+      cancelIdleSceneWork(visibilityWorkHandleRef.current);
+      visibilityWorkHandleRef.current = null;
+      pendingVisibilityRequestRef.current = null;
+    },
+    [],
+  );
 
   const handleRuntimeTick = useCallback(
     (dtMs: number, elapsedSeconds: number) => {
@@ -868,48 +1076,15 @@ export function ThreeScene({
         featureFlags.deploymentClustering !== visibilityUpdate.deploymentClustering;
 
       if (shouldRefreshVisibility) {
-        const candidateSystems = mergeSystemsById(
-          querySystemSpatialIndex({
-            index: systemSpatialIndex,
-            point: nextFlight,
-            radius: VISIBILITY_CANDIDATE_RADIUS_WORLD,
-          }),
-          priorityVisibilitySystems,
-          runtime.visibility.visibleSystems,
-        );
-        const disclosure = getDisclosureState({
-          zoom: runtime.zoom,
-          plane: nextFlight,
-          clusters,
-          systems: candidateSystems,
-          regionClusters,
-          runtimeClusters,
-        });
-        disclosureRef.current = disclosure;
-        runtime.visibility = buildDeploymentVisibilityState({
-          systems,
-          candidateSystems,
-          systemById,
-          starsBySystem,
-          clusters,
-          flight: nextFlight,
-          disclosure,
-          selectedAppName,
-          searchMatches: matchSet,
-          qualityMode,
-          densityLimitsEnabled: featureFlags.deploymentClustering,
-          previousVisibility: runtime.visibility,
-        });
-        visibilityUpdateRef.current = {
-          lastAtMs: nowMs,
-          x: nextFlight.x,
-          y: nextFlight.y,
+        queueVisibilityRefresh({
+          flight: { ...nextFlight },
+          nowMs,
           zoom: runtime.zoom,
           selectedAppName,
           searchSignature,
           qualityMode,
           deploymentClustering: featureFlags.deploymentClustering,
-        };
+        });
       }
 
       const disclosure = disclosureRef.current;
@@ -1070,6 +1245,7 @@ export function ThreeScene({
       onRunComplete,
       onTelemetry,
       qualityMode,
+      queueVisibilityRefresh,
       regionClusters.length,
       searchSignature,
       stationLayout,
@@ -1161,6 +1337,9 @@ export function ThreeScene({
     };
   };
   const resetRun = useCallback(() => {
+    cancelIdleSceneWork(visibilityWorkHandleRef.current);
+    visibilityWorkHandleRef.current = null;
+    pendingVisibilityRequestRef.current = null;
     runtimeRef.current.game = createGameState();
     runtimeRef.current.game.runStartedAtMs = performance.now();
     runtimeRef.current.landedStation = null;
@@ -2535,10 +2714,10 @@ function BeaconPlaque({
   label?: string;
   subtitle?: string;
 }) {
-  const labelTexture = useMemo(
+  const labelTextureEntry = useMemo(
     () =>
       label && typeof document !== "undefined"
-        ? createBeaconPlaqueTexture({
+        ? acquireBeaconPlaqueTexture({
             label,
             subtitle,
             color,
@@ -2549,7 +2728,14 @@ function BeaconPlaque({
     [color, compact, label, selected, subtitle],
   );
 
-  useEffect(() => () => labelTexture?.dispose(), [labelTexture]);
+  useEffect(
+    () => () => {
+      releaseBeaconPlaqueTexture(labelTextureEntry);
+    },
+    [labelTextureEntry],
+  );
+
+  const labelTexture = labelTextureEntry?.texture ?? null;
 
   if (labelTexture) {
     return (
