@@ -109,6 +109,8 @@ export const resolveVisibilityZoomBucket = ({
 
 export const buildDeploymentVisibilityState = ({
   systems,
+  candidateSystems,
+  systemById,
   starsBySystem,
   clusters,
   flight,
@@ -120,6 +122,8 @@ export const buildDeploymentVisibilityState = ({
   previousVisibility,
 }: {
   systems: AppSystem[];
+  candidateSystems?: AppSystem[];
+  systemById?: Map<string, AppSystem>;
   starsBySystem: Map<string, Star[]>;
   clusters: Cluster[];
   flight: FlightState;
@@ -139,23 +143,25 @@ export const buildDeploymentVisibilityState = ({
   const maxStarsPerSystem = densityLimitsEnabled ? GAME_CONFIG.maxStarsPerSystem[qualityMode] : Number.MAX_SAFE_INTEGER;
   const clusterMarkerCap = GAME_CONFIG.maxClusterMarkers[qualityMode];
   const visibilityAnchor = getVisibilityAnchor(flight);
+  const visibleCandidateSystems = candidateSystems ?? systems;
   const regionIds = disclosure.activeRegionId
     ? new Set(
-        systems
+        visibleCandidateSystems
           .filter((system) => system.regionClusterId === disclosure.activeRegionId)
           .map((system) => system.systemId),
       )
     : new Set<string>();
   const runtimeIds = disclosure.activeRuntimeId
     ? new Set(
-        systems
+        visibleCandidateSystems
           .filter((system) => system.runtimeClusterId === disclosure.activeRuntimeId)
           .map((system) => system.systemId),
       )
     : new Set<string>();
 
-  const systemById = new Map(systems.map((system) => [system.systemId, system]));
-  const prioritizedSystems = systems
+  const resolvedSystemById =
+    systemById ?? new Map(systems.map((system) => [system.systemId, system]));
+  const prioritizedSystems = visibleCandidateSystems
     .map((system) => {
       const systemDistance = distance(system, visibilityAnchor);
       let priority = 0;
@@ -185,7 +191,7 @@ export const buildDeploymentVisibilityState = ({
           return null;
         }
 
-        const system = systemById.get(previousSystem.systemId);
+        const system = resolvedSystemById.get(previousSystem.systemId);
         if (!system) {
           return null;
         }
@@ -229,6 +235,7 @@ export const buildDeploymentVisibilityState = ({
     .map(({ system }) => system);
 
   const detailSystemIds = new Set(detailSystems.map((system) => system.systemId));
+  const visibleSystemIds = new Set(visibleSystems.map((system) => system.systemId));
   const visibleStarsBySystem = new Map<string, Star[]>();
   const clusterMarkers: DeploymentClusterMarker[] = [];
 
@@ -279,9 +286,7 @@ export const buildDeploymentVisibilityState = ({
       x: cluster.centroid.x,
       y: cluster.centroid.y,
       count: cluster.counts.instances,
-      systemIds: cluster.systemIds.filter((systemId) =>
-        visibleSystems.some((system) => system.systemId === systemId),
-      ),
+      systemIds: cluster.systemIds.filter((systemId) => visibleSystemIds.has(systemId)),
     }))
     .filter((cluster) => cluster.systemIds.length > 1);
 

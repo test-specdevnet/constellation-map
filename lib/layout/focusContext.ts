@@ -98,15 +98,21 @@ export const getDisclosureState = ({
   plane,
   clusters,
   systems,
+  regionClusters,
+  runtimeClusters,
 }: {
   zoom: number;
   plane: { x: number; y: number };
   clusters: Cluster[];
   systems: AppSystem[];
+  regionClusters?: Cluster[];
+  runtimeClusters?: Cluster[];
 }): SceneTelemetry => {
-  const regionClusters = clusters.filter((cluster) => cluster.level === "region");
-  const runtimeClusters = clusters.filter((cluster) => cluster.level === "runtime");
-  const nearestRegion = findNearestCluster(plane, regionClusters);
+  const resolvedRegionClusters =
+    regionClusters ?? clusters.filter((cluster) => cluster.level === "region");
+  const resolvedRuntimeClusters =
+    runtimeClusters ?? clusters.filter((cluster) => cluster.level === "runtime");
+  const nearestRegion = findNearestCluster(plane, resolvedRegionClusters);
   const nearestSystem = findNearestSystem(plane, systems);
 
   let band: DisclosureBand = "overview";
@@ -132,7 +138,7 @@ export const getDisclosureState = ({
   } else if (nearestRegion && nearestRegion.distance <= REGION_PROXIMITY_RADIUS) {
     activeRegionId = nearestRegion.cluster.clusterId;
 
-    const regionRuntimeClusters = runtimeClusters.filter(
+    const regionRuntimeClusters = resolvedRuntimeClusters.filter(
       (cluster) => cluster.parentId === nearestRegion.cluster.clusterId,
     );
     const nearestRuntime = findNearestCluster(plane, regionRuntimeClusters);

@@ -171,9 +171,10 @@ type DisclosureSnapshot = Pick<
 
 const GAME_STATE_EMIT_INTERVAL_MS = 760;
 const TELEMETRY_EMIT_INTERVAL_MS = 280;
-const SCENE_REACT_SYNC_INTERVAL_MS = 1_600;
-const VISIBILITY_UPDATE_INTERVAL_MS = 1_500;
-const VISIBILITY_UPDATE_DISTANCE_WORLD = 1_520;
+const VISIBILITY_UPDATE_INTERVAL_MS = 4_000;
+const VISIBILITY_UPDATE_DISTANCE_WORLD = 2_200;
+const VISIBILITY_CANDIDATE_RADIUS_WORLD = GAME_CONFIG.localSystemRadius + 1_080;
+const SYSTEM_SPATIAL_CELL_WORLD = 1_400;
 const WORLD_SCALE = 0.024;
 const PLANE_ALTITUDE = 6.4;
 const ISLAND_ALTITUDE = 1.2;
@@ -219,8 +220,101 @@ const runtimeModelCache = new Map<
 let runtimeModelLoader: GLTFLoader | null = null;
 let softCloudTexture: THREE.CanvasTexture | null = null;
 
+type SystemSpatialIndex = {
+  cellSize: number;
+  cells: Map<string, AppSystem[]>;
+};
+
 const to3 = (point: { x: number; y: number }, altitude = 0) =>
   new THREE.Vector3(point.x * WORLD_SCALE, altitude, point.y * WORLD_SCALE);
+
+const spatialCellKey = (x: number, y: number) => `${x}:${y}`;
+
+const buildSystemSpatialIndex = (systems: AppSystem[]): SystemSpatialIndex => {
+  const cells = new Map<string, AppSystem[]>();
+  for (const system of systems) {
+    const cellX = Math.floor(system.x / SYSTEM_SPATIAL_CELL_WORLD);
+    const cellY = Math.floor(system.y / SYSTEM_SPATIAL_CELL_WORLD);
+    const key = spatialCellKey(cellX, cellY);
+    const bucket = cells.get(key);
+    if (bucket) {
+      bucket.push(system);
+    } else {
+      cells.set(key, [system]);
+    }
+  }
+  return { cellSize: SYSTEM_SPATIAL_CELL_WORLD, cells };
+};
+
+const querySystemSpatialIndex = ({
+  index,
+  point,
+  radius,
+}: {
+  index: SystemSpatialIndex;
+  point: { x: number; y: number };
+  radius: number;
+}) => {
+  const radiusSq = radius * radius;
+  const minCellX = Math.floor((point.x - radius) / index.cellSize);
+  const maxCellX = Math.floor((point.x + radius) / index.cellSize);
+  const minCellY = Math.floor((point.y - radius) / index.cellSize);
+  const maxCellY = Math.floor((point.y + radius) / index.cellSize);
+  const candidates: AppSystem[] = [];
+
+  for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
+    for (let cellY = minCellY; cellY <= maxCellY; cellY += 1) {
+      const bucket = index.cells.get(spatialCellKey(cellX, cellY));
+      if (!bucket) {
+        continue;
+      }
+      for (const system of bucket) {
+        const dx = system.x - point.x;
+        const dy = system.y - point.y;
+        if (dx * dx + dy * dy <= radiusSq) {
+          candidates.push(system);
+        }
+      }
+    }
+  }
+
+  return candidates;
+};
+
+const mergeSystemsById = (...groups: AppSystem[][]) => {
+  const seen = new Set<string>();
+  const merged: AppSystem[] = [];
+
+  for (const group of groups) {
+    for (const system of group) {
+      if (seen.has(system.systemId)) {
+        continue;
+      }
+      seen.add(system.systemId);
+      merged.push(system);
+    }
+  }
+
+  return merged;
+};
+
+const getSceneRenderSignature = (runtime: SceneRuntime) => {
+  const visibility = runtime.visibility;
+  const game = runtime.game;
+  return [
+    visibility.visibleSystems.map((system) => system.systemId).join(","),
+    [...visibility.detailSystemIds].join(","),
+    visibility.clusterMarkers.map((marker) => `${marker.id}:${marker.count}`).join(","),
+    game.collectibles
+      .filter((item) => item.active)
+      .map((item) => item.id)
+      .join(","),
+    game.effects.map((effect) => effect.id).join(","),
+    runtime.landedStation?.id ?? "",
+    runtime.playerMode,
+    game.state,
+  ].join(";");
+};
 
 const BOOST_BOLT_SHAPE = (() => {
   const shape = new THREE.Shape();
@@ -510,8 +604,8 @@ export function ThreeScene({
     playerMode: "flying",
   });
   const gameEmitTsRef = useRef(0);
-  const sceneSyncTsRef = useRef(0);
   const telemetryEmitTsRef = useRef(0);
+  const sceneRenderSignatureRef = useRef("");
   const disclosureRef = useRef<DisclosureSnapshot>({
     band: "overview",
     activeRegionId: null,
@@ -574,8 +668,17 @@ export function ThreeScene({
     }
     return map;
   }, [stars]);
+  const systemById = useMemo(
+    () => new Map(systems.map((system) => [system.systemId, system])),
+    [systems],
+  );
+  const systemSpatialIndex = useMemo(() => buildSystemSpatialIndex(systems), [systems]);
   const regionClusters = useMemo(
     () => clusters.filter((cluster) => cluster.level === "region"),
+    [clusters],
+  );
+  const runtimeClusters = useMemo(
+    () => clusters.filter((cluster) => cluster.level === "runtime"),
     [clusters],
   );
   const stationLayout = useMemo<StationLayout[]>(
@@ -586,11 +689,14 @@ export function ThreeScene({
     () => new Map(stationLayout.map((station) => [station.id, station])),
     [stationLayout],
   );
-  const runtimeClusters = useMemo(
-    () => clusters.filter((cluster) => cluster.level === "runtime"),
-    [clusters],
-  );
   const activeClusters = featureFlags.deploymentClustering ? clusters : runtimeClusters;
+  const priorityVisibilitySystems = useMemo(
+    () =>
+      systems.filter(
+        (system) => system.appName === selectedAppName || matchSet.has(system.appName),
+      ),
+    [matchSet, selectedAppName, systems],
+  );
   const debugHudVisible = featureFlags.debugHud || debugHudHotkey;
 
   useEffect(() => {
@@ -609,7 +715,7 @@ export function ThreeScene({
     runtimeRef.current.visibility = EMPTY_VISIBILITY;
     visibilityUpdateRef.current.lastAtMs = 0;
     telemetryEmitTsRef.current = 0;
-    sceneSyncTsRef.current = 0;
+    sceneRenderSignatureRef.current = "";
     setRunEndSnapshot(null);
     startTransition(() => setRuntimeVersion((value) => value + 1));
   }, [bounds]);
@@ -739,15 +845,28 @@ export function ThreeScene({
         featureFlags.deploymentClustering !== visibilityUpdate.deploymentClustering;
 
       if (shouldRefreshVisibility) {
+        const candidateSystems = mergeSystemsById(
+          querySystemSpatialIndex({
+            index: systemSpatialIndex,
+            point: nextFlight,
+            radius: VISIBILITY_CANDIDATE_RADIUS_WORLD,
+          }),
+          priorityVisibilitySystems,
+          runtime.visibility.visibleSystems,
+        );
         const disclosure = getDisclosureState({
           zoom: runtime.zoom,
           plane: nextFlight,
           clusters,
-          systems,
+          systems: candidateSystems,
+          regionClusters,
+          runtimeClusters,
         });
         disclosureRef.current = disclosure;
         runtime.visibility = buildDeploymentVisibilityState({
           systems,
+          candidateSystems,
+          systemById,
           starsBySystem,
           clusters,
           flight: nextFlight,
@@ -875,12 +994,12 @@ export function ThreeScene({
           setRunEndSnapshot(snapshot);
           onRunComplete?.(toRunRecord(game, nowMs));
         }
+        const nextSceneRenderSignature = getSceneRenderSignature(runtime);
         if (
-          shouldRefreshVisibility ||
           game.state !== "flying" ||
-          nowMs - sceneSyncTsRef.current >= SCENE_REACT_SYNC_INTERVAL_MS
+          sceneRenderSignatureRef.current !== nextSceneRenderSignature
         ) {
-          sceneSyncTsRef.current = nowMs;
+          sceneRenderSignatureRef.current = nextSceneRenderSignature;
           startTransition(() => setRuntimeVersion((value) => value + 1));
         }
       }
@@ -1033,7 +1152,7 @@ export function ThreeScene({
     runtimeRef.current.flight.speed = 180;
     visibilityUpdateRef.current.lastAtMs = 0;
     telemetryEmitTsRef.current = 0;
-    sceneSyncTsRef.current = 0;
+    sceneRenderSignatureRef.current = "";
     setRunEndSnapshot(null);
     startTransition(() => setRuntimeVersion((value) => value + 1));
   }, [bounds]);
@@ -1248,6 +1367,7 @@ export function ThreeScene({
 
 function ThreeWorld({
   runtime,
+  runtimeVersion,
   clusters,
   regionClusters,
   bounds,
@@ -1346,7 +1466,7 @@ function ThreeWorld({
         })
         .slice(0, MAX_ISLAND_MARKERS[qualityMode])
         .map((item) => item.cluster),
-    [clusters, qualityMode, runtime.flight.x, runtime.flight.y],
+    [clusters, qualityMode, runtimeVersion],
   );
   return (
     <>
