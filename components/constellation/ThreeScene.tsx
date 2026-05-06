@@ -606,6 +606,7 @@ export function ThreeScene({
   const gameEmitTsRef = useRef(0);
   const telemetryEmitTsRef = useRef(0);
   const sceneRenderSignatureRef = useRef("");
+  const sceneSeededRef = useRef(false);
   const disclosureRef = useRef<DisclosureSnapshot>({
     band: "overview",
     activeRegionId: null,
@@ -698,27 +699,49 @@ export function ThreeScene({
     [matchSet, selectedAppName, systems],
   );
   const debugHudVisible = featureFlags.debugHud || debugHudHotkey;
+  const boundsSignature = `${bounds.minX}:${bounds.minY}:${bounds.maxX}:${bounds.maxY}:${bounds.width}:${bounds.height}`;
+  const sceneHasData = systems.length > 0 || stars.length > 0 || clusters.length > 0;
 
   useEffect(() => {
-    const center = {
-      x: bounds.minX + bounds.width / 2,
-      y: bounds.minY + bounds.height / 2,
-    };
-    runtimeRef.current.flight = createFlightState(center.x, center.y);
-    runtimeRef.current.previousFlight = createFlightState(center.x, center.y);
-    runtimeRef.current.game = createGameState();
-    runtimeRef.current.game.runStartedAtMs = performance.now();
-    runtimeRef.current.landedStation = null;
-    runtimeRef.current.nearbyStation = null;
-    runtimeRef.current.nearbyDeploymentId = null;
-    runtimeRef.current.playerMode = "flying";
-    runtimeRef.current.visibility = EMPTY_VISIBILITY;
+    if (!sceneSeededRef.current) {
+      if (mapDataLoading && !snapshotError && !sceneHasData) {
+        return;
+      }
+
+      const center = {
+        x: bounds.minX + bounds.width / 2,
+        y: bounds.minY + bounds.height / 2,
+      };
+      const initialFlight = createFlightState(center.x, center.y);
+      initialFlight.speed = Math.max(runtimeRef.current.flight.speed, 180);
+      runtimeRef.current.flight = initialFlight;
+      runtimeRef.current.previousFlight = { ...initialFlight };
+      runtimeRef.current.game = createGameState();
+      runtimeRef.current.game.runStartedAtMs = performance.now();
+      runtimeRef.current.landedStation = null;
+      runtimeRef.current.nearbyStation = null;
+      runtimeRef.current.nearbyDeploymentId = null;
+      runtimeRef.current.playerMode = "flying";
+      runtimeRef.current.visibility = EMPTY_VISIBILITY;
+      visibilityUpdateRef.current.lastAtMs = 0;
+      telemetryEmitTsRef.current = 0;
+      sceneRenderSignatureRef.current = "";
+      sceneSeededRef.current = true;
+      setRunEndSnapshot(null);
+      startTransition(() => setRuntimeVersion((value) => value + 1));
+      return;
+    }
+
+    const runtime = runtimeRef.current;
+    const clampedX = clamp(runtime.flight.x, bounds.minX, bounds.maxX);
+    const clampedY = clamp(runtime.flight.y, bounds.minY, bounds.maxY);
+    if (clampedX !== runtime.flight.x || clampedY !== runtime.flight.y) {
+      runtime.flight = { ...runtime.flight, x: clampedX, y: clampedY };
+      runtime.previousFlight = { ...runtime.previousFlight, x: clampedX, y: clampedY };
+    }
     visibilityUpdateRef.current.lastAtMs = 0;
-    telemetryEmitTsRef.current = 0;
     sceneRenderSignatureRef.current = "";
-    setRunEndSnapshot(null);
-    startTransition(() => setRuntimeVersion((value) => value + 1));
-  }, [bounds]);
+  }, [boundsSignature, mapDataLoading, sceneHasData, snapshotError]);
 
   useEffect(() => {
     const controller = inputControllerRef.current;

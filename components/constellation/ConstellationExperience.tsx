@@ -193,7 +193,18 @@ export function ConstellationExperience() {
         const payload = (await response.json()) as InitialScene;
         if (!cancelled) {
           const applyScene = () => {
-            setScene(payload);
+            setScene((current) => {
+              if (
+                !force &&
+                current &&
+                current.generatedAt === payload.generatedAt &&
+                current.counts.apps === payload.counts.apps &&
+                current.counts.stars === payload.counts.stars
+              ) {
+                return current;
+              }
+              return payload;
+            });
             setLastSceneRefreshAt(new Date().toISOString());
           };
 
