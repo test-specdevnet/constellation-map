@@ -49,7 +49,7 @@ const loadLeaderboardEntries = () => {
           right.score - left.score ||
           left.durationMs - right.durationMs,
       )
-      .slice(0, 6);
+      .slice(0, 5);
   } catch {
     return [];
   }

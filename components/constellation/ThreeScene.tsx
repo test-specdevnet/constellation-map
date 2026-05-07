@@ -244,7 +244,7 @@ const runtimeModelCache = new Map<
 >();
 let runtimeModelLoader: GLTFLoader | null = null;
 let softCloudTexture: THREE.CanvasTexture | null = null;
-let skyCloudBackdropTexture: THREE.CanvasTexture | null = null;
+let skyDomeCloudTexture: THREE.CanvasTexture | null = null;
 
 type SystemSpatialIndex = {
   cellSize: number;
@@ -420,18 +420,23 @@ const drawCloudLobe = ({
   context.fill();
 };
 
-const getSkyCloudBackdropTexture = () => {
-  if (skyCloudBackdropTexture) return skyCloudBackdropTexture;
+const getSkyDomeCloudTexture = () => {
+  if (skyDomeCloudTexture) return skyDomeCloudTexture;
   const canvas = document.createElement("canvas");
   canvas.width = 1024;
   canvas.height = 512;
   const context = canvas.getContext("2d");
   if (!context) {
-    skyCloudBackdropTexture = new THREE.CanvasTexture(canvas);
-    return skyCloudBackdropTexture;
+    skyDomeCloudTexture = new THREE.CanvasTexture(canvas);
+    return skyDomeCloudTexture;
   }
 
-  context.clearRect(0, 0, canvas.width, canvas.height);
+  const skyGradient = context.createLinearGradient(0, 0, 0, canvas.height);
+  skyGradient.addColorStop(0, "#0e5f9f");
+  skyGradient.addColorStop(0.42, "#227fbd");
+  skyGradient.addColorStop(1, "#7cc4e5");
+  context.fillStyle = skyGradient;
+  context.fillRect(0, 0, canvas.width, canvas.height);
 
   for (let bank = 0; bank < 9; bank += 1) {
     const baseX = -90 + bank * 142 + ((bank * 37) % 54);
@@ -446,7 +451,7 @@ const getSkyCloudBackdropTexture = () => {
         x: baseX + offsetX,
         y: baseY + offsetY,
         radius,
-        opacity: 0.68,
+        opacity: 0.46,
       });
     }
   }
@@ -460,14 +465,14 @@ const getSkyCloudBackdropTexture = () => {
       x,
       y,
       radius,
-      opacity: 0.22 + (wisp % 5) * 0.035,
+      opacity: 0.18 + (wisp % 5) * 0.026,
     });
   }
 
-  skyCloudBackdropTexture = new THREE.CanvasTexture(canvas);
-  skyCloudBackdropTexture.colorSpace = THREE.SRGBColorSpace;
-  skyCloudBackdropTexture.needsUpdate = true;
-  return skyCloudBackdropTexture;
+  skyDomeCloudTexture = new THREE.CanvasTexture(canvas);
+  skyDomeCloudTexture.colorSpace = THREE.SRGBColorSpace;
+  skyDomeCloudTexture.needsUpdate = true;
+  return skyDomeCloudTexture;
 };
 
 const scheduleIdleModelLoad = (callback: () => void) => {
@@ -1728,8 +1733,7 @@ function ThreeWorld({
         intensity={1.98}
       />
       <ambientLight color="#68adf2" intensity={0.54} />
-      <SkyDome />
-      <SkyCloudBackdrop visible={cloudsEnabled} />
+      <SkyDome cloudsVisible={cloudsEnabled} />
       <CloudFields clusters={regionClusters} qualityMode={qualityMode} visible={cloudsEnabled} />
       <AmbientCloudLayer bounds={bounds} qualityMode={qualityMode} visible={cloudsEnabled} />
       <group>
@@ -1909,67 +1913,18 @@ function SceneDeploymentPanel({
   );
 }
 
-function SkyDome() {
+function SkyDome({ cloudsVisible }: { cloudsVisible: boolean }) {
+  const cloudMap = useMemo(() => getSkyDomeCloudTexture(), []);
   return (
     <mesh scale={[1, 1, 1]} position={[0, -80, 0]} renderOrder={-120}>
       <sphereGeometry args={[520, 16, 8]} />
       <meshBasicMaterial
         side={THREE.BackSide}
-        color="#155b99"
-        transparent
-        opacity={0.98}
+        color={cloudsVisible ? "#ffffff" : "#155b99"}
+        map={cloudsVisible ? cloudMap : null}
         depthWrite={false}
       />
     </mesh>
-  );
-}
-
-function SkyCloudBackdrop({ visible }: { visible: boolean }) {
-  const groupRef = useRef<THREE.Group>(null);
-  const forwardRef = useRef(new THREE.Vector3());
-  const { camera } = useThree();
-  const texture = useMemo(() => getSkyCloudBackdropTexture(), []);
-  const layers = useMemo(
-    () => [
-      { x: -54, y: 16, z: 0, width: 155, height: 78, opacity: 0.44, scale: 1 },
-      { x: 42, y: 0, z: 0.1, width: 175, height: 88, opacity: 0.36, scale: 1.12 },
-      { x: 0, y: -34, z: 0.2, width: 205, height: 96, opacity: 0.22, scale: 1.28 },
-    ],
-    [],
-  );
-
-  useFrame(() => {
-    const group = groupRef.current;
-    if (!group) return;
-    camera.getWorldDirection(forwardRef.current);
-    group.position.copy(camera.position).addScaledVector(forwardRef.current, 180);
-    group.position.y += 4;
-    group.quaternion.copy(camera.quaternion);
-  });
-
-  return (
-    <group ref={groupRef} visible={visible}>
-      {layers.map((layer, index) => (
-        <sprite
-          key={index}
-          position={[layer.x, layer.y, layer.z]}
-          scale={[layer.width * layer.scale, layer.height * layer.scale, 1]}
-          renderOrder={-90 + index}
-        >
-          <spriteMaterial
-            map={texture}
-            alphaMap={texture}
-            color="#ffffff"
-            transparent
-            opacity={layer.opacity}
-            depthWrite={false}
-            depthTest
-            alphaTest={0.035}
-            toneMapped={false}
-          />
-        </sprite>
-      ))}
-    </group>
   );
 }
 
