@@ -1931,9 +1931,9 @@ function SkyCloudBackdrop({ visible }: { visible: boolean }) {
   const texture = useMemo(() => getSkyCloudBackdropTexture(), []);
   const layers = useMemo(
     () => [
-      { x: -46, y: 10, z: 0, width: 155, height: 78, opacity: 0.58, scale: 1 },
-      { x: 34, y: -5, z: 0.1, width: 175, height: 88, opacity: 0.5, scale: 1.12 },
-      { x: 0, y: -26, z: 0.2, width: 205, height: 96, opacity: 0.36, scale: 1.28 },
+      { x: -54, y: 16, z: 0, width: 155, height: 78, opacity: 0.44, scale: 1 },
+      { x: 42, y: 0, z: 0.1, width: 175, height: 88, opacity: 0.36, scale: 1.12 },
+      { x: 0, y: -34, z: 0.2, width: 205, height: 96, opacity: 0.22, scale: 1.28 },
     ],
     [],
   );
@@ -1942,7 +1942,7 @@ function SkyCloudBackdrop({ visible }: { visible: boolean }) {
     const group = groupRef.current;
     if (!group) return;
     camera.getWorldDirection(forwardRef.current);
-    group.position.copy(camera.position).addScaledVector(forwardRef.current, 120);
+    group.position.copy(camera.position).addScaledVector(forwardRef.current, 180);
     group.position.y += 4;
     group.quaternion.copy(camera.quaternion);
   });
@@ -1963,7 +1963,8 @@ function SkyCloudBackdrop({ visible }: { visible: boolean }) {
             transparent
             opacity={layer.opacity}
             depthWrite={false}
-            depthTest={false}
+            depthTest
+            alphaTest={0.035}
             toneMapped={false}
           />
         </sprite>
