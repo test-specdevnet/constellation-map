@@ -19,6 +19,8 @@ export type CollectibleKind = "fuel" | "boost";
 export type CollectibleSpawnSource = "flight-path" | "near-system";
 export type RunState = "flying" | "landing" | "landed";
 export type EffectKind = "trail" | "pulse" | "sparkle";
+export type CombatProjectileOwner = "player" | "enemy";
+export type WeatherCellKind = "rain" | "storm" | "gust";
 
 export type FlightState = {
   x: number;
@@ -36,6 +38,7 @@ export type FlightInputState = {
   brake: boolean;
   turnLeft: boolean;
   turnRight: boolean;
+  fire: boolean;
   mouseTurn: number;
   moveX: number;
   moveY: number;
@@ -71,6 +74,67 @@ export type VisualEffect = {
   ageMs: number;
   size: number;
   color: string;
+};
+
+export type EnemyPlane = {
+  id: string;
+  x: number;
+  y: number;
+  heading: number;
+  speed: number;
+  health: number;
+  radius: number;
+  active: boolean;
+  respawnAtMs: number;
+  lastShotAtMs: number;
+  evadeSeed: number;
+};
+
+export type CombatProjectile = {
+  id: string;
+  owner: CombatProjectileOwner;
+  x: number;
+  y: number;
+  heading: number;
+  speed: number;
+  radius: number;
+  damage: number;
+  ageMs: number;
+  ttlMs: number;
+};
+
+export type CombatState = {
+  enemies: EnemyPlane[];
+  projectiles: CombatProjectile[];
+  playerHealth: number;
+  playerLastShotAtMs: number;
+  enemiesDefeated: number;
+  shotsFired: number;
+  damageTaken: number;
+  spawnCounter: number;
+};
+
+export type WeatherCell = {
+  id: string;
+  kind: WeatherCellKind;
+  x: number;
+  y: number;
+  radius: number;
+  intensity: number;
+  driftX: number;
+  driftY: number;
+  phase: number;
+};
+
+export type WeatherState = {
+  cells: WeatherCell[];
+  boundsKey: string;
+  windX: number;
+  windY: number;
+  severity: number;
+  lightningUntilMs: number;
+  lightningSeed: number;
+  lastLightningAtMs: number;
 };
 
 export type DeploymentClusterMarker = {
@@ -129,6 +193,8 @@ export type GameState = {
   runStartedAtMs: number;
   collectibles: Collectible[];
   effects: VisualEffect[];
+  combat: CombatState;
+  weather: WeatherState;
   spawnCounter: number;
   runRecorded: boolean;
 };
@@ -143,6 +209,14 @@ export type GameSessionSnapshot = {
   discoveries: number;
   fuelTanksCollected: number;
   speedBoostsCollected: number;
+  playerHealth: number;
+  enemiesActive: number;
+  enemiesDefeated: number;
+  incomingShots: number;
+  weatherSeverity: number;
+  wind: { x: number; y: number };
+  lightningActive: boolean;
+  multiplayerPeers: number;
   upgradeCredits: number;
   thrusterLevel: number;
   fuelEfficiencyLevel: number;

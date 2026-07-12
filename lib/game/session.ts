@@ -13,13 +13,18 @@ import type {
   GameState,
   RunRecord,
 } from "./types";
+import { createCombatState } from "./combat";
+import { createWeatherState } from "./weather";
 
 const distanceBetween = (left: { x: number; y: number }, right: { x: number; y: number }) =>
   Math.hypot(left.x - right.x, left.y - right.y);
 
 export const syncGameScore = (game: GameState) => {
   game.distanceUnits = toDistanceUnits(game.distance);
-  game.score = game.distanceUnits + game.discoveries.size;
+  game.score =
+    game.distanceUnits +
+    game.discoveries.size +
+    game.combat.enemiesDefeated * GAME_CONFIG.enemyDefeatCreditValue;
 };
 
 export const createGameState = (): GameState => ({
@@ -42,6 +47,8 @@ export const createGameState = (): GameState => ({
   runStartedAtMs: 0,
   collectibles: [],
   effects: [],
+  combat: createCombatState(),
+  weather: createWeatherState(),
   spawnCounter: 0,
   runRecorded: false,
 });
@@ -150,6 +157,18 @@ export const createSessionSnapshot = ({
   discoveries: game.discoveries.size,
   fuelTanksCollected: game.fuelTanksCollected,
   speedBoostsCollected: game.speedBoostsCollected,
+  playerHealth: game.combat.playerHealth,
+  enemiesActive: game.combat.enemies.filter((enemy) => enemy.active).length,
+  enemiesDefeated: game.combat.enemiesDefeated,
+  incomingShots: game.combat.projectiles.filter((projectile) => projectile.owner === "enemy")
+    .length,
+  weatherSeverity: game.weather.severity,
+  wind: {
+    x: game.weather.windX,
+    y: game.weather.windY,
+  },
+  lightningActive: game.weather.lightningUntilMs > nowMs,
+  multiplayerPeers: 0,
   upgradeCredits: game.upgradeCredits,
   thrusterLevel: game.thrusterLevel,
   fuelEfficiencyLevel: game.fuelEfficiencyLevel,

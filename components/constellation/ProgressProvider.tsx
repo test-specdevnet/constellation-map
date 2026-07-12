@@ -25,7 +25,12 @@ import {
 } from "../../lib/game/config";
 import { PROGRESS_STORAGE_KEY } from "../../lib/game/progressStorage";
 
-const ALL_PLANE_SKIN_IDS: PlaneSkinId[] = ["classic"];
+const ALL_PLANE_SKIN_IDS: PlaneSkinId[] = [
+  "classic",
+  "sunset-scout",
+  "mint-radar",
+  "midnight-courier",
+];
 
 type QuestId = "regional-surveyor" | "rare-signal" | "runtime-rambler";
 
@@ -137,6 +142,24 @@ const skinCatalog: Array<{
     description: "The original candy-red patrol plane.",
     unlockHint: "Available from the start.",
   },
+  {
+    id: "sunset-scout",
+    label: "Yellow",
+    description: "A bright scout finish with warm wing highlights.",
+    unlockHint: "Available from the start.",
+  },
+  {
+    id: "mint-radar",
+    label: "Green",
+    description: "A radar-green livery tuned for cloud patrols.",
+    unlockHint: "Available from the start.",
+  },
+  {
+    id: "midnight-courier",
+    label: "Blue",
+    description: "A cool courier skin with electric blue panels.",
+    unlockHint: "Available from the start.",
+  },
 ];
 
 const ProgressContext = createContext<ProgressContextValue | null>(null);
@@ -187,7 +210,10 @@ const normalizeProgress = (input: Partial<ProgressState> | null | undefined): Pr
   rareArchetypeIds: unique(input?.rareArchetypeIds ?? []),
   completedQuestIds: unique(input?.completedQuestIds ?? []) as QuestId[],
   unlockedSkinIds: ALL_PLANE_SKIN_IDS,
-  selectedSkinId: "classic",
+  selectedSkinId:
+    input?.selectedSkinId && ALL_PLANE_SKIN_IDS.includes(input.selectedSkinId)
+      ? input.selectedSkinId
+      : "classic",
   playerCallsign:
     typeof input?.playerCallsign === "string" && input.playerCallsign.trim()
       ? input.playerCallsign.trim().slice(0, 18)
@@ -237,6 +263,18 @@ const normalizeProgress = (input: Partial<ProgressState> | null | undefined): Pr
                 ?.advancedClouds,
             )
           : DEFAULT_FEATURE_FLAGS.clouds,
+    weather:
+      typeof input?.featureFlags?.weather === "boolean"
+        ? input.featureFlags.weather
+        : DEFAULT_FEATURE_FLAGS.weather,
+    dogfights:
+      typeof input?.featureFlags?.dogfights === "boolean"
+        ? input.featureFlags.dogfights
+        : DEFAULT_FEATURE_FLAGS.dogfights,
+    multiplayerGhosts:
+      typeof input?.featureFlags?.multiplayerGhosts === "boolean"
+        ? input.featureFlags.multiplayerGhosts
+        : DEFAULT_FEATURE_FLAGS.multiplayerGhosts,
     deploymentClustering:
       typeof input?.featureFlags?.deploymentClustering === "boolean"
         ? input.featureFlags.deploymentClustering

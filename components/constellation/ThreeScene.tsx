@@ -18,7 +18,11 @@ import { FlightSettingsPanel } from "./FlightSettingsPanel";
 import { MobileDrawer } from "./MobileDrawer";
 import { useMediaQuery } from "./useMediaQuery";
 import { categoryLabel, getBuoyColorway } from "../../lib/canvas/buoyCategory";
-import { planeSkinPalettes } from "../../lib/canvas/cartoonMarkers";
+import {
+  planeSkinPalettes,
+  type PlaneSkinId,
+  type PlaneSkinPalette,
+} from "../../lib/canvas/cartoonMarkers";
 import {
   getDisclosureState,
   type FlightTelemetry,
@@ -66,6 +70,8 @@ import {
   toRunRecord,
   updateRunResources,
 } from "../../lib/game/session";
+import { updateCombatState } from "../../lib/game/combat";
+import { applyWeatherInfluence, updateWeatherState } from "../../lib/game/weather";
 import {
   findNearbyDeployment,
   resolveLandingAttempt,
@@ -127,6 +133,15 @@ type ThreeSceneProps = {
   snapshotError: boolean;
   flightSettings: FlightSettings;
   featureFlags: FeatureFlags;
+  playerCallsign: string;
+  skins: Array<{
+    id: PlaneSkinId;
+    label: string;
+    description: string;
+    unlocked: boolean;
+    selected: boolean;
+  }>;
+  selectedSkinId: PlaneSkinId;
   hudOverlay?: ReactNode;
   onSelectApp: (appName: string) => void;
   onClearSelectedApp: () => void;
@@ -135,8 +150,21 @@ type ThreeSceneProps = {
   onTelemetry: (telemetry: FlightTelemetry) => void;
   onUpdateFlightSettings: (settings: Partial<FlightSettings>) => void;
   onUpdateFeatureFlags: (flags: Partial<FeatureFlags>) => void;
+  onSelectSkin: (skinId: PlaneSkinId) => void;
   onGameStateChange?: (snapshot: GameSessionSnapshot) => void;
   onRunComplete?: (record: RunRecord) => void;
+};
+
+type MultiplayerPeer = {
+  id: string;
+  callsign: string;
+  skinId: PlaneSkinId;
+  x: number;
+  y: number;
+  heading: number;
+  altitude: number;
+  speed: number;
+  updatedAtMs: number;
 };
 
 type SceneRuntime = {
@@ -153,6 +181,7 @@ type SceneRuntime = {
   nearbyStation: LandingStation | null;
   nearbyDeploymentId: string | null;
   playerMode: PlayerMode;
+  multiplayerPeers: MultiplayerPeer[];
 };
 
 type PlayerMode = "flying" | "landed" | "onFoot";
@@ -231,6 +260,7 @@ const IDLE_FLIGHT_INPUT: FlightInputState = {
   brake: false,
   turnLeft: false,
   turnRight: false,
+  fire: false,
   mouseTurn: 0,
   moveX: 0,
   moveY: 0,
@@ -336,6 +366,10 @@ const getSceneRenderSignature = (runtime: SceneRuntime) => {
       .map((item) => item.id)
       .join(","),
     game.effects.map((effect) => effect.id).join(","),
+    game.weather.cells.length,
+    game.combat.enemies.filter((enemy) => enemy.active).length,
+    game.combat.enemiesDefeated,
+    runtime.multiplayerPeers.length,
     runtime.landedStation?.id ?? "",
     runtime.playerMode,
     game.state,
@@ -669,6 +703,7 @@ const controlKeyFromEvent = (key: string): ControlKey | null => {
   if (key === "ArrowRight" || normalized === "d") return "ArrowRight";
   if (normalized === "r" || normalized === "q") return "Climb";
   if (normalized === "f" || normalized === "e") return "Dive";
+  if (key === " " || normalized === "spacebar") return "Fire";
   return null;
 };
 
@@ -711,6 +746,9 @@ export function ThreeScene({
   snapshotError,
   flightSettings,
   featureFlags,
+  playerCallsign,
+  skins,
+  selectedSkinId,
   hudOverlay,
   onSelectApp,
   onClearSelectedApp,
@@ -719,6 +757,7 @@ export function ThreeScene({
   onTelemetry,
   onUpdateFlightSettings,
   onUpdateFeatureFlags,
+  onSelectSkin,
   onGameStateChange,
   onRunComplete,
 }: ThreeSceneProps) {
@@ -739,7 +778,14 @@ export function ThreeScene({
     nearbyStation: null,
     nearbyDeploymentId: null,
     playerMode: "flying",
+    multiplayerPeers: [],
   });
+  const multiplayerClientIdRef = useRef(
+    `pilot:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`,
+  );
+  const multiplayerChannelRef = useRef<BroadcastChannel | null>(null);
+  const multiplayerPeersRef = useRef(new Map<string, MultiplayerPeer>());
+  const lastMultiplayerBroadcastRef = useRef(0);
   const gameEmitTsRef = useRef(0);
   const telemetryEmitTsRef = useRef(0);
   const sceneRenderSignatureRef = useRef("");
@@ -927,6 +973,60 @@ export function ThreeScene({
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof BroadcastChannel === "undefined") {
+      return;
+    }
+
+    const channel = new BroadcastChannel("fluxcloud-flight-sim");
+    multiplayerChannelRef.current = channel;
+    const handleMessage = (event: MessageEvent) => {
+      const payload = event.data as
+        | {
+            type?: string;
+            clientId?: string;
+            callsign?: string;
+            skinId?: PlaneSkinId;
+            flight?: Pick<FlightState, "x" | "y" | "heading" | "altitude" | "speed">;
+            sentAt?: number;
+          }
+        | undefined;
+
+      if (
+        payload?.type !== "flight-state" ||
+        !payload.clientId ||
+        payload.clientId === multiplayerClientIdRef.current ||
+        !payload.flight
+      ) {
+        return;
+      }
+
+      multiplayerPeersRef.current.set(payload.clientId, {
+        id: payload.clientId,
+        callsign: payload.callsign?.trim().slice(0, 18) || "Pilot",
+        skinId:
+          payload.skinId && payload.skinId in planeSkinPalettes
+            ? payload.skinId
+            : "midnight-courier",
+        x: payload.flight.x,
+        y: payload.flight.y,
+        heading: payload.flight.heading,
+        altitude: payload.flight.altitude,
+        speed: payload.flight.speed,
+        updatedAtMs: performance.now(),
+      });
+    };
+
+    channel.addEventListener("message", handleMessage);
+    return () => {
+      channel.removeEventListener("message", handleMessage);
+      channel.close();
+      if (multiplayerChannelRef.current === channel) {
+        multiplayerChannelRef.current = null;
+      }
+    };
+  }, []);
+
   const queueVisibilityRefresh = useCallback(
     (request: VisibilityRefreshRequest) => {
       pendingVisibilityRequestRef.current = request;
@@ -1046,7 +1146,7 @@ export function ThreeScene({
       }
       const boostActive = game.boostUntilMs > nowMs;
       const previousFlight = runtime.flight;
-      const nextFlight =
+      let nextFlight =
         game.state === "flying"
           ? integrateFlightState({
               flight: runtime.flight,
@@ -1057,6 +1157,34 @@ export function ThreeScene({
               boostActive,
             })
           : runtime.flight;
+      if (game.state === "flying") {
+        const weatherInfluence = updateWeatherState({
+          weather: game.weather,
+          bounds,
+          flight: nextFlight,
+          nowMs,
+          dtMs,
+          qualityMode,
+          enabled: featureFlags.weather,
+        });
+        nextFlight = applyWeatherInfluence({
+          flight: nextFlight,
+          bounds,
+          dtMs,
+          weather: game.weather,
+          influence: weatherInfluence,
+        });
+      } else {
+        updateWeatherState({
+          weather: game.weather,
+          bounds,
+          flight: nextFlight,
+          nowMs,
+          dtMs,
+          qualityMode,
+          enabled: featureFlags.weather,
+        });
+      }
 
       const landingAttempt = resolveLandingAttempt({
         game,
@@ -1157,6 +1285,39 @@ export function ThreeScene({
       game.fuelTanksCollected = pickupOutcome.fuelTanksCollected;
       game.speedBoostsCollected = pickupOutcome.speedBoostsCollected;
 
+      const combatOutcome = updateCombatState({
+        combat: game.combat,
+        flight: nextFlight,
+        input: inputSample.flightInput,
+        bounds,
+        nowMs,
+        dtMs,
+        qualityMode,
+        enabled: featureFlags.dogfights && game.state === "flying",
+      });
+      if (combatOutcome.effects.length > 0) {
+        game.effects = [...game.effects, ...combatOutcome.effects];
+      }
+      if (combatOutcome.enemiesDefeatedThisTick > 0) {
+        game.upgradeCredits +=
+          combatOutcome.enemiesDefeatedThisTick * GAME_CONFIG.enemyDefeatCreditValue;
+        setPickupNotice(
+          combatOutcome.enemiesDefeatedThisTick > 1
+            ? "Enemy patrol cleared"
+            : "Enemy biplane down",
+        );
+        window.setTimeout(() => setPickupNotice(null), 1300);
+      }
+      if (combatOutcome.playerDamageThisTick > 0) {
+        setPickupNotice("Incoming fire");
+        window.setTimeout(() => setPickupNotice(null), 900);
+      }
+      if (game.combat.playerHealth <= 0 && game.state === "flying") {
+        game.state = "landing";
+        game.endReason = "Shot down by enemy patrol";
+        game.landingStartedAtMs = nowMs;
+      }
+
       const nearestDeployment = findNearbyDeployment({
         plane: nextFlight,
         deployments: buildDeploymentDocks(visibility.visibleSystems),
@@ -1172,6 +1333,35 @@ export function ThreeScene({
       runtime.effects = game.effects;
       runtime.nowMs = nowMs;
       runtime.pickupNotice = pickupOutcome.pickupLabel;
+
+      if (featureFlags.multiplayerGhosts) {
+        if (nowMs - lastMultiplayerBroadcastRef.current >= 80) {
+          lastMultiplayerBroadcastRef.current = nowMs;
+          multiplayerChannelRef.current?.postMessage({
+            type: "flight-state",
+            clientId: multiplayerClientIdRef.current,
+            callsign: playerCallsign,
+            skinId: selectedSkinId,
+            flight: {
+              x: nextFlight.x,
+              y: nextFlight.y,
+              heading: nextFlight.heading,
+              altitude: nextFlight.altitude,
+              speed: nextFlight.speed,
+            },
+            sentAt: Date.now(),
+          });
+        }
+        for (const [peerId, peer] of multiplayerPeersRef.current) {
+          if (nowMs - peer.updatedAtMs > 2_400) {
+            multiplayerPeersRef.current.delete(peerId);
+          }
+        }
+        runtime.multiplayerPeers = [...multiplayerPeersRef.current.values()];
+      } else {
+        multiplayerPeersRef.current.clear();
+        runtime.multiplayerPeers = [];
+      }
 
       if (pickupOutcome.pickupLabel) {
         setPickupNotice(pickupOutcome.pickupLabel);
@@ -1205,13 +1395,16 @@ export function ThreeScene({
 
       if (nowMs - gameEmitTsRef.current >= GAME_STATE_EMIT_INTERVAL_MS) {
         gameEmitTsRef.current = nowMs;
-        const snapshot = createSessionSnapshot({
-          game,
-          nowMs,
-          qualityMode,
-          featureFlags,
-          clusterMarkers: visibility.clusterMarkers,
-        });
+        const snapshot = {
+          ...createSessionSnapshot({
+            game,
+            nowMs,
+            qualityMode,
+            featureFlags,
+            clusterMarkers: visibility.clusterMarkers,
+          }),
+          multiplayerPeers: runtime.multiplayerPeers.length,
+        };
         onGameStateChange?.(snapshot);
         if (game.state === "landed" && !game.runRecorded) {
           game.runRecorded = true;
@@ -1270,10 +1463,12 @@ export function ThreeScene({
       onGameStateChange,
       onRunComplete,
       onTelemetry,
+      playerCallsign,
       qualityMode,
       queueVisibilityRefresh,
       regionClusters.length,
       searchSignature,
+      selectedSkinId,
       stationLayout,
       selectedAppName,
       starsBySystem,
@@ -1317,6 +1512,27 @@ export function ThreeScene({
           altitude: Number(runtime.flight.altitude.toFixed(2)),
           pitch: Number(runtime.flight.pitch.toFixed(3)),
           fuel: Math.round(runtime.game.fuel),
+          health: Math.round(runtime.game.combat.playerHealth),
+        },
+        combat: {
+          enemiesActive: runtime.game.combat.enemies.filter((enemy) => enemy.active).length,
+          enemiesDefeated: runtime.game.combat.enemiesDefeated,
+          projectiles: runtime.game.combat.projectiles.length,
+          shotsFired: runtime.game.combat.shotsFired,
+        },
+        weather: {
+          severity: Number(runtime.game.weather.severity.toFixed(3)),
+          windX: Number(runtime.game.weather.windX.toFixed(3)),
+          windY: Number(runtime.game.weather.windY.toFixed(3)),
+          lightning: runtime.game.weather.lightningUntilMs > runtime.nowMs,
+        },
+        multiplayer: {
+          clientId: multiplayerClientIdRef.current,
+          peers: runtime.multiplayerPeers.map((peer) => ({
+            callsign: peer.callsign,
+            x: Math.round(peer.x),
+            y: Math.round(peer.y),
+          })),
         },
         visibleDeployments: runtime.visibility.visibleSystems.length,
         collectibles: runtime.game.collectibles
@@ -1483,8 +1699,12 @@ export function ThreeScene({
             stations={stationByClusterId}
             focusTarget={focusTarget}
             cloudsEnabled={featureFlags.clouds}
+            weatherEnabled={featureFlags.weather}
+            dogfightsEnabled={featureFlags.dogfights}
+            multiplayerEnabled={featureFlags.multiplayerGhosts}
             modelsEnabled={RUNTIME_GLB_MODELS_ENABLED}
             qualityMode={qualityMode}
+            selectedSkinId={selectedSkinId}
             onSelectDeployment={handleSelectDeployment}
             onFocusCluster={onFocusCluster}
             onHoverEntity={onHoverEntity}
@@ -1507,8 +1727,11 @@ export function ThreeScene({
               settings={flightSettings}
               featureFlags={featureFlags}
               qualityMode={qualityMode}
+              skins={skins}
+              selectedSkinId={selectedSkinId}
               onUpdateSettings={onUpdateFlightSettings}
               onUpdateFeatureFlags={onUpdateFeatureFlags}
+              onSelectSkin={onSelectSkin}
               onClose={() => setShowSettingsPanel(false)}
             />
           ) : null}
@@ -1576,8 +1799,11 @@ export function ThreeScene({
               settings={flightSettings}
               featureFlags={featureFlags}
               qualityMode={qualityMode}
+              skins={skins}
+              selectedSkinId={selectedSkinId}
               onUpdateSettings={onUpdateFlightSettings}
               onUpdateFeatureFlags={onUpdateFeatureFlags}
+              onSelectSkin={onSelectSkin}
               onClose={() => setShowActionMenu(false)}
             />
           </div>
@@ -1606,8 +1832,12 @@ function ThreeWorld({
   stations,
   focusTarget,
   cloudsEnabled,
+  weatherEnabled,
+  dogfightsEnabled,
+  multiplayerEnabled,
   modelsEnabled,
   qualityMode,
+  selectedSkinId,
   onSelectDeployment,
   onFocusCluster,
   onHoverEntity,
@@ -1625,8 +1855,12 @@ function ThreeWorld({
   stations: Map<string, StationLayout>;
   focusTarget: CameraTarget | null;
   cloudsEnabled: boolean;
+  weatherEnabled: boolean;
+  dogfightsEnabled: boolean;
+  multiplayerEnabled: boolean;
   modelsEnabled: boolean;
   qualityMode: "low" | "medium" | "high";
+  selectedSkinId: PlaneSkinId;
   onSelectDeployment: (appName: string, deploymentId: string) => void;
   onFocusCluster: (cluster: Cluster) => void;
   onHoverEntity: (entity: HoveredEntity | null) => void;
@@ -1736,6 +1970,7 @@ function ThreeWorld({
       <SkyDome cloudsVisible={cloudsEnabled} />
       <CloudFields clusters={regionClusters} qualityMode={qualityMode} visible={cloudsEnabled} />
       <AmbientCloudLayer bounds={bounds} qualityMode={qualityMode} visible={cloudsEnabled} />
+      <WeatherLayer runtime={runtime} qualityMode={qualityMode} visible={weatherEnabled} />
       <group>
         {visibleClusters.map((cluster, index) => (
           <CloudIsland
@@ -1774,7 +2009,9 @@ function ThreeWorld({
           ))}
       </group>
       <Effects effects={runtime.effects} />
-      <Biplane runtime={runtime} modelsEnabled={modelsEnabled} />
+      <CombatLayer runtime={runtime} visible={dogfightsEnabled} />
+      <MultiplayerGhostLayer runtime={runtime} visible={multiplayerEnabled} />
+      <Biplane runtime={runtime} modelsEnabled={modelsEnabled} skinId={selectedSkinId} />
     </>
   );
 }
@@ -2571,16 +2808,248 @@ function Effects({ effects }: { effects: VisualEffect[] }) {
   );
 }
 
+function WeatherLayer({
+  runtime,
+  qualityMode,
+  visible,
+}: {
+  runtime: SceneRuntime;
+  qualityMode: QualityMode;
+  visible: boolean;
+}) {
+  const rainRef = useRef<THREE.InstancedMesh>(null);
+  const dummy = useMemo(() => new THREE.Object3D(), []);
+  const rainCount = qualityMode === "low" ? 42 : qualityMode === "medium" ? 76 : 112;
+  const drops = useMemo(
+    () =>
+      Array.from({ length: rainCount }, (_, index) => ({
+        x: ((index * 83) % 1000) / 1000,
+        z: ((index * 47) % 1000) / 1000,
+        y: ((index * 131) % 1000) / 1000,
+        speed: 0.7 + ((index * 29) % 100) / 160,
+      })),
+    [rainCount],
+  );
+
+  useFrame(() => {
+    const mesh = rainRef.current;
+    if (!mesh) return;
+    const weather = runtime.game.weather;
+    const count = visible && weather.severity > 0.035 ? drops.length : 0;
+    mesh.count = count;
+    const flight = runtime.flight;
+    const span = qualityMode === "low" ? 44 : qualityMode === "medium" ? 58 : 72;
+    const time = runtime.nowMs / 1000;
+
+    for (let index = 0; index < count; index += 1) {
+      const drop = drops[index];
+      const driftX = weather.windX * 7;
+      const driftZ = weather.windY * 7;
+      const x = (flight.x * WORLD_SCALE) + (drop.x - 0.5) * span + driftX;
+      const z = (flight.y * WORLD_SCALE) + (drop.z - 0.5) * span + driftZ;
+      const fall = ((drop.y - time * drop.speed) % 1 + 1) % 1;
+      const y = PLANE_ALTITUDE + 17 - fall * 22;
+      dummy.position.set(x, y, z);
+      dummy.rotation.set(0.42, 0, -0.22 + weather.windX * 0.1);
+      dummy.scale.setScalar(0.68 + weather.severity * 0.54);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(index, dummy.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  });
+
+  return (
+    <group visible={visible}>
+      {runtime.game.weather.cells.map((cell) => (
+        <WeatherCellMesh key={cell.id} cell={cell} runtime={runtime} />
+      ))}
+      <instancedMesh ref={rainRef} args={[undefined, undefined, rainCount]}>
+        <boxGeometry args={[0.035, 1.28, 0.035]} />
+        <meshBasicMaterial
+          color="#d9f7ff"
+          transparent
+          opacity={0.36}
+          depthWrite={false}
+          toneMapped={false}
+        />
+      </instancedMesh>
+      <WeatherFlash runtime={runtime} />
+    </group>
+  );
+}
+
+function WeatherCellMesh({
+  cell,
+  runtime,
+}: {
+  cell: GameState["weather"]["cells"][number];
+  runtime: SceneRuntime;
+}) {
+  const groupRef = useRef<THREE.Group>(null);
+  useFrame(() => {
+    const group = groupRef.current;
+    if (!group) return;
+    group.position.set(cell.x * WORLD_SCALE, PLANE_ALTITUDE - 5.2, cell.y * WORLD_SCALE);
+    const pulse = 1 + Math.sin(runtime.nowMs / 1_500 + cell.phase) * 0.04;
+    group.scale.setScalar(pulse);
+  });
+
+  const color = cell.kind === "storm" ? "#2d76ff" : cell.kind === "gust" ? "#7fffd1" : "#b9f2ff";
+  const opacity = cell.kind === "storm" ? 0.16 : cell.kind === "gust" ? 0.1 : 0.075;
+  return (
+    <group ref={groupRef}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[cell.radius * WORLD_SCALE, 36]} />
+        <meshBasicMaterial color={color} transparent opacity={opacity} depthWrite={false} />
+      </mesh>
+      {cell.kind === "storm" ? (
+        <pointLight color="#7dbdff" intensity={0.35 * cell.intensity} distance={38} />
+      ) : null}
+    </group>
+  );
+}
+
+function WeatherFlash({ runtime }: { runtime: SceneRuntime }) {
+  const lightRef = useRef<THREE.PointLight>(null);
+  useFrame(() => {
+    const light = lightRef.current;
+    if (!light) return;
+    const active = runtime.game.weather.lightningUntilMs > runtime.nowMs;
+    light.intensity = active ? 7.5 : 0;
+    const storm = runtime.game.weather.cells.find((cell) => cell.kind === "storm");
+    if (storm) {
+      light.position.set(storm.x * WORLD_SCALE, PLANE_ALTITUDE + 26, storm.y * WORLD_SCALE);
+    }
+  });
+  return <pointLight ref={lightRef} color="#dff6ff" intensity={0} distance={140} />;
+}
+
+function CombatLayer({ runtime, visible }: { runtime: SceneRuntime; visible: boolean }) {
+  return (
+    <group visible={visible}>
+      {runtime.game.combat.enemies.map((enemy) => (
+        <EnemyBiplane key={enemy.id} enemy={enemy} />
+      ))}
+      <ProjectileInstances runtime={runtime} owner="player" />
+      <ProjectileInstances runtime={runtime} owner="enemy" />
+    </group>
+  );
+}
+
+function EnemyBiplane({ enemy }: { enemy: GameState["combat"]["enemies"][number] }) {
+  const groupRef = useRef<THREE.Group>(null);
+  const palette = planeSkinPalettes["mint-radar"];
+  useFrame(() => {
+    const group = groupRef.current;
+    if (!group) return;
+    group.visible = enemy.active;
+    if (!enemy.active) return;
+    group.position.set(enemy.x * WORLD_SCALE, PLANE_ALTITUDE + 0.4, enemy.y * WORLD_SCALE);
+    group.rotation.set(0.05, -enemy.heading + Math.PI / 2, 0);
+  });
+
+  return (
+    <group ref={groupRef} scale={0.62}>
+      <BiplaneFallback palette={palette} />
+      <pointLight color="#78ffad" intensity={0.65} distance={7} position={[0, 1.2, -0.4]} />
+    </group>
+  );
+}
+
+function ProjectileInstances({
+  runtime,
+  owner,
+}: {
+  runtime: SceneRuntime;
+  owner: "player" | "enemy";
+}) {
+  const meshRef = useRef<THREE.InstancedMesh>(null);
+  const dummy = useMemo(() => new THREE.Object3D(), []);
+  useFrame(() => {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+    const projectiles = runtime.game.combat.projectiles.filter(
+      (projectile) => projectile.owner === owner,
+    );
+    mesh.count = projectiles.length;
+    for (let index = 0; index < projectiles.length; index += 1) {
+      const projectile = projectiles[index];
+      dummy.position.set(projectile.x * WORLD_SCALE, PLANE_ALTITUDE + 0.55, projectile.y * WORLD_SCALE);
+      dummy.scale.setScalar(owner === "player" ? 1 : 0.8);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(index, dummy.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  });
+
+  return (
+    <instancedMesh ref={meshRef} args={[undefined, undefined, GAME_CONFIG.maxProjectiles]}>
+      <sphereGeometry args={[owner === "player" ? 0.16 : 0.13, 8, 6]} />
+      <meshBasicMaterial
+        color={owner === "player" ? "#ffe986" : "#7cff9c"}
+        transparent
+        opacity={0.94}
+        toneMapped={false}
+      />
+    </instancedMesh>
+  );
+}
+
+function MultiplayerGhostLayer({
+  runtime,
+  visible,
+}: {
+  runtime: SceneRuntime;
+  visible: boolean;
+}) {
+  return (
+    <group visible={visible}>
+      {runtime.multiplayerPeers.slice(0, 6).map((peer) => (
+        <GhostBiplane key={peer.id} peer={peer} />
+      ))}
+    </group>
+  );
+}
+
+function GhostBiplane({ peer }: { peer: MultiplayerPeer }) {
+  const groupRef = useRef<THREE.Group>(null);
+  useFrame(() => {
+    const group = groupRef.current;
+    if (!group) return;
+    group.position.set(peer.x * WORLD_SCALE, PLANE_ALTITUDE + peer.altitude + 0.8, peer.y * WORLD_SCALE);
+    group.rotation.set(0, -peer.heading + Math.PI / 2, 0);
+  });
+  return (
+    <group ref={groupRef} scale={0.86}>
+      <mesh rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[0.28, 0.36, 2.35, 16]} />
+        <meshBasicMaterial color="#9fd2ff" transparent opacity={0.38} />
+      </mesh>
+      <mesh position={[0, 0.12, 0]}>
+        <boxGeometry args={[4.5, 0.13, 0.78]} />
+        <meshBasicMaterial color="#9fd2ff" transparent opacity={0.32} />
+      </mesh>
+      <mesh position={[0, 0.76, -0.02]}>
+        <boxGeometry args={[4.1, 0.12, 0.68]} />
+        <meshBasicMaterial color="#d7efff" transparent opacity={0.28} />
+      </mesh>
+      <pointLight color="#98d8ff" intensity={0.28} distance={7} />
+    </group>
+  );
+}
+
 function Biplane({
   runtime,
   modelsEnabled,
+  skinId,
 }: {
   runtime: SceneRuntime;
   modelsEnabled: boolean;
+  skinId: PlaneSkinId;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const flight = runtime.flight;
-  const palette = planeSkinPalettes.classic;
+  const palette = planeSkinPalettes[skinId] ?? planeSkinPalettes.classic;
   const tintBiplaneModel = useCallback(
     (root: THREE.Object3D) => {
       root.traverse((child) => {
@@ -2962,6 +3431,7 @@ function TouchFlightPad({
         {[
           ["Climb", "Climb"],
           ["Dive", "Dive"],
+          ["Fire", "Fire"],
         ].map(([key, label]) => (
           <button
             key={key}

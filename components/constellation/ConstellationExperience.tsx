@@ -313,6 +313,7 @@ function ConstellationExperienceBody({
 
   const {
     progress,
+    skins,
     activeToast,
     playerCallsign,
     leaderboard,
@@ -322,6 +323,7 @@ function ConstellationExperienceBody({
     markRareArchetypeDiscovered,
     markRegionVisited,
     markRuntimeDiscovered,
+    selectSkin,
     setPlayerCallsign,
     updateFlightSettings,
     updateFeatureFlags,
@@ -765,8 +767,12 @@ function ConstellationExperienceBody({
             snapshotError={!!sceneError}
             flightSettings={flightSettings}
             featureFlags={featureFlags}
+            playerCallsign={playerCallsign}
+            skins={skins}
+            selectedSkinId={progress.selectedSkinId}
             onUpdateFlightSettings={updateFlightSettings}
             onUpdateFeatureFlags={updateFeatureFlags}
+            onSelectSkin={selectSkin}
             hudOverlay={
               <>
                 <div className="scene-mobile-status-stack">

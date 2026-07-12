@@ -16,6 +16,7 @@ const input = (overrides: Partial<FlightInputState>): FlightInputState => ({
   brake: false,
   turnLeft: false,
   turnRight: false,
+  fire: false,
   mouseTurn: 0,
   moveX: 0,
   moveY: 0,

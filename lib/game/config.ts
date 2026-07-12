@@ -13,6 +13,9 @@ export type FeatureFlags = {
   pickups: boolean;
   leaderboard: boolean;
   clouds: boolean;
+  weather: boolean;
+  dogfights: boolean;
+  multiplayerGhosts: boolean;
   deploymentClustering: boolean;
   debugHud: boolean;
 };
@@ -44,6 +47,9 @@ export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
   pickups: readBooleanEnvFlag("NEXT_PUBLIC_FC_FLAG_PICKUPS", true),
   leaderboard: readBooleanEnvFlag("NEXT_PUBLIC_FC_FLAG_LEADERBOARD", true),
   clouds: readBooleanEnvFlag("NEXT_PUBLIC_FC_FLAG_CLOUDS", true),
+  weather: readBooleanEnvFlag("NEXT_PUBLIC_FC_FLAG_WEATHER", true),
+  dogfights: readBooleanEnvFlag("NEXT_PUBLIC_FC_FLAG_DOGFIGHTS", true),
+  multiplayerGhosts: readBooleanEnvFlag("NEXT_PUBLIC_FC_FLAG_MULTIPLAYER_GHOSTS", true),
   deploymentClustering: readBooleanEnvFlag("NEXT_PUBLIC_FC_FLAG_DEPLOYMENT_CLUSTERING", true),
   debugHud: readBooleanEnvFlag("NEXT_PUBLIC_FC_FLAG_DEBUG_HUD", false),
 };
@@ -85,6 +91,35 @@ export const GAME_CONFIG = {
   verticalDrag: 5.2,
   maxVerticalSpeed: 7,
   maxPitchRadians: 0.34,
+  playerMaxHealth: 100,
+  enemyMaxHealth: 100,
+  enemyActiveCap: {
+    low: 2,
+    medium: 4,
+    high: 5,
+  },
+  enemySpawnMinDistance: 720,
+  enemySpawnMaxDistance: 1_180,
+  enemyRespawnMs: 6_800,
+  enemyCruiseSpeed: 360,
+  enemyTurnRate: 2.4,
+  enemyFireRange: 880,
+  enemyShotCooldownMs: 1_420,
+  playerShotCooldownMs: 185,
+  projectileSpeed: 1_220,
+  projectileTtlMs: 1_220,
+  maxProjectiles: 52,
+  playerShotDamage: 34,
+  enemyShotDamage: 6,
+  enemyDefeatCreditValue: 2,
+  weatherCellCount: {
+    low: 3,
+    medium: 5,
+    high: 7,
+  },
+  weatherInfluenceScale: 62,
+  weatherLightningCooldownMs: 5_800,
+  weatherLightningDurationMs: 180,
   localSystemRadius: 1_720,
   detailSystemRadius: 1_050,
   maxVisibleSystems: {

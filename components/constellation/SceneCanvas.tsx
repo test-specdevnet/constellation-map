@@ -209,6 +209,7 @@ const IDLE_FLIGHT_INPUT: FlightInputState = {
   brake: false,
   turnLeft: false,
   turnRight: false,
+  fire: false,
   mouseTurn: 0,
   moveX: 0,
   moveY: 0,

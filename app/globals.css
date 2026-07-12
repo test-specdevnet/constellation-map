@@ -1002,6 +1002,46 @@ h3 {
   width: 100%;
 }
 
+.flight-settings-panel__skins {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.flight-settings-panel__skin {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 9px;
+  border: 1px solid rgba(136, 214, 255, 0.22);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  font-weight: 800;
+}
+
+.flight-settings-panel__skin--selected {
+  border-color: rgba(255, 226, 132, 0.62);
+  background: rgba(255, 226, 132, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(255, 246, 207, 0.18);
+}
+
+.flight-settings-panel__skin:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.flight-settings-panel__skin-swatch {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  border: 2px solid rgba(255, 255, 255, 0.82);
+  border-radius: 50%;
+  box-shadow: 0 0 14px currentColor;
+}
+
 .debug-hud {
   position: absolute;
   z-index: 4;
