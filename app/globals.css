@@ -634,12 +634,14 @@ h3 {
   fill: #fff1b0;
   stroke: #101b34;
   stroke-width: 1.4;
+  transition: cx 80ms linear, cy 80ms linear;
 }
 
 .mini-map-heading {
   stroke: rgba(255, 241, 176, 0.9);
   stroke-width: 1.6;
   stroke-linecap: round;
+  transition: x1 80ms linear, y1 80ms linear, x2 80ms linear, y2 80ms linear;
 }
 
 .mini-map-cluster {

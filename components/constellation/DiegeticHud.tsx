@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 import type { FlightTelemetry } from "../../lib/layout/focusContext";
 import type { GameSessionSnapshot } from "../../lib/game/types";
 
@@ -29,7 +29,7 @@ function HudIcon({ children }: { children: ReactNode }) {
   );
 }
 
-export function DiegeticHud({
+export const DiegeticHud = memo(function DiegeticHud({
   telemetry: _telemetry,
   snapshot,
   mode,
@@ -141,4 +141,4 @@ export function DiegeticHud({
       ))}
     </div>
   );
-}
+}, (previous, next) => previous.snapshot === next.snapshot && previous.mode === next.mode);

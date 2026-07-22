@@ -107,6 +107,19 @@ export function FlightSettingsPanel({
         <small>{Math.round(settings.mouseSensitivity * 100)}%</small>
       </label>
 
+      <label className="flight-settings-panel__field flight-settings-panel__field--toggle">
+        <span>Responsive camera</span>
+        <input
+          type="checkbox"
+          checked={settings.responsiveCamera}
+          onChange={(event) =>
+            onUpdateSettings({
+              responsiveCamera: event.target.checked,
+            })
+          }
+        />
+      </label>
+
       {skins.length > 0 ? (
       <div className="flight-settings-panel__section">
         <strong>Biplane livery</strong>

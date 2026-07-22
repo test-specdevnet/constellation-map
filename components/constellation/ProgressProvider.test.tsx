@@ -7,18 +7,26 @@ import {
 const STORAGE_KEY = "flux-constellation-progress-v4";
 
 function FeatureFlagProbe() {
-  const { featureFlags, updateFeatureFlags } = useConstellationProgress();
+  const { featureFlags, flightSettings, updateFeatureFlags, updateFlightSettings } =
+    useConstellationProgress();
 
   return (
     <div>
       <span data-testid="fuel-system">{String(featureFlags.fuelSystem)}</span>
       <span data-testid="pickups">{String(featureFlags.pickups)}</span>
       <span data-testid="clouds">{String(featureFlags.clouds)}</span>
+      <span data-testid="responsive-camera">{String(flightSettings.responsiveCamera)}</span>
       <button
         type="button"
         onClick={() => updateFeatureFlags({ fuelSystem: false, clouds: false })}
       >
         Disable optional flags
+      </button>
+      <button
+        type="button"
+        onClick={() => updateFlightSettings({ responsiveCamera: true })}
+      >
+        Enable responsive camera
       </button>
     </div>
   );
@@ -69,5 +77,31 @@ describe("ConstellationProgressProvider", () => {
 
     await waitFor(() => expect(screen.getByTestId("clouds")).toHaveTextContent("false"));
     expect(screen.getByTestId("fuel-system")).toHaveTextContent("true");
+  });
+
+  it("hydrates and persists the responsive camera preference", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        flightSettings: {
+          quality: "auto",
+          mouseSensitivity: 0.72,
+          hudDensity: "compact",
+          responsiveCamera: false,
+        },
+      }),
+    );
+
+    renderProbe();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("responsive-camera")).toHaveTextContent("false"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Enable responsive camera" }));
+
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "{}");
+      expect(stored.flightSettings.responsiveCamera).toBe(true);
+    });
   });
 });

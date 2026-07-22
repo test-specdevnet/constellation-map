@@ -6,6 +6,7 @@ export type FlightSettings = {
   quality: QualitySetting;
   mouseSensitivity: number;
   hudDensity: HudDensitySetting;
+  responsiveCamera: boolean;
 };
 
 export type FeatureFlags = {
@@ -24,6 +25,7 @@ export const DEFAULT_FLIGHT_SETTINGS: FlightSettings = {
   quality: "auto",
   mouseSensitivity: 0.72,
   hudDensity: "compact",
+  responsiveCamera: true,
 };
 
 const readBooleanEnvFlag = (name: string, fallback: boolean) => {
@@ -198,7 +200,14 @@ export const resolveQualityMode = ({
   }
 
   if (reducedMotion) {
-    return "medium";
+    return "low";
+  }
+
+  if (
+    (typeof deviceMemory === "number" && deviceMemory <= 4) ||
+    (typeof hardwareConcurrency === "number" && hardwareConcurrency <= 4)
+  ) {
+    return "low";
   }
 
   return "medium";

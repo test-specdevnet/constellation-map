@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -44,6 +45,7 @@ import {
   createFlightState,
   getDefaultZoom,
   integrateFlightState,
+  resolveCameraFollowRates,
 } from "../../lib/game/flightController";
 import {
   createInputController,
@@ -182,6 +184,12 @@ type SceneRuntime = {
   nearbyDeploymentId: string | null;
   playerMode: PlayerMode;
   multiplayerPeers: MultiplayerPeer[];
+  performance: {
+    fps: number;
+    frameMs: number;
+    drawCalls: number;
+    triangles: number;
+  };
 };
 
 type PlayerMode = "flying" | "landed" | "onFoot";
@@ -211,7 +219,9 @@ type IdleWorkHandle =
   | { kind: "timeout"; id: number };
 
 const GAME_STATE_EMIT_INTERVAL_MS = 760;
-const TELEMETRY_EMIT_INTERVAL_MS = 280;
+const TELEMETRY_EMIT_INTERVAL_MS = 80;
+const COLLECTIBLE_MAINTENANCE_INTERVAL_MS = 240;
+const DEPLOYMENT_PROXIMITY_INTERVAL_MS = 100;
 const VISIBILITY_UPDATE_INTERVAL_MS = 4_000;
 const VISIBILITY_UPDATE_DISTANCE_WORLD = 2_200;
 const VISIBILITY_CANDIDATE_RADIUS_WORLD = GAME_CONFIG.localSystemRadius + 1_080;
@@ -230,9 +240,9 @@ const MAX_ISLAND_MARKERS = {
   high: 30,
 } as const;
 const CLOUD_FIELD_MARKERS = {
-  low: 24,
-  medium: 46,
-  high: 72,
+  low: 10,
+  medium: 18,
+  high: 28,
 } as const;
 const DEPLOYMENT_MARKER_INSTANCE_CAP = GAME_CONFIG.maxVisibleSystems.high;
 const DEPLOYMENT_LABEL_CAP = {
@@ -779,6 +789,12 @@ export function ThreeScene({
     nearbyDeploymentId: null,
     playerMode: "flying",
     multiplayerPeers: [],
+    performance: {
+      fps: 0,
+      frameMs: 0,
+      drawCalls: 0,
+      triangles: 0,
+    },
   });
   const multiplayerClientIdRef = useRef(
     `pilot:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`,
@@ -786,6 +802,15 @@ export function ThreeScene({
   const multiplayerChannelRef = useRef<BroadcastChannel | null>(null);
   const multiplayerPeersRef = useRef(new Map<string, MultiplayerPeer>());
   const lastMultiplayerBroadcastRef = useRef(0);
+  const worldMaintenanceRef = useRef<{
+    lastCollectiblesAtMs: number;
+    lastDeploymentAtMs: number;
+    deploymentDocks: ReturnType<typeof buildDeploymentDocks>;
+  }>({
+    lastCollectiblesAtMs: 0,
+    lastDeploymentAtMs: 0,
+    deploymentDocks: [],
+  });
   const gameEmitTsRef = useRef(0);
   const telemetryEmitTsRef = useRef(0);
   const sceneRenderSignatureRef = useRef("");
@@ -820,6 +845,11 @@ export function ThreeScene({
   const pendingVisibilityRequestRef = useRef<VisibilityRefreshRequest | null>(null);
   const visibilityWorkHandleRef = useRef<IdleWorkHandle | null>(null);
   const debugPerfRef = useRef({ lastSampleAtMs: 0, frames: 0, ticks: 0 });
+  const onTelemetryRef = useRef(onTelemetry);
+  const onGameStateChangeRef = useRef(onGameStateChange);
+  const onRunCompleteRef = useRef(onRunComplete);
+  const onFocusClusterRef = useRef(onFocusCluster);
+  const onHoverEntityRef = useRef(onHoverEntity);
   const [runtimeVersion, setRuntimeVersion] = useState(0);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showActionMenu, setShowActionMenu] = useState(false);
@@ -888,6 +918,35 @@ export function ThreeScene({
   const sceneHasData = systems.length > 0 || stars.length > 0 || clusters.length > 0;
 
   useEffect(() => {
+    onTelemetryRef.current = onTelemetry;
+  }, [onTelemetry]);
+
+  useEffect(() => {
+    onGameStateChangeRef.current = onGameStateChange;
+  }, [onGameStateChange]);
+
+  useEffect(() => {
+    onRunCompleteRef.current = onRunComplete;
+  }, [onRunComplete]);
+
+  useEffect(() => {
+    onFocusClusterRef.current = onFocusCluster;
+  }, [onFocusCluster]);
+
+  useEffect(() => {
+    onHoverEntityRef.current = onHoverEntity;
+  }, [onHoverEntity]);
+
+  const handleFocusCluster = useCallback(
+    (cluster: Cluster) => onFocusClusterRef.current(cluster),
+    [],
+  );
+  const handleHoverEntity = useCallback(
+    (entity: HoveredEntity | null) => onHoverEntityRef.current(entity),
+    [],
+  );
+
+  useEffect(() => {
     if (!sceneSeededRef.current) {
       if (mapDataLoading && !snapshotError && !sceneHasData) {
         return;
@@ -911,6 +970,11 @@ export function ThreeScene({
       runtimeRef.current.nearbyDeploymentId = null;
       runtimeRef.current.playerMode = "flying";
       runtimeRef.current.visibility = EMPTY_VISIBILITY;
+      worldMaintenanceRef.current = {
+        lastCollectiblesAtMs: 0,
+        lastDeploymentAtMs: 0,
+        deploymentDocks: [],
+      };
       visibilityUpdateRef.current.lastAtMs = 0;
       telemetryEmitTsRef.current = 0;
       sceneRenderSignatureRef.current = "";
@@ -1086,6 +1150,9 @@ export function ThreeScene({
           densityLimitsEnabled: pendingRequest.deploymentClustering,
           previousVisibility: runtime.visibility,
         });
+        worldMaintenanceRef.current.deploymentDocks = buildDeploymentDocks(
+          runtime.visibility.visibleSystems,
+        );
 
         const nextSceneRenderSignature = getSceneRenderSignature(runtime);
         if (sceneRenderSignatureRef.current !== nextSceneRenderSignature) {
@@ -1244,24 +1311,31 @@ export function ThreeScene({
       const disclosure = disclosureRef.current;
       const visibility = runtime.visibility;
 
-      const anchorSystems = visibility.visibleSystems.slice(0, 16).map((system) => ({
-        x: system.x,
-        y: system.y,
-      }));
-      const maintained = maintainCollectibles({
-        collectibles: game.collectibles,
-        bounds,
-        plane: nextFlight,
-        anchorSystems,
-        nowMs,
-        spawnCounter: game.spawnCounter,
-        enableFuel: featureFlags.fuelSystem,
-        enableBoosts: featureFlags.pickups,
-        fuelRatio: game.fuel / Math.max(game.fuelMax, 1),
-        boostActive,
-      });
-      game.collectibles = maintained.collectibles;
-      game.spawnCounter = maintained.spawnCounter;
+      const maintenance = worldMaintenanceRef.current;
+      if (
+        game.collectibles.length === 0 ||
+        nowMs - maintenance.lastCollectiblesAtMs >= COLLECTIBLE_MAINTENANCE_INTERVAL_MS
+      ) {
+        maintenance.lastCollectiblesAtMs = nowMs;
+        const anchorSystems = visibility.visibleSystems.slice(0, 16).map((system) => ({
+          x: system.x,
+          y: system.y,
+        }));
+        const maintained = maintainCollectibles({
+          collectibles: game.collectibles,
+          bounds,
+          plane: nextFlight,
+          anchorSystems,
+          nowMs,
+          spawnCounter: game.spawnCounter,
+          enableFuel: featureFlags.fuelSystem,
+          enableBoosts: featureFlags.pickups,
+          fuelRatio: game.fuel / Math.max(game.fuelMax, 1),
+          boostActive,
+        });
+        game.collectibles = maintained.collectibles;
+        game.spawnCounter = maintained.spawnCounter;
+      }
 
       const collectibleResult = collectNearbyCollectibles({
         collectibles: game.collectibles,
@@ -1318,11 +1392,16 @@ export function ThreeScene({
         game.landingStartedAtMs = nowMs;
       }
 
-      const nearestDeployment = findNearbyDeployment({
-        plane: nextFlight,
-        deployments: buildDeploymentDocks(visibility.visibleSystems),
-      });
-      runtime.nearbyDeploymentId = nearestDeployment?.id ?? null;
+      if (
+        nowMs - maintenance.lastDeploymentAtMs >= DEPLOYMENT_PROXIMITY_INTERVAL_MS
+      ) {
+        maintenance.lastDeploymentAtMs = nowMs;
+        const nearestDeployment = findNearbyDeployment({
+          plane: nextFlight,
+          deployments: maintenance.deploymentDocks,
+        });
+        runtime.nearbyDeploymentId = nearestDeployment?.id ?? null;
+      }
       syncGameScore(game);
       game.effects = updateEffects({ effects: game.effects, dtMs });
 
@@ -1351,13 +1430,13 @@ export function ThreeScene({
             },
             sentAt: Date.now(),
           });
-        }
-        for (const [peerId, peer] of multiplayerPeersRef.current) {
-          if (nowMs - peer.updatedAtMs > 2_400) {
-            multiplayerPeersRef.current.delete(peerId);
+          for (const [peerId, peer] of multiplayerPeersRef.current) {
+            if (nowMs - peer.updatedAtMs > 2_400) {
+              multiplayerPeersRef.current.delete(peerId);
+            }
           }
+          runtime.multiplayerPeers = [...multiplayerPeersRef.current.values()];
         }
-        runtime.multiplayerPeers = [...multiplayerPeersRef.current.values()];
       } else {
         multiplayerPeersRef.current.clear();
         runtime.multiplayerPeers = [];
@@ -1390,7 +1469,7 @@ export function ThreeScene({
             zoom: runtime.zoom,
           },
         };
-        onTelemetry(telemetry);
+        onTelemetryRef.current(telemetry);
       }
 
       if (nowMs - gameEmitTsRef.current >= GAME_STATE_EMIT_INTERVAL_MS) {
@@ -1405,11 +1484,11 @@ export function ThreeScene({
           }),
           multiplayerPeers: runtime.multiplayerPeers.length,
         };
-        onGameStateChange?.(snapshot);
+        onGameStateChangeRef.current?.(snapshot);
         if (game.state === "landed" && !game.runRecorded) {
           game.runRecorded = true;
           setRunEndSnapshot(snapshot);
-          onRunComplete?.(toRunRecord(game, nowMs));
+          onRunCompleteRef.current?.(toRunRecord(game, nowMs));
         }
         const nextSceneRenderSignature = getSceneRenderSignature(runtime);
         if (
@@ -1425,10 +1504,14 @@ export function ThreeScene({
       debugPerfRef.current.ticks += 1;
       if (nowMs - debugPerfRef.current.lastSampleAtMs > 500) {
         const seconds = (nowMs - debugPerfRef.current.lastSampleAtMs) / 1000 || 1;
+        const fps = Math.round(debugPerfRef.current.frames / seconds);
+        const frameMs = Math.round(dtMs * 10) / 10;
+        runtime.performance.fps = fps;
+        runtime.performance.frameMs = frameMs;
         if (debugHudVisible) {
           setDebugStats({
-            fps: Math.round(debugPerfRef.current.frames / seconds),
-            frameMs: Math.round(dtMs * 10) / 10,
+            fps,
+            frameMs,
             tickRate: Math.round(debugPerfRef.current.ticks / seconds),
             counts: {
               deployments: visibility.visibleSystems.length,
@@ -1460,9 +1543,6 @@ export function ThreeScene({
       featureFlags,
       flightSettings.mouseSensitivity,
       matchSet,
-      onGameStateChange,
-      onRunComplete,
-      onTelemetry,
       playerCallsign,
       qualityMode,
       queueVisibilityRefresh,
@@ -1526,6 +1606,7 @@ export function ThreeScene({
           windY: Number(runtime.game.weather.windY.toFixed(3)),
           lightning: runtime.game.weather.lightningUntilMs > runtime.nowMs,
         },
+        performance: runtime.performance,
         multiplayer: {
           clientId: multiplayerClientIdRef.current,
           peers: runtime.multiplayerPeers.map((peer) => ({
@@ -1589,6 +1670,11 @@ export function ThreeScene({
     runtimeRef.current.nearbyDeploymentId = null;
     runtimeRef.current.playerMode = "flying";
     runtimeRef.current.visibility = EMPTY_VISIBILITY;
+    worldMaintenanceRef.current = {
+      lastCollectiblesAtMs: 0,
+      lastDeploymentAtMs: 0,
+      deploymentDocks: [],
+    };
     runtimeRef.current.flight = createFlightState(
       bounds.minX + bounds.width / 2,
       bounds.minY + bounds.height / 2,
@@ -1613,6 +1699,59 @@ export function ThreeScene({
     }, 250);
     return () => window.clearTimeout(kickoff);
   }, []);
+
+  const threeWorld = useMemo(
+    () => (
+      <ThreeWorld
+        runtime={runtimeRef.current}
+        runtimeVersion={runtimeVersion}
+        clusters={activeClusters}
+        regionClusters={regionClusters}
+        bounds={bounds}
+        systems={systems}
+        stars={stars}
+        selectedAppName={selectedAppName}
+        searchMatches={matchSet}
+        stations={stationByClusterId}
+        focusTarget={focusTarget}
+        cloudsEnabled={featureFlags.clouds}
+        weatherEnabled={featureFlags.weather}
+        dogfightsEnabled={featureFlags.dogfights}
+        multiplayerEnabled={featureFlags.multiplayerGhosts}
+        modelsEnabled={RUNTIME_GLB_MODELS_ENABLED}
+        responsiveCamera={flightSettings.responsiveCamera}
+        qualityMode={qualityMode}
+        selectedSkinId={selectedSkinId}
+        onSelectDeployment={handleSelectDeployment}
+        onFocusCluster={handleFocusCluster}
+        onHoverEntity={handleHoverEntity}
+        onTick={handleRuntimeTick}
+      />
+    ),
+    [
+      activeClusters,
+      bounds,
+      featureFlags.clouds,
+      featureFlags.dogfights,
+      featureFlags.multiplayerGhosts,
+      featureFlags.weather,
+      flightSettings.responsiveCamera,
+      focusTarget,
+      handleFocusCluster,
+      handleHoverEntity,
+      handleRuntimeTick,
+      handleSelectDeployment,
+      matchSet,
+      qualityMode,
+      regionClusters,
+      runtimeVersion,
+      selectedAppName,
+      selectedSkinId,
+      stars,
+      stationByClusterId,
+      systems,
+    ],
+  );
 
   return (
     <section className="scene-shell scene-shell--three">
@@ -1683,33 +1822,11 @@ export function ThreeScene({
           gl={{
             antialias: false,
             alpha: false,
+            stencil: false,
             powerPreference: "high-performance",
           }}
         >
-          <ThreeWorld
-            runtime={snapshot}
-            runtimeVersion={runtimeVersion}
-            clusters={activeClusters}
-            regionClusters={regionClusters}
-            bounds={bounds}
-            systems={systems}
-            stars={stars}
-            selectedAppName={selectedAppName}
-            searchMatches={matchSet}
-            stations={stationByClusterId}
-            focusTarget={focusTarget}
-            cloudsEnabled={featureFlags.clouds}
-            weatherEnabled={featureFlags.weather}
-            dogfightsEnabled={featureFlags.dogfights}
-            multiplayerEnabled={featureFlags.multiplayerGhosts}
-            modelsEnabled={RUNTIME_GLB_MODELS_ENABLED}
-            qualityMode={qualityMode}
-            selectedSkinId={selectedSkinId}
-            onSelectDeployment={handleSelectDeployment}
-            onFocusCluster={onFocusCluster}
-            onHoverEntity={onHoverEntity}
-            onTick={handleRuntimeTick}
-          />
+          {threeWorld}
         </Canvas>
 
         <div
@@ -1836,6 +1953,7 @@ function ThreeWorld({
   dogfightsEnabled,
   multiplayerEnabled,
   modelsEnabled,
+  responsiveCamera,
   qualityMode,
   selectedSkinId,
   onSelectDeployment,
@@ -1859,6 +1977,7 @@ function ThreeWorld({
   dogfightsEnabled: boolean;
   multiplayerEnabled: boolean;
   modelsEnabled: boolean;
+  responsiveCamera: boolean;
   qualityMode: "low" | "medium" | "high";
   selectedSkinId: PlaneSkinId;
   onSelectDeployment: (appName: string, deploymentId: string) => void;
@@ -1875,6 +1994,8 @@ function ThreeWorld({
 
   useFrame((state, delta) => {
     onTick(Math.min(delta * 1000, GAME_CONFIG.maxFrameMs), state.clock.elapsedTime);
+    runtime.performance.drawCalls = state.gl.info.render.calls;
+    runtime.performance.triangles = state.gl.info.render.triangles;
     const flight = runtime.flight;
     const flightAltitude = PLANE_ALTITUDE + flight.altitude;
     planePosition.current.set(flight.x * WORLD_SCALE, flightAltitude, flight.y * WORLD_SCALE);
@@ -1899,10 +2020,22 @@ function ThreeWorld({
         0.08,
       );
     }
-    const cameraBlend = 1 - Math.exp(-delta * 4.6);
+    const directionalInput =
+      Math.abs(runtime.input.moveX) > 0.01 ||
+      Math.abs(runtime.input.moveY) > 0.01 ||
+      Math.abs(runtime.input.verticalAxis) > 0.01;
+    const followRates = resolveCameraFollowRates({
+      responsive: responsiveCamera,
+      directionalInput,
+      speed: flight.speed,
+    });
+    const cameraBlend = 1 - Math.exp(-delta * followRates.position);
     cameraVelocity.current.subVectors(desiredCamera.current, camera.position).multiplyScalar(cameraBlend);
     camera.position.add(cameraVelocity.current);
-    lookTarget.current.lerp(planePosition.current, 1 - Math.exp(-delta * 7));
+    lookTarget.current.lerp(
+      planePosition.current,
+      1 - Math.exp(-delta * followRates.look),
+    );
     camera.lookAt(lookTarget.current);
   });
 
@@ -2165,6 +2298,66 @@ function SkyDome({ cloudsVisible }: { cloudsVisible: boolean }) {
   );
 }
 
+type CloudInstance = {
+  x: number;
+  y: number;
+  z: number;
+  scale: number;
+  rotation: number;
+};
+
+function InstancedCloudLayer({
+  clouds,
+  visible,
+}: {
+  clouds: CloudInstance[];
+  visible: boolean;
+}) {
+  const meshRef = useRef<THREE.InstancedMesh>(null);
+  const cloudMap = useMemo(() => getSoftCloudTexture(), []);
+  const dummy = useMemo(() => new THREE.Object3D(), []);
+
+  useLayoutEffect(() => {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+
+    for (let index = 0; index < clouds.length; index += 1) {
+      const cloud = clouds[index];
+      dummy.position.set(cloud.x, cloud.y, cloud.z);
+      dummy.rotation.set(-Math.PI / 2, 0, cloud.rotation);
+      dummy.scale.setScalar(cloud.scale);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(index, dummy.matrix);
+    }
+    mesh.count = clouds.length;
+    mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.computeBoundingSphere();
+  }, [clouds, dummy]);
+
+  return (
+    <instancedMesh
+      ref={meshRef}
+      args={[undefined, undefined, Math.max(1, clouds.length)]}
+      visible={visible}
+      renderOrder={-20}
+    >
+      <planeGeometry args={[8.6, 4.12]} />
+      <meshBasicMaterial
+        map={cloudMap}
+        alphaMap={cloudMap}
+        color="#f1fbff"
+        transparent
+        opacity={0.94}
+        depthWrite={false}
+        depthTest
+        toneMapped={false}
+        side={THREE.DoubleSide}
+      />
+    </instancedMesh>
+  );
+}
+
 function CloudFields({
   clusters,
   qualityMode,
@@ -2174,49 +2367,43 @@ function CloudFields({
   qualityMode: "low" | "medium" | "high";
   visible: boolean;
 }) {
-  const layeredOffsets =
-    qualityMode === "low"
-      ? [
-          [0, 0, 1],
-          [7.5, -4.5, 0.72],
-        ]
-      : qualityMode === "medium"
+  const clouds = useMemo<CloudInstance[]>(() => {
+    const layeredOffsets =
+      qualityMode === "low"
         ? [
             [0, 0, 1],
-            [7.5, -4.5, 0.76],
-            [-6.25, 5.75, 0.64],
-            [13, 4.25, 0.5],
+            [7.5, -4.5, 0.72],
           ]
-        : [
-            [0, 0, 1],
-            [7.5, -4.5, 0.78],
-            [-6.25, 5.75, 0.68],
-            [13, 4.25, 0.54],
-            [-12, -7.5, 0.48],
-          ];
-  return (
-    <group visible={visible}>
-      {clusters.slice(0, CLOUD_FIELD_MARKERS[qualityMode]).flatMap((cluster, index) =>
-        layeredOffsets.map(([offsetX, offsetY, scaleFactor], layerIndex) => {
-          const position = to3(
-            {
-              x: cluster.centroid.x + offsetX * 70,
-              y: cluster.centroid.y + offsetY * 70,
-            },
-            -4.4 - ((index + layerIndex) % 6) * 0.28,
-          );
-          return (
-            <group key={`${cluster.clusterId}:${layerIndex}`} position={position}>
-              <CloudPuff
-                scale={(3.2 + Math.min(8.4, cluster.radius * WORLD_SCALE * 0.09)) * scaleFactor}
-                variant={(index + layerIndex) % 4}
-              />
-            </group>
-          );
-        }),
-      )}
-    </group>
-  );
+        : qualityMode === "medium"
+          ? [
+              [0, 0, 1],
+              [7.5, -4.5, 0.76],
+              [-6.25, 5.75, 0.64],
+            ]
+          : [
+              [0, 0, 1],
+              [7.5, -4.5, 0.78],
+              [-6.25, 5.75, 0.68],
+              [13, 4.25, 0.54],
+            ];
+    const next: CloudInstance[] = [];
+    clusters.slice(0, CLOUD_FIELD_MARKERS[qualityMode]).forEach((cluster, index) => {
+      layeredOffsets.forEach(([offsetX, offsetY, scaleFactor], layerIndex) => {
+        next.push({
+          x: (cluster.centroid.x + offsetX * 70) * WORLD_SCALE,
+          y: -4.4 - ((index + layerIndex) % 6) * 0.28,
+          z: (cluster.centroid.y + offsetY * 70) * WORLD_SCALE,
+          scale:
+            (3.2 + Math.min(8.4, cluster.radius * WORLD_SCALE * 0.09)) *
+            scaleFactor,
+          rotation: ((index + layerIndex) % 4) * 0.18,
+        });
+      });
+    });
+    return next;
+  }, [clusters, qualityMode]);
+
+  return <InstancedCloudLayer clouds={clouds} visible={visible} />;
 }
 
 function AmbientCloudLayer({
@@ -2228,7 +2415,7 @@ function AmbientCloudLayer({
   qualityMode: "low" | "medium" | "high";
   visible: boolean;
 }) {
-  const count = qualityMode === "low" ? 56 : qualityMode === "medium" ? 104 : 150;
+  const count = qualityMode === "low" ? 24 : qualityMode === "medium" ? 40 : 64;
   const clouds = useMemo(
     () => {
       const centerX = bounds.minX + bounds.width / 2;
@@ -2243,44 +2430,47 @@ function AmbientCloudLayer({
         const jitterX = (((index * 73) % 100) - 50) / 100;
         const jitterY = (((index * 47) % 100) - 50) / 100;
         return {
-          x: centerX - width / 2 + ((column + 0.5 + jitterX * 0.56) / columns) * width,
-          y: centerY - height / 2 + ((row + 0.5 + jitterY * 0.5) / rows) * height,
+          x:
+            (centerX - width / 2 +
+              ((column + 0.5 + jitterX * 0.56) / columns) * width) *
+            WORLD_SCALE,
+          y: -3.3 - (index % 6) * 0.2,
+          z:
+            (centerY - height / 2 +
+              ((row + 0.5 + jitterY * 0.5) / rows) * height) *
+            WORLD_SCALE,
           scale: 1.18 + ((index * 37) % 100) / 105,
-          variant: index % 4,
+          rotation: (index % 4) * 0.18,
         };
+      }).flatMap((cloud, index) => {
+        const instances: CloudInstance[] = [cloud];
+        if (index % 4 === 0) {
+          instances.push({
+            ...cloud,
+            x: cloud.x + 2.4,
+            y: cloud.y + 0.18,
+            z: cloud.z - 0.2,
+            scale: cloud.scale * 1.28,
+            rotation: ((index + 2) % 4) * 0.18,
+          });
+        }
+        if (index % 7 === 0) {
+          instances.push({
+            ...cloud,
+            x: cloud.x - 3.8,
+            y: cloud.y + 0.1,
+            z: cloud.z + 0.34,
+            scale: cloud.scale * 0.86,
+            rotation: ((index + 1) % 4) * 0.18,
+          });
+        }
+        return instances;
       });
     },
     [bounds.height, bounds.minX, bounds.minY, bounds.width, count],
   );
 
-  return (
-    <group visible={visible}>
-      {clouds.map((cloud, index) => {
-        const position = to3(
-          {
-            x: cloud.x,
-            y: cloud.y,
-          },
-          -3.3 - (index % 6) * 0.2,
-        );
-        return (
-          <group key={index} position={position}>
-            <CloudPuff scale={cloud.scale} variant={cloud.variant} />
-            {index % 4 === 0 ? (
-              <group position={[2.4, 4.7, -0.2]}>
-                <CloudPuff scale={cloud.scale * 1.28} variant={(cloud.variant + 2) % 4} />
-              </group>
-            ) : null}
-            {index % 7 === 0 ? (
-              <group position={[-3.8, 2.2, 0.34]}>
-                <CloudPuff scale={cloud.scale * 0.86} variant={(cloud.variant + 1) % 4} />
-              </group>
-            ) : null}
-          </group>
-        );
-      })}
-    </group>
-  );
+  return <InstancedCloudLayer clouds={clouds} visible={visible} />;
 }
 
 function CloudPuff({ scale = 1, variant = 0 }: { scale?: number; variant?: number }) {
@@ -2476,13 +2666,7 @@ function CloudIsland({
   const radius = station ? Math.max(baseRadius, 6.8) : baseRadius;
   return (
     <group position={position} onClick={() => scheduleSceneAction(() => onFocusCluster(cluster))}>
-      <CloudPuff scale={radius * 0.32} variant={index % 4} />
-      <group position={[radius * 0.28, -0.06, radius * -0.14]}>
-        <CloudPuff scale={radius * 0.18} variant={(index + 1) % 4} />
-      </group>
-      <group position={[radius * -0.22, -0.1, radius * 0.16]}>
-        <CloudPuff scale={radius * 0.16} variant={(index + 2) % 4} />
-      </group>
+      <CloudPuff scale={radius * 0.38} variant={index % 4} />
       {station ? (
         <StationStructure
           radius={radius}
@@ -2545,8 +2729,6 @@ function DeploymentMarkerSlot({
   onHoverEntity: (entity: HoveredEntity | null) => void;
 }) {
   const groupRef = useRef<THREE.Group>(null);
-  const beaconRef = useRef<THREE.Mesh>(null);
-  const lightRef = useRef<THREE.PointLight>(null);
   const mountProgressRef = useRef(1);
   const systemIdRef = useRef<string | null>(null);
   const colorway = system ? getBuoyColorway(system) : DEFAULT_DEPLOYMENT_COLORWAY;
@@ -2567,25 +2749,18 @@ function DeploymentMarkerSlot({
       mountProgressRef.current = 0.72;
     }
 
-    const basePosition = to3(system, ISLAND_ALTITUDE + 6.1 + (index % 4) * 0.08);
     const bob = Math.sin(state.clock.elapsedTime * 1.25 + index * 0.83) * 0.24;
     const spin = Math.sin(state.clock.elapsedTime * 0.34 + index) * 0.08;
     mountProgressRef.current = Math.min(1, mountProgressRef.current + delta * 2.2);
     group.visible = true;
-    group.position.set(basePosition.x, basePosition.y + bob, basePosition.z);
+    group.position.set(
+      system.x * WORLD_SCALE,
+      ISLAND_ALTITUDE + 6.1 + (index % 4) * 0.08 + bob,
+      system.y * WORLD_SCALE,
+    );
     group.rotation.y = spin;
     group.scale.setScalar(0.5 + mountProgressRef.current * 0.5);
 
-    const flash = 0.45 + Math.max(0, Math.sin(state.clock.elapsedTime * 5.6 + index)) * 0.95;
-    if (beaconRef.current) {
-      const material = beaconRef.current.material;
-      if (material instanceof THREE.MeshStandardMaterial) {
-        material.emissiveIntensity = selected ? 1.35 + flash * 0.4 : 0.9 + flash * 0.22;
-      }
-    }
-    if (lightRef.current) {
-      lightRef.current.intensity = selected ? 1.6 + flash * 0.42 : 0.6 + flash * 0.32;
-    }
   });
 
   return (
@@ -2615,22 +2790,7 @@ function DeploymentMarkerSlot({
         onHoverEntity(null);
       }}
     >
-      <mesh>
-        <sphereGeometry args={[2.35, 10, 8]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-      </mesh>
-      <pointLight ref={lightRef} color="#fff2a8" intensity={selected ? 1.8 : 0.65} distance={10} />
       <DeploymentFallback selected={selected} colorway={colorway} />
-      <mesh ref={beaconRef} position={[0, 1.68, 0]}>
-        <sphereGeometry args={[0.14, 10, 8]} />
-        <meshStandardMaterial
-          color="#fff4a8"
-          emissive="#ffd84a"
-          emissiveIntensity={1.1}
-          metalness={0.15}
-          roughness={0.22}
-        />
-      </mesh>
     </group>
   );
 }
@@ -2644,22 +2804,18 @@ function DeploymentFallback({
 }) {
   return (
     <>
-      <mesh position={[0, -0.9, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[0.82, 0.045, 6, 18]} />
-        <meshBasicMaterial color="#49b8ff" transparent opacity={selected ? 0.98 : 0.78} />
-      </mesh>
       <mesh position={[0, -0.42, 0]}>
-        <sphereGeometry args={[selected ? 0.76 : 0.62, 12, 9]} />
+        <sphereGeometry args={[selected ? 0.82 : 0.7, 10, 8]} />
         <meshStandardMaterial
           color={selected ? "#d9f6ff" : "#9eb4c9"}
           emissive={selected ? colorway.beacon : "#2a8ce8"}
-          emissiveIntensity={selected ? 0.52 : 0.24}
+          emissiveIntensity={selected ? 0.78 : 0.34}
           metalness={0.72}
           roughness={0.28}
         />
       </mesh>
       <mesh position={[0, -1.08, 0]}>
-        <cylinderGeometry args={[0.92, 1.12, 0.18, 12]} />
+        <cylinderGeometry args={[0.92, 1.12, 0.18, 10]} />
         <meshStandardMaterial color="#5ed8ff" emissive={colorway.beacon} emissiveIntensity={0.38} roughness={0.42} metalness={0.18} />
       </mesh>
     </>
@@ -2787,7 +2943,6 @@ function CollectibleMesh({ collectible, nowMs }: { collectible: Collectible; now
         <torusGeometry args={[0.22, 0.045, 8, 18]} />
         <meshStandardMaterial color="#ffd65d" emissive="#ffbf38" emissiveIntensity={0.34} roughness={0.28} />
       </mesh>
-      <pointLight color="#ff6e5e" intensity={0.6} distance={5} />
     </group>
   );
 }
@@ -2902,9 +3057,6 @@ function WeatherCellMesh({
         <circleGeometry args={[cell.radius * WORLD_SCALE, 36]} />
         <meshBasicMaterial color={color} transparent opacity={opacity} depthWrite={false} />
       </mesh>
-      {cell.kind === "storm" ? (
-        <pointLight color="#7dbdff" intensity={0.35 * cell.intensity} distance={38} />
-      ) : null}
     </group>
   );
 }
@@ -2950,8 +3102,31 @@ function EnemyBiplane({ enemy }: { enemy: GameState["combat"]["enemies"][number]
 
   return (
     <group ref={groupRef} scale={0.62}>
-      <BiplaneFallback palette={palette} />
-      <pointLight color="#78ffad" intensity={0.65} distance={7} position={[0, 1.2, -0.4]} />
+      <EnemyBiplaneFallback palette={palette} />
+    </group>
+  );
+}
+
+function EnemyBiplaneFallback({ palette }: { palette: PlaneSkinPalette }) {
+  return (
+    <group scale={1.42}>
+      <mesh rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[0.38, 0.48, 2.8, 12]} />
+        <meshStandardMaterial
+          color={palette.body}
+          emissive={palette.bodyHi}
+          emissiveIntensity={0.24}
+          roughness={0.38}
+        />
+      </mesh>
+      <mesh position={[0, 0.18, 0]}>
+        <boxGeometry args={[5.4, 0.2, 0.92]} />
+        <meshStandardMaterial color={palette.wing} roughness={0.36} />
+      </mesh>
+      <mesh position={[0, 1.0, -0.05]}>
+        <boxGeometry args={[5.0, 0.18, 0.82]} />
+        <meshStandardMaterial color={palette.wingHi} roughness={0.36} />
+      </mesh>
     </group>
   );
 }
@@ -3033,7 +3208,6 @@ function GhostBiplane({ peer }: { peer: MultiplayerPeer }) {
         <boxGeometry args={[4.1, 0.12, 0.68]} />
         <meshBasicMaterial color="#d7efff" transparent opacity={0.28} />
       </mesh>
-      <pointLight color="#98d8ff" intensity={0.28} distance={7} />
     </group>
   );
 }
@@ -3109,7 +3283,6 @@ function Biplane({
           fallback={<BiplaneFallback palette={palette} />}
           prepareModel={tintBiplaneModel}
         />
-        <pointLight color="#ff9170" intensity={0.55} distance={7} position={[0, 0.5, -1.5]} />
       </group>
     );
   }
@@ -3132,7 +3305,6 @@ function BiplaneFallback({
 }) {
   return (
     <group scale={1.42}>
-      <pointLight color={palette.bodyHi} intensity={0.35} distance={6} position={[0, 0.8, -0.3]} />
       <group>
       <mesh castShadow rotation={[0, 0, Math.PI / 2]}>
         <cylinderGeometry args={[0.38, 0.48, 2.8, 20]} />
@@ -3183,7 +3355,6 @@ function BiplaneFallback({
         <meshStandardMaterial color="#fff2ba" transparent opacity={0.56} />
       </mesh>
       </group>
-      <pointLight color="#ff9170" intensity={0.85} distance={8} position={[0, 0.5, -1.5]} />
     </group>
   );
 }

@@ -122,6 +122,27 @@ export const computeCameraFollowTarget = ({
   };
 };
 
+export const resolveCameraFollowRates = ({
+  responsive,
+  directionalInput,
+  speed,
+}: {
+  responsive: boolean;
+  directionalInput: boolean;
+  speed: number;
+}) => {
+  if (!responsive) {
+    return { position: 4.6, look: 7 };
+  }
+
+  const speedRatio = clamp(speed / 1_100, 0, 1);
+  const inputBoost = directionalInput ? 8 : 0;
+  return {
+    position: 12 + speedRatio * 10 + inputBoost,
+    look: 10 + speedRatio * 8 + inputBoost,
+  };
+};
+
 export const computeViewportWorldBounds = ({
   camera,
   canvasSize,
