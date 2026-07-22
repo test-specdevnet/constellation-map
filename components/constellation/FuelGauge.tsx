@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import type { GameSessionSnapshot } from "../../lib/game/types";
 
 const WARNING_FUEL_THRESHOLD = 40;
 const CRITICAL_FUEL_THRESHOLD = 18;
 
-export function FuelGauge({
+export const FuelGauge = memo(function FuelGauge({
   snapshot,
 }: {
   snapshot: GameSessionSnapshot | null;
@@ -90,4 +90,4 @@ export function FuelGauge({
       {isCritical ? <div className="fuel-gauge-alert">LOW FUEL</div> : null}
     </div>
   );
-}
+});

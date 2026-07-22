@@ -236,6 +236,10 @@ const normalizeProgress = (input: Partial<ProgressState> | null | undefined): Pr
       input?.flightSettings?.hudDensity === "compact"
         ? input.flightSettings.hudDensity
         : DEFAULT_FLIGHT_SETTINGS.hudDensity,
+    responsiveCamera:
+      typeof input?.flightSettings?.responsiveCamera === "boolean"
+        ? input.flightSettings.responsiveCamera
+        : DEFAULT_FLIGHT_SETTINGS.responsiveCamera,
   },
   featureFlags: {
     fuelSystem: true,

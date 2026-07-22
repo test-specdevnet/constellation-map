@@ -1,6 +1,14 @@
 "use client";
 
-import { startTransition, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type { FilterState } from "./FilterBar";
 import { FilterBar } from "./FilterBar";
 import { SearchBox } from "./SearchBox";
@@ -599,33 +607,50 @@ function ConstellationExperienceBody({
     }
   };
 
-  const handleSelectApp = (appName: string) => {
-    setSelectedAppName(appName);
-    if (isTabletLayout) {
-      setMobileFiltersOpen(false);
-      setMobilePanelMode("none");
-    }
-    const system = systemsByApp.get(appName);
-    if (!system) {
-      return;
-    }
+  const handleSelectApp = useCallback(
+    (appName: string) => {
+      setSelectedAppName(appName);
+      if (isTabletLayout) {
+        setMobileFiltersOpen(false);
+        setMobilePanelMode("none");
+      }
+      const system = systemsByApp.get(appName);
+      if (!system) {
+        return;
+      }
 
-    setFocusTarget({
-      key: `select:${appName}:${Date.now()}`,
-      x: system.x,
-      y: system.y,
-      zoom: 0.34,
-    });
-  };
+      setFocusTarget({
+        key: `select:${appName}:${Date.now()}`,
+        x: system.x,
+        y: system.y,
+        zoom: 0.34,
+      });
+    },
+    [isTabletLayout, systemsByApp],
+  );
 
-  const handleFocusCluster = (cluster: Cluster) => {
+  const handleFocusCluster = useCallback((cluster: Cluster) => {
     setFocusTarget({
       key: `cluster:${cluster.clusterId}:${Date.now()}`,
       x: cluster.centroid.x,
       y: cluster.centroid.y,
       zoom: cluster.level === "region" ? 0.23 : 0.31,
     });
-  };
+  }, []);
+
+  const handleTelemetryUpdate = useCallback((nextTelemetry: FlightTelemetry) => {
+    setTelemetry(nextTelemetry);
+  }, []);
+
+  const handleGameStateUpdate = useCallback((nextSnapshot: GameSessionSnapshot) => {
+    startTransition(() => {
+      setGameSnapshot(nextSnapshot);
+    });
+  }, []);
+
+  const handleSceneHover = useCallback(() => {
+    // Hover copy stays inside the canvas tooltip.
+  }, []);
 
   const toggleMobileFilters = () => {
     setMobilePanelMode("none");
@@ -800,19 +825,9 @@ function ConstellationExperienceBody({
             onSelectApp={handleSelectApp}
             onClearSelectedApp={() => setSelectedAppName(null)}
             onFocusCluster={handleFocusCluster}
-            onHoverEntity={() => {
-              // Hover copy stays inside the canvas tooltip.
-            }}
-            onTelemetry={(nextTelemetry) => {
-              startTransition(() => {
-                setTelemetry(nextTelemetry);
-              });
-            }}
-            onGameStateChange={(nextSnapshot) => {
-              startTransition(() => {
-                setGameSnapshot(nextSnapshot);
-              });
-            }}
+            onHoverEntity={handleSceneHover}
+            onTelemetry={handleTelemetryUpdate}
+            onGameStateChange={handleGameStateUpdate}
             onRunComplete={featureFlags.leaderboard ? recordRun : undefined}
           />
 

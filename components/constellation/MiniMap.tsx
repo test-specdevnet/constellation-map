@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback, useMemo } from "react";
 import type { FlightTelemetry } from "../../lib/layout/focusContext";
 import type { GameSessionSnapshot } from "../../lib/game/types";
 import type { Cluster, SceneBounds } from "../../lib/types/star";
@@ -24,19 +25,22 @@ export function MiniMap({
   mode: "compact" | "detailed";
   onSelectCluster: (cluster: Cluster) => void;
 }) {
-  const visitedSet = new Set(visitedRegionIds);
+  const visitedSet = useMemo(() => new Set(visitedRegionIds), [visitedRegionIds]);
   const mapWidth = 260;
   const mapHeight = 198;
 
-  const project = (x: number, y: number) => {
-    const px = ((x - bounds.minX) / Math.max(bounds.width, 1)) * mapWidth;
-    const py = ((y - bounds.minY) / Math.max(bounds.height, 1)) * mapHeight;
+  const project = useCallback(
+    (x: number, y: number) => {
+      const px = ((x - bounds.minX) / Math.max(bounds.width, 1)) * mapWidth;
+      const py = ((y - bounds.minY) / Math.max(bounds.height, 1)) * mapHeight;
 
-    return {
-      x: clamp(px, 10, mapWidth - 10),
-      y: clamp(py, 10, mapHeight - 10),
-    };
-  };
+      return {
+        x: clamp(px, 10, mapWidth - 10),
+        y: clamp(py, 10, mapHeight - 10),
+      };
+    },
+    [bounds.height, bounds.minX, bounds.minY, bounds.width],
+  );
 
   const planePoint = telemetry
     ? project(telemetry.plane.x, telemetry.plane.y)
@@ -50,6 +54,85 @@ export function MiniMap({
         telemetry.plane.y + Math.sin(telemetry.plane.heading) * 420,
       )
     : planePoint;
+  const activeRegionId = telemetry?.activeRegionId ?? null;
+  const regionMarkers = useMemo(
+    () =>
+      regionClusters.map((cluster) => {
+        const point = project(cluster.centroid.x, cluster.centroid.y);
+        const radius = Math.max(7, Math.min(18, 6 + Math.sqrt(cluster.counts.systems)));
+        const active = activeRegionId === cluster.clusterId;
+        const visited = visitedSet.has(cluster.clusterId);
+
+        return (
+          <g key={cluster.clusterId}>
+            {!visited ? (
+              <circle
+                cx={point.x}
+                cy={point.y}
+                r={radius + 4}
+                className="mini-map-marker mini-map-marker--quest"
+              />
+            ) : null}
+            <circle
+              cx={point.x}
+              cy={point.y}
+              r={radius}
+              className={`mini-map-marker ${active ? "mini-map-marker--active" : ""}`}
+              role="button"
+              tabIndex={0}
+              aria-label={`Focus ${cluster.label}`}
+              onClick={() => onSelectCluster(cluster)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onSelectCluster(cluster);
+                }
+              }}
+            />
+          </g>
+        );
+      }),
+    [activeRegionId, onSelectCluster, project, regionClusters, visitedSet],
+  );
+  const clusterMarkers = useMemo(
+    () =>
+      snapshot?.miniMap.clusters.map((cluster) => {
+        const point = project(cluster.x, cluster.y);
+        const radius = Math.max(3, Math.min(7, 2 + Math.log2(cluster.count + 1)));
+        return (
+          <g key={cluster.id}>
+            <rect
+              x={point.x - radius}
+              y={point.y - radius}
+              width={radius * 2}
+              height={radius * 2}
+              rx="2"
+              className="mini-map-cluster"
+            />
+          </g>
+        );
+      }) ?? null,
+    [project, snapshot?.miniMap.clusters],
+  );
+  const collectibleMarkers = useMemo(
+    () =>
+      snapshot?.miniMap.collectibles.map((collectible) => {
+        const point = project(collectible.x, collectible.y);
+        return collectible.kind === "fuel" ? (
+          <g key={collectible.id} className="mini-map-pickup mini-map-pickup--fuel">
+            <rect x={point.x - 3.5} y={point.y - 5} width="7" height="10" rx="2" />
+            <path d={`M${point.x - 1.5} ${point.y - 5}h5l1.4 3`} />
+          </g>
+        ) : (
+          <path
+            key={collectible.id}
+            d={`M${point.x - 1} ${point.y - 7}l6 6h-4l3 8-8-8h4z`}
+            className="mini-map-pickup mini-map-pickup--boost"
+          />
+        );
+      }) ?? null,
+    [project, snapshot?.miniMap.collectibles],
+  );
 
   return (
     <div className="mini-map" aria-label="Region overview map">
@@ -66,74 +149,9 @@ export function MiniMap({
           y2={headingPoint.y}
           className="mini-map-heading"
         />
-        {regionClusters.map((cluster) => {
-          const point = project(cluster.centroid.x, cluster.centroid.y);
-          const radius = Math.max(7, Math.min(18, 6 + Math.sqrt(cluster.counts.systems)));
-          const active = telemetry?.activeRegionId === cluster.clusterId;
-          const visited = visitedSet.has(cluster.clusterId);
-
-          return (
-            <g key={cluster.clusterId}>
-              {!visited ? (
-                <circle
-                  cx={point.x}
-                  cy={point.y}
-                  r={radius + 4}
-                  className="mini-map-marker mini-map-marker--quest"
-                />
-              ) : null}
-              <circle
-                cx={point.x}
-                cy={point.y}
-                r={radius}
-                className={`mini-map-marker ${active ? "mini-map-marker--active" : ""}`}
-                role="button"
-                tabIndex={0}
-                aria-label={`Focus ${cluster.label}`}
-                onClick={() => onSelectCluster(cluster)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    onSelectCluster(cluster);
-                  }
-                }}
-              />
-            </g>
-          );
-        })}
-
-        {snapshot?.miniMap.clusters.map((cluster) => {
-          const point = project(cluster.x, cluster.y);
-          const radius = Math.max(3, Math.min(7, 2 + Math.log2(cluster.count + 1)));
-          return (
-            <g key={cluster.id}>
-              <rect
-                x={point.x - radius}
-                y={point.y - radius}
-                width={radius * 2}
-                height={radius * 2}
-                rx="2"
-                className="mini-map-cluster"
-              />
-            </g>
-          );
-        })}
-
-        {snapshot?.miniMap.collectibles.map((collectible) => {
-          const point = project(collectible.x, collectible.y);
-          return collectible.kind === "fuel" ? (
-            <g key={collectible.id} className="mini-map-pickup mini-map-pickup--fuel">
-              <rect x={point.x - 3.5} y={point.y - 5} width="7" height="10" rx="2" />
-              <path d={`M${point.x - 1.5} ${point.y - 5}h5l1.4 3`} />
-            </g>
-          ) : (
-            <path
-              key={collectible.id}
-              d={`M${point.x - 1} ${point.y - 7}l6 6h-4l3 8-8-8h4z`}
-              className="mini-map-pickup mini-map-pickup--boost"
-            />
-          );
-        })}
+        {regionMarkers}
+        {clusterMarkers}
+        {collectibleMarkers}
 
         <circle cx={planePoint.x} cy={planePoint.y} r="4" className="mini-map-plane" />
       </svg>

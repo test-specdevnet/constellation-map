@@ -1,5 +1,9 @@
 import type { SceneBounds } from "../types/star";
-import { createFlightState, integrateFlightState } from "./flightController";
+import {
+  createFlightState,
+  integrateFlightState,
+  resolveCameraFollowRates,
+} from "./flightController";
 import type { FlightInputState } from "./types";
 
 const bounds: SceneBounds = {
@@ -24,6 +28,34 @@ const input = (overrides: Partial<FlightInputState>): FlightInputState => ({
   dive: false,
   verticalAxis: 0,
   ...overrides,
+});
+
+describe("resolveCameraFollowRates", () => {
+  it("responds faster while steering and at high speed", () => {
+    const cruise = resolveCameraFollowRates({
+      responsive: true,
+      directionalInput: false,
+      speed: 220,
+    });
+    const steeringFast = resolveCameraFollowRates({
+      responsive: true,
+      directionalInput: true,
+      speed: 900,
+    });
+
+    expect(steeringFast.position).toBeGreaterThan(cruise.position);
+    expect(steeringFast.look).toBeGreaterThan(cruise.look);
+  });
+
+  it("preserves the classic camera damping when responsiveness is disabled", () => {
+    expect(
+      resolveCameraFollowRates({
+        responsive: false,
+        directionalInput: true,
+        speed: 900,
+      }),
+    ).toEqual({ position: 4.6, look: 7 });
+  });
 });
 
 describe("integrateFlightState", () => {
